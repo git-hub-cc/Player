@@ -12,6 +12,11 @@
     --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --controls-height: 90px;
     --mobile-controls-height: 130px; /* 新增: 移动端控制条高度 */
+    --loading-spinner-color: var(--primary-color); /* 新增: 加载动画颜色 */
+
+    /* 新增: 骨架屏颜色变量 */
+    --skeleton-bg: #282828; /* 骨架屏背景色，比panel_bg深一点 */
+    --skeleton-shine: #3a3a3a; /* 骨架屏闪烁效果颜色 */
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -41,12 +46,21 @@ body {
     position: relative;
     box-shadow: 0 8px 32px rgba(0,0,0,0.3);
 }
+
+/* 默认隐藏真实内容，由 JS 控制显示 */
+.player-container.loading .main-view,
+.player-container.loading .player-controls {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none; /* 防止用户在加载时点击 */
+}
+
 .main-view {
     grid-row: 1 / 2;
     overflow: hidden;
     background: linear-gradient(145deg, #414345, #232526);
     position: relative;
-    transition: background 0.8s ease-in-out;
+    transition: background 0.8s ease-in-out, opacity 0.3s ease, visibility 0.3s ease; /* 添加过渡 */
 }
 
 /* --- 侧滑面板 (通用样式) --- */
@@ -150,7 +164,17 @@ body {
 
 
 /* --- 底部控制条 --- */
-.player-controls { grid-row: 2 / 3; background-color: var(--surface-color); padding: 0 25px; display: grid; grid-template-columns: 3fr 4fr 3fr; align-items: center; border-top: 1px solid #282828; z-index: 1; }
+.player-controls {
+    grid-row: 2 / 3;
+    background-color: var(--surface-color);
+    padding: 0 25px;
+    display: grid;
+    grid-template-columns: 3fr 4fr 3fr;
+    align-items: center;
+    border-top: 1px solid #282828;
+    z-index: 1;
+    transition: opacity 0.3s ease, visibility 0.3s ease; /* 添加过渡 */
+}
 .track-info { display: flex; align-items: center; min-width: 0; }
 .track-info img { width: 56px; height: 56px; margin-right: 15px; border-radius: 4px; flex-shrink: 0; }
 .track-details { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -185,9 +209,157 @@ body {
     display: none;
 }
 
-/* --- 响应式设计: 移动端优化 --- */
+/* --- 新增： 骨架屏样式 --- */
+.skeleton-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2500; /* 确保在最顶层 */
+    background-color: var(--bg-color); /* 与 body 背景色匹配 */
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none; /* 允许点击穿透当不活跃时 */
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    display: grid; /* 模仿 player-container 的 grid 布局 */
+    grid-template-rows: 1fr var(--controls-height);
+    grid-template-columns: 1fr;
+    border-radius: inherit; /* 继承 player-container 的圆角 */
+    overflow: hidden; /* 确保骨架屏内容不溢出 */
+}
+
+.skeleton-overlay.active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto; /* 阻止点击穿透当活跃时 */
+}
+
+/* 骨架屏内容通用样式 */
+.skeleton-block {
+    background-color: var(--skeleton-bg);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+}
+
+/* 骨架屏动画 */
+.skeleton-block::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, var(--skeleton-shine), transparent);
+    transform: translateX(-100%);
+    animation: skeleton-shine 1.5s infinite;
+}
+
+@keyframes skeleton-shine {
+    to {
+        transform: translateX(100%);
+    }
+}
+
+/* 骨架屏 - 主视图部分 */
+.skeleton-main-view {
+    grid-row: 1 / 2;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(145deg, var(--skeleton-bg), var(--skeleton-shine) 45%, var(--skeleton-bg) 55%, var(--skeleton-shine)); /* 模拟 main-view 的渐变 */
+    position: relative; /* 用于放置中心占位符 */
+}
+
+.skeleton-album-art {
+    width: 300px; /* 模拟专辑艺术的大小 */
+    height: 300px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+
+/* 骨架屏 - 底部控制条部分 */
+.skeleton-controls {
+    grid-row: 2 / 3;
+    background-color: var(--surface-color); /* 与实际控制条背景匹配 */
+    padding: 0 25px;
+    display: grid;
+    grid-template-columns: 3fr 4fr 3fr;
+    align-items: center;
+    gap: 20px; /* 模拟实际控制条的间距 */
+    border-top: 1px solid var(--highlight-bg); /* 模拟边框 */
+}
+
+.skeleton-track-info {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 15px;
+}
+
+.skeleton-album-thumb {
+    width: 56px;
+    height: 56px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.skeleton-text-line {
+    height: 14px;
+    margin-bottom: 8px;
+    width: 80%; /* 模拟文本长度 */
+}
+.skeleton-text-line:last-child {
+    width: 60%;
+    margin-bottom: 0;
+}
+
+.skeleton-main-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.skeleton-buttons {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+.skeleton-button {
+    width: 36px; /* 模拟按钮大小 */
+    height: 36px;
+    border-radius: 50%;
+    display: block; /* 默认显示，后面根据媒体查询覆盖 */
+}
+.skeleton-button.small {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px; /* 模拟普通按钮形状 */
+}
+
+.skeleton-progress-bar {
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+}
+
+.skeleton-side-controls {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+}
+.skeleton-volume-bar {
+    width: 80px; /* 模拟音量条长度 */
+    height: 4px;
+    border-radius: 2px;
+}
+
+
+/* --- 响应式设计: 移动端骨架屏优化 --- */
 @media (max-width: 900px) {
-    body { padding: 0; }
     .player-container {
         height: 100vh;
         max-height: none;
@@ -235,5 +407,51 @@ body {
     .progress-container {
         width: 100%;
         max-width: none;
+    }
+
+
+    /* 骨架屏移动端样式覆盖 */
+    .skeleton-overlay {
+        grid-template-rows: 1fr var(--mobile-controls-height);
+    }
+    .skeleton-controls {
+        grid-template-columns: 1fr; /* 移动端控制条变为单列 */
+        height: var(--mobile-controls-height);
+        align-content: center;
+        gap: 15px;
+    }
+    .skeleton-track-info,
+    .skeleton-side-controls {
+        display: none; /* 移动端隐藏这些骨架部分 */
+    }
+
+    .skeleton-main-controls {
+        width: 100%;
+        gap: 15px;
+    }
+    .skeleton-buttons {
+        width: 100%;
+        justify-content: space-around;
+        gap: 0;
+    }
+    .skeleton-progress-bar {
+        width: 100%;
+        max-width: none;
+    }
+
+    /* 修复：移动端骨架屏的按钮显示逻辑 */
+    /* 默认所有 skeleton-button 都是 block，然后在媒体查询里精准控制 */
+    .skeleton-controls .skeleton-button { /* 确保所有骨架按钮默认隐藏，只显示需要模拟的 */
+        display: none;
+    }
+
+    .skeleton-controls .skeleton-button.mobile-only {
+        display: block; /* 模拟移动端专属按钮 */
+    }
+    /* 桌面端/移动端都存在的按钮骨架 */
+    .skeleton-controls .skeleton-buttons .skeleton-button:nth-child(2), /* prev */
+    .skeleton-controls .skeleton-buttons .skeleton-button:nth-child(3), /* play/pause */
+    .skeleton-controls .skeleton-buttons .skeleton-button:nth-child(4) { /* next */
+        display: block;
     }
 }
