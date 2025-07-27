@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // --- 1. DOM 元素获取 (新增移动端按钮) ---
+    // --- 1. DOM 元素获取 (新增关于面板元素) ---
     const mainView = document.querySelector('.main-view');
     const mediaPlayer = document.getElementById('media-player');
     const playPauseBtn = document.getElementById('play-pause-btn');
@@ -22,7 +22,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const playlistPanel = document.getElementById('playlist-panel');
     const playlistBtn = document.getElementById('playlist-btn');
     const closePlaylistBtn = document.getElementById('close-playlist-btn');
-    // 新增: 获取移动端专属按钮
+    // 新增: 获取关于面板相关元素
+    const infoBtn = document.getElementById('info-btn');
+    const infoPanel = document.getElementById('info-panel');
+    const closeInfoBtn = document.getElementById('close-info-btn');
+    // 获取移动端专属按钮
     const mobilePlaylistBtn = document.getElementById('mobile-playlist-btn');
     const mobileLyricsBtn = document.getElementById('mobile-lyrics-btn');
 
@@ -73,6 +77,10 @@ document.addEventListener('DOMContentLoaded', () => {
         currentTrackIndex = trackIndex;
         const track = playlist[trackIndex];
 
+        // 清理旧的事件监听器，防止内存泄漏或重复执行
+        mediaPlayer.oncanplay = null;
+        albumArtEl.onload = null;
+
         resetMainViewBackground();
         trackTitleEl.textContent = track.title;
         trackArtistEl.textContent = track.artist;
@@ -93,19 +101,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log(`成功读取 ${track.src} 的元数据。`);
             } catch (error) {
                 console.warn(`无法读取 ${track.src} 的元数据:`, error.message);
-                albumArtEl.onload = null; // Clear onload handler on failure
             }
         } else {
             albumArtContainer.style.display = 'none';
             mediaPlayer.style.display = 'block';
-            mediaPlayer.onloadeddata = () => {
-                setTimeout(() => extractAndApplyGradient(mediaPlayer), 100);
+
+            // --- MODIFICATION START ---
+            // 使用 oncanplay 事件代替 onloadeddata 和 setTimeout
+            // oncanplay 更可靠，因为它在视频帧准备好播放时触发
+            mediaPlayer.oncanplay = () => {
+                extractAndApplyGradient(mediaPlayer);
+                // 清理监听器，确保它只对当前加载的轨道触发一次
+                mediaPlayer.oncanplay = null;
             };
+            // --- MODIFICATION END ---
         }
-        mediaPlayer.load();
     }
     const togglePlayPause = () => isPlaying ? pauseTrack() : playTrack();
-    function playTrack() { if (playlist.length === 0) return; isPlaying = true; playPauseBtn.classList.add('playing'); playPauseBtn.title = '暂停'; mediaPlayer.play().catch(e => console.error("播放失败:", e)); }
+    function playTrack() { if (playlist.length === 0) return; isPlaying = true; playPauseBtn.classList.add('playing'); playPauseBtn.title = '暂停'; mediaPlayer.play().catch(e => { if (e.name !== 'AbortError') { console.error("播放失败:", e); }}); }
     function pauseTrack() { isPlaying = false; playPauseBtn.classList.remove('playing'); playPauseBtn.title = '播放'; mediaPlayer.pause(); }
     function changeTrack(direction) { if (playlist.length === 0) return; currentTrackIndex = (currentTrackIndex + direction + playlist.length) % playlist.length; loadTrack(currentTrackIndex).then(playTrack); }
     function updateProgress() { const { duration, currentTime } = mediaPlayer; if (!isNaN(duration)) { progressBar.value = (currentTime / duration) * 100; durationEl.textContent = formatTime(duration); currentTimeEl.textContent = formatTime(currentTime); syncLyrics(currentTime); } }
@@ -140,8 +153,6 @@ document.addEventListener('DOMContentLoaded', () => {
             albumArtEl.src = artUrl;
             controlAlbumArtEl.src = artUrl;
             albumArtEl.onload = () => extractAndApplyGradient(albumArtEl);
-        } else {
-            albumArtEl.onload = null;
         }
     }
     function parseLRC(lrcText) { if (!lrcText || lrcText.trim() === '') return []; return lrcText.split('\n').map(line => { const match = line.match(/\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/); if (match) { const time = parseInt(match[1]) * 60 + parseInt(match[2]) + parseInt(match[3]) / 1000; return { time, text: match[4].trim() }; } return null; }).filter(Boolean); }
@@ -167,6 +178,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- 6. 事件监听器 (适配移动端) ---
     function togglePlaylistPanel() { playlistPanel.classList.toggle('active'); }
     function toggleLyricsPanel() { lyricsContainer.classList.toggle('active'); }
+    // 新增: "关于"面板切换函数
+    function toggleInfoPanel() { infoPanel.classList.toggle('active'); }
 
     playPauseBtn.addEventListener('click', togglePlayPause);
     prevBtn.addEventListener('click', () => changeTrack(-1));
@@ -181,6 +194,13 @@ document.addEventListener('DOMContentLoaded', () => {
     mobileLyricsBtn.addEventListener('click', toggleLyricsPanel);
     playlistBtn.addEventListener('click', togglePlaylistPanel);
     mobilePlaylistBtn.addEventListener('click', togglePlaylistPanel);
+
+    // 新增: 绑定"关于"面板的事件
+    infoBtn.addEventListener('click', toggleInfoPanel);
+    closeInfoBtn.addEventListener('click', () => infoPanel.classList.remove('active'));
+    infoPanel.addEventListener('click', (e) => {
+        if (e.target === infoPanel) infoPanel.classList.remove('active');
+    });
 
     lyricsContainer.addEventListener('click', (e) => { if (e.target === lyricsContainer) lyricsContainer.classList.remove('active'); });
     volumeBtn.addEventListener('click', () => { mediaPlayer.muted = !mediaPlayer.muted; volumeBtn.classList.toggle('muted', mediaPlayer.muted); volumeBar.value = mediaPlayer.muted ? 0 : mediaPlayer.volume; });

@@ -3,21 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pro Media Player - 专业媒体播放器</title>
+    <title>Player - 媒体播放器</title>
 
     <!-- SEO Meta Tags -->
     <meta name="description" content="一个功能强大的HTML5媒体播放器，支持音频和视频播放，具有动态背景、歌词同步和播放列表功能。A powerful HTML5 media player supporting both audio and video, with dynamic backgrounds, synchronized lyrics, and playlist functionality.">
-    <meta name="keywords" content="media player, html5 player, javascript, audio player, video player, lyrics, playlist, 抖音, spotify, 媒体播放器, 音乐播放器, 视频播放器, Pro Media Player">
-    <meta name="author" content="Pro Media Player Project">
+    <meta name="keywords" content="media player, html5 player, javascript, audio player, video player, lyrics, playlist, 抖音, spotify, 媒体播放器, 音乐播放器, 视频播放器, Player">
+    <meta name="author" content="Player Project">
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
-    <meta property="og:title" content="Pro Media Player - 专业媒体播放器">
+    <meta property="og:title" content="Player - 媒体播放器">
     <meta property="og:description" content="一个功能强大的HTML5媒体播放器，支持音频和视频播放、动态背景和歌词同步。">
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary">
-    <meta property="twitter:title" content="Pro Media Player - 专业媒体播放器">
+    <meta property="twitter:title" content="Player - 媒体播放器">
     <meta property="twitter:description" content="一个功能强大的HTML5媒体播放器，支持音频和视频播放、动态背景和歌词同步。">
 
     <link rel="stylesheet" href="style.css">
@@ -42,7 +42,7 @@
         </div>
     </main>
 
-    <!-- 新结构: 播放列表面板，独立于主视图 -->
+    <!-- 播放列表面板 -->
     <aside id="playlist-panel" class="playlist-panel">
         <div class="panel-header">
             <h2>播放队列</h2>
@@ -53,6 +53,34 @@
         <ul id="playlist" class="playlist">
             <!-- 列表项由JS动态生成 -->
         </ul>
+    </aside>
+
+    <!-- 关于项目面板 -->
+    <aside id="info-panel" class="info-panel">
+        <div class="panel-header">
+            <h2>关于项目</h2>
+            <button id="close-info-btn" class="control-btn" title="关闭">
+                <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+            </button>
+        </div>
+        <div class="info-content">
+            <h3>项目地址</h3>
+            <p><a href="https://github.com/git-hub-cc/Player" target="_blank" rel="noopener noreferrer">https://github.com/git-hub-cc/Player</a></p>
+
+            <h3>设计灵感</h3>
+            <p>本播放器的用户界面 (UI) 设计语言主要灵感来源于 Spotify 桌面客户端，旨在致敬其现代化、美观且用户友好的交互体验。</p>
+
+            <h3>资源来源声明</h3>
+            <p class="statement-title">重要提示:</p>
+            <p>本项目中使用的所有媒体资源（包括但不限于音频和视频文件）均收集自互联网，仅供学习和技术演示使用，不作任何商业用途。</p>
+            <p>资源的具体来源包括：</p>
+            <ul>
+                <li>网络平台: 抖音、Spotify</li>
+                <li>艺术家/创作者: 旺仔小乔, 尹懿思¹²¹²（大力版）</li>
+                <li>工具: SPOTDOWNLOADER</li>
+            </ul>
+            <p>所有媒体内容的版权归原作者或其各自的版权所有者所有。如果您是任何媒体内容的版权所有者，并且认为本项目对您的权利构成了侵犯，请联系我们，我们将立即删除相关内容。</p>
+        </div>
     </aside>
 
     <!-- 底部播放控制条 -->
@@ -97,6 +125,10 @@
 
         <!-- 侧边控制按钮 (在桌面端显示) -->
         <div class="side-controls">
+            <!-- 新增: 关于按钮 -->
+            <button id="info-btn" class="control-btn" title="关于">
+                <svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"></path></svg>
+            </button>
             <button id="lyrics-btn" class="control-btn" title="显示/隐藏歌词">
                 <svg viewBox="0 0 24 24"><path d="M15 4v12h3V4h-3M3 4v12h3V4H3m5 0v12h3V4H8m8 16H8v2h8v-2m-5-2h-2v2h2v-2z"/></svg>
             </button>

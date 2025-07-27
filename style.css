@@ -49,8 +49,8 @@ body {
     transition: background 0.8s ease-in-out;
 }
 
-/* --- 侧滑播放列表面板 --- */
-.playlist-panel {
+/* --- 侧滑面板 (通用样式) --- */
+.playlist-panel, .info-panel {
     position: absolute;
     top: 0;
     right: 0;
@@ -65,8 +65,8 @@ body {
     display: flex;
     flex-direction: column;
 }
-.playlist-panel.active { transform: translateX(0); }
-.panel-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; flex-shrink: 0; }
+.playlist-panel.active, .info-panel.active { transform: translateX(0); }
+.panel-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; flex-shrink: 0; border-bottom: 1px solid var(--highlight-bg); }
 .panel-header h2 { font-size: 16px; font-weight: 700; color: var(--text-primary); }
 .panel-header .control-btn:hover { background-color: var(--highlight-bg); border-radius: 50%;}
 
@@ -87,7 +87,7 @@ body {
 .lyrics-list .no-lyrics { color: var(--text-secondary); font-size: 16px; font-weight: normal; height: 100%; display: flex; align-items: center; justify-content: center; }
 
 /* --- 播放列表项目样式 --- */
-.playlist { list-style: none; overflow-y: auto; padding: 0 8px 16px 20px; flex-grow: 1; scrollbar-width: thin; scrollbar-color: var(--slider-track-color) transparent; }
+.playlist { list-style: none; overflow-y: auto; padding: 8px 8px 16px 20px; flex-grow: 1; scrollbar-width: thin; scrollbar-color: var(--slider-track-color) transparent; }
 .playlist-item { display: flex; align-items: center; padding: 10px; border-radius: 6px; cursor: pointer; transition: background-color 0.2s; margin-bottom: 8px; }
 .playlist-item:hover, .playlist-item.active { background-color: var(--highlight-bg); }
 .playlist-item.active .playlist-title { color: var(--primary-color); }
@@ -99,6 +99,55 @@ body {
 .playlist::-webkit-scrollbar-track { background-color: transparent; }
 .playlist::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; }
 .playlist::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
+
+/* --- 新增: 关于面板内容样式 --- */
+.info-content {
+    padding: 0 20px 20px;
+    flex-grow: 1;
+    overflow-y: auto;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    scrollbar-width: thin;
+    scrollbar-color: var(--slider-track-color) transparent;
+}
+.info-content h3 {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 20px 0 12px 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--highlight-bg);
+}
+.info-content p {
+    font-size: 13px;
+    margin-bottom: 10px;
+}
+.info-content .statement-title {
+    font-weight: bold;
+    color: var(--text-primary);
+}
+.info-content a {
+    color: var(--primary-color);
+    text-decoration: none;
+    word-break: break-all;
+    transition: color 0.2s ease;
+}
+.info-content a:hover {
+    text-decoration: underline;
+}
+.info-content ul {
+    list-style-position: inside;
+    padding-left: 5px;
+    font-size: 13px;
+}
+.info-content ul li {
+    margin-bottom: 5px;
+}
+.info-content::-webkit-scrollbar { width: 8px; }
+.info-content::-webkit-scrollbar-track { background-color: transparent; }
+.info-content::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; }
+.info-content::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
+
 
 /* --- 底部控制条 --- */
 .player-controls { grid-row: 2 / 3; background-color: var(--surface-color); padding: 0 25px; display: grid; grid-template-columns: 3fr 4fr 3fr; align-items: center; border-top: 1px solid #282828; z-index: 1; }
@@ -149,8 +198,8 @@ body {
     .main-view { grid-template-columns: 1fr; }
     #media-player, .album-art-container { max-width: 100%; border-radius: 0; }
 
-    /* 调整播放列表面板以适应移动端控制条 */
-    .playlist-panel {
+    /* 调整所有侧滑面板以适应移动端控制条 */
+    .playlist-panel, .info-panel {
         bottom: var(--mobile-controls-height);
     }
 
