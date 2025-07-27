@@ -27,6 +27,56 @@
 <body>
 
 <div class="player-container">
+    <!-- 骨架屏 overlay - 在内容加载前显示 -->
+    <div id="skeleton-overlay" class="skeleton-overlay active">
+        <!-- 模拟主视图区域的骨架 -->
+        <div class="skeleton-main-view">
+            <div class="skeleton-block skeleton-album-art"></div>
+        </div>
+
+        <!-- 模拟底部播放控制条的骨架 -->
+        <div class="skeleton-controls">
+            <!-- 模拟歌曲信息 -->
+            <div class="skeleton-track-info">
+                <div class="skeleton-block skeleton-album-thumb"></div>
+                <div>
+                    <div class="skeleton-block skeleton-text-line" style="width: 120px;"></div>
+                    <div class="skeleton-block skeleton-text-line" style="width: 80px;"></div>
+                </div>
+            </div>
+
+            <!-- 模拟主控制按钮 -->
+            <div class="skeleton-main-controls">
+                <div class="skeleton-buttons">
+                    <!-- Mobile-only Lyrics Button Skeleton -->
+                    <div class="skeleton-block skeleton-button mobile-only small"></div>
+                    <div class="skeleton-block skeleton-button small"></div> <!-- Prev button -->
+                    <div class="skeleton-block skeleton-button"></div> <!-- Play/Pause button -->
+                    <div class="skeleton-block skeleton-button small"></div> <!-- Next button -->
+                    <!-- Mobile-only Playlist Button Skeleton -->
+                    <div class="skeleton-block skeleton-button mobile-only small"></div>
+                </div>
+                <div class="progress-container" style="width: 100%; max-width: 500px; display: flex; align-items: center; gap: 10px;">
+                    <span style="visibility: hidden;">0:00</span> <!-- 占位符，保持布局 -->
+                    <div class="skeleton-block skeleton-progress-bar"></div>
+                    <span style="visibility: hidden;">0:00</span> <!-- 占位符，保持布局 -->
+                </div>
+            </div>
+
+            <!-- 模拟侧边控制按钮 -->
+            <div class="skeleton-side-controls">
+                <div class="skeleton-block skeleton-button small"></div> <!-- Info button -->
+                <div class="skeleton-block skeleton-button small"></div> <!-- Lyrics button -->
+                <div class="skeleton-block skeleton-button small"></div> <!-- Playlist button -->
+                <div class="volume-container" style="display: flex; align-items: center; gap: 5px;">
+                    <div class="skeleton-block skeleton-button small"></div> <!-- Volume button -->
+                    <div class="skeleton-block skeleton-volume-bar"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- 骨架屏结束 -->
+
     <!-- 主视图区域：仅包含媒体、封面和歌词 -->
     <main class="main-view">
         <div class="media-visualizer">
