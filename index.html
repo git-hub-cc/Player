@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Media Player - 专业媒体播放器</title>
+
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="一个功能强大的HTML5媒体播放器，支持音频和视频播放，具有动态背景、歌词同步和播放列表功能。A powerful HTML5 media player supporting both audio and video, with dynamic backgrounds, synchronized lyrics, and playlist functionality.">
+    <meta name="keywords" content="media player, html5 player, javascript, audio player, video player, lyrics, playlist, 抖音, spotify, 媒体播放器, 音乐播放器, 视频播放器, Pro Media Player">
+    <meta name="author" content="Pro Media Player Project">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Pro Media Player - 专业媒体播放器">
+    <meta property="og:description" content="一个功能强大的HTML5媒体播放器，支持音频和视频播放、动态背景和歌词同步。">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary">
+    <meta property="twitter:title" content="Pro Media Player - 专业媒体播放器">
+    <meta property="twitter:description" content="一个功能强大的HTML5媒体播放器，支持音频和视频播放、动态背景和歌词同步。">
+
+    <link rel="stylesheet" href="style.css">
+    <!-- 引入 jsmediatags 库，用于从MP3读取元数据 -->
+    <script src="lib/jsmediatags.min.js"></script>
+</head>
+<body>
+
+<div class="player-container">
+    <!-- 主视图区域：仅包含媒体、封面和歌词 -->
+    <main class="main-view">
+        <div class="media-visualizer">
+            <video id="media-player" playsinline crossorigin="anonymous"></video>
+            <div id="album-art-container" class="album-art-container">
+                <img id="album-art" src="" alt="Album Art" crossorigin="anonymous">
+            </div>
+        </div>
+        <div id="lyrics-container" class="lyrics-container">
+            <div id="lyrics-list-wrapper">
+                <div id="lyrics-list" class="lyrics-list"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 新结构: 播放列表面板，独立于主视图 -->
+    <aside id="playlist-panel" class="playlist-panel">
+        <div class="panel-header">
+            <h2>播放队列</h2>
+            <button id="close-playlist-btn" class="control-btn" title="关闭">
+                <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+            </button>
+        </div>
+        <ul id="playlist" class="playlist">
+            <!-- 列表项由JS动态生成 -->
+        </ul>
+    </aside>
+
+    <!-- 底部播放控制条 -->
+    <footer class="player-controls">
+        <!-- 歌曲信息 -->
+        <div class="track-info">
+            <img id="control-album-art" src="" alt="Album Art" crossorigin="anonymous">
+            <div class="track-details">
+                <div id="track-title">选择媒体</div>
+                <div id="track-artist">开始播放</div>
+            </div>
+        </div>
+
+        <!-- 主控制按钮 -->
+        <div class="main-controls">
+            <div class="control-buttons">
+                <!-- Mobile-only Lyrics Button -->
+                <button id="mobile-lyrics-btn" class="control-btn mobile-only-btn" title="显示/隐藏歌词">
+                    <svg viewBox="0 0 24 24"><path d="M15 4v12h3V4h-3M3 4v12h3V4H3m5 0v12h3V4H8m8 16H8v2h8v-2m-5-2h-2v2h2v-2z"/></svg>
+                </button>
+                <button id="prev-btn" class="control-btn" title="上一首">
+                    <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"></path></svg>
+                </button>
+                <button id="play-pause-btn" class="control-btn play-btn" title="播放">
+                    <svg class="play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>
+                    <svg class="pause-icon" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>
+                </button>
+                <button id="next-btn" class="control-btn" title="下一首">
+                    <svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zm-3.5 6l-8.5 6V6z"></path></svg>
+                </button>
+                <!-- Mobile-only Playlist Button -->
+                <button id="mobile-playlist-btn" class="control-btn mobile-only-btn" title="播放队列">
+                    <svg viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zm0-8h14V7H7v2z"></path></svg>
+                </button>
+            </div>
+            <div class="progress-container">
+                <span id="current-time">0:00</span>
+                <input type="range" id="progress-bar" class="progress-bar" min="0" max="100" value="0">
+                <span id="duration">0:00</span>
+            </div>
+        </div>
+
+        <!-- 侧边控制按钮 (在桌面端显示) -->
+        <div class="side-controls">
+            <button id="lyrics-btn" class="control-btn" title="显示/隐藏歌词">
+                <svg viewBox="0 0 24 24"><path d="M15 4v12h3V4h-3M3 4v12h3V4H3m5 0v12h3V4H8m8 16H8v2h8v-2m-5-2h-2v2h2v-2z"/></svg>
+            </button>
+            <button id="playlist-btn" class="control-btn" title="播放队列">
+                <svg viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zm0-8h14V7H7v2z"></path></svg>
+            </button>
+            <div class="volume-container">
+                <button id="volume-btn" class="control-btn" title="静音">
+                    <svg class="volume-icon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"></path></svg>
+                    <svg class="mute-icon" viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"></path></svg>
+                </button>
+                <input type="range" id="volume-bar" class="volume-bar" min="0" max="1" step="0.01" value="1">
+            </div>
+        </div>
+    </footer>
+</div>
+
+<script src="script.js"></script>
+
+</body>
+</html>
