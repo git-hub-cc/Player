@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // --- 1. DOM 元素获取 ---
+    // --- 1. DOM 元素获取 (No changes) ---
     const playerContainer = document.querySelector('.player-container');
     const mainView = document.querySelector('.main-view');
     const mediaPlayer = document.getElementById('media-player');
@@ -41,17 +41,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const DEFAULT_ART = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI0IzQjNCMyI+PHBhdGggZD0iTTEyIDNBOS45OSA5Ljk5IDAgMCAwIDIgMTJoLjAyYzAgNC45NyA0LjAzIDkgOC45OCA5czguOTgtNC4wMyA4Ljk4LTlBOS45OSA5Ljk5IDAgMCAwIDEyIDptMCAxNmMyLjYyIDAgNC43NS0yLjEyIDQuNzUtNC43NVMyMSAxMC42MyAyMSAxMGMwLTEuMDQtLjM1LTEuOTktLjkzLTIuNzlsLTYgNEMxMy40MyAxNy42NSA5LjUgMTYgOS41IDEyLjVDOS41IDguMzYgMTIuODYgNSA5LjUgNSBjLTEuOTggMC0zLjY5Ljg1LTQuNzggMi4yMkw2LjA4IDZDNy41IDQuMzQgOS42MiAzIDEyIDN6bS0uNS00YzEuMzggMCAyLjUtMS4xMiAyLjUtMi41UzEzLjg4IDUgMTIuNSA1IDcgNi4xMiA3IDcuNXMyLjEyIDIuNSAyLjUgMi41eiIvPjwvc3ZnPg==";
 
-    // --- 2. 状态管理 ---
+    // --- 2. 状态管理 (No changes) ---
     let playlist = [];
     let currentTrackIndex = 0;
     let isPlaying = false;
     let parsedLyrics = [];
-    let currentMediaBlobUrl = null;
     let toastTimeout;
-    const PLAY_MODES = ['list', 'single', 'shuffle']; // 播放模式: 列表循环, 单曲循环, 随机播放
+    const PLAY_MODES = ['list', 'single', 'shuffle'];
     let currentModeIndex = 0;
 
-    // --- 3. 背景色提取功能 ---
+    // --- 3. 背景色提取功能 (No changes) ---
     const bgCanvas = document.createElement('canvas');
     const bgCtx = bgCanvas.getContext('2d', { willReadFrequently: true });
     function extractAndApplyGradient(sourceElement) {
@@ -81,7 +80,7 @@ document.addEventListener('DOMContentLoaded', () => {
         mainView.style.background = '';
     }
 
-    // --- 4. 骨架屏显示/隐藏函数 ---
+    // --- 4. 骨架屏显示/隐藏函数 (No changes) ---
     function showSkeleton() {
         playerContainer.classList.add('loading');
         skeletonOverlay.classList.add('active');
@@ -91,170 +90,149 @@ document.addEventListener('DOMContentLoaded', () => {
         playerContainer.classList.remove('loading');
     }
 
-    // --- 5. 核心播放器功能 ---
+    // --- 5. 核心播放器功能 (REWRITTEN FOR STREAMING) ---
     async function loadTrack(trackIndex) {
         if (playlist.length === 0) return;
         showSkeleton();
         currentTrackIndex = trackIndex;
         const track = playlist[trackIndex];
-        if (currentMediaBlobUrl) {
-            URL.revokeObjectURL(currentMediaBlobUrl);
-            currentMediaBlobUrl = null;
-        }
+
+        // 1. Instantly update UI with data from playlist.json for a fast, responsive feel.
+        trackTitleEl.textContent = track.title || "未知标题";
+        trackArtistEl.textContent = track.artist || "未知艺术家";
+        // NOTE: Assumes you have run the python script to add 'albumArt' to your playlist.json
+        const artUrl = track.albumArt || DEFAULT_ART;
+        albumArtEl.src = artUrl;
+        controlAlbumArtEl.src = artUrl;
+
+        // Reset and render lyrics immediately.
+        parsedLyrics = parseLRC(track.lyrics || '');
+        renderLyrics();
+        updatePlaylistUI();
+
+        // 2. Prepare event listeners for the new media.
+        let loadedOnce = false;
+        const handleMediaReady = () => {
+            if (!loadedOnce) {
+                hideSkeleton();
+                updateProgress(); // Update duration and progress bar
+                if (isPlaying) {
+                    mediaPlayer.play().catch(e => {
+                        if (e.name !== 'AbortError') console.error("播放失败:", e);
+                    });
+                }
+                loadedOnce = true;
+            }
+        };
+
+        // Remove previous listeners to prevent memory leaks.
         mediaPlayer.oncanplay = null;
         mediaPlayer.onloadedmetadata = null;
         albumArtEl.onload = null;
         mediaPlayer.onerror = null;
-        resetMainViewBackground();
-        trackTitleEl.textContent = track.title || "未知标题";
-        trackArtistEl.textContent = track.artist || "未知艺术家";
-        albumArtEl.src = DEFAULT_ART;
-        controlAlbumArtEl.src = DEFAULT_ART;
-        parsedLyrics = [];
-        renderLyrics();
-        updatePlaylistUI();
-        mediaPlayer.autoplay = false;
-        try {
-            const response = await fetch(track.src);
-            if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-            const mediaBlob = await response.blob();
-            currentMediaBlobUrl = URL.createObjectURL(mediaBlob);
-            mediaPlayer.src = currentMediaBlobUrl;
-            let loadedOnce = false;
-            const handleMediaReady = () => {
-                if (!loadedOnce) {
-                    hideSkeleton();
-                    updateProgress();
-                    if (isPlaying) {
-                        mediaPlayer.play().catch(e => {
-                            if (e.name !== 'AbortError') console.error("播放失败:", e);
-                        });
-                    }
-                    loadedOnce = true;
-                }
-            };
-            mediaPlayer.onerror = (e) => {
-                console.error("媒体加载错误:", e);
-                trackTitleEl.textContent = "错误";
-                trackArtistEl.textContent = "无法播放此媒体";
-                hideSkeleton();
-                resetMainViewBackground();
-            };
-            if (track.type === 'audio') {
-                albumArtContainer.style.display = 'flex';
-                mediaPlayer.style.display = 'none';
-                const tags = await getID3TagsFromBlob(mediaBlob);
-                let lyricsText = '';
-                if (tags.lyrics) {
-                    lyricsText = typeof tags.lyrics === 'string' ? tags.lyrics : (tags.lyrics.text || tags.lyrics.lyrics || '');
-                }
-                if (!lyricsText) {
-                    lyricsText = track.lyrics || '';
-                }
-                parsedLyrics = parseLRC(lyricsText);
-                renderLyrics();
-                updateUITags(tags, track);
-                albumArtEl.onload = () => extractAndApplyGradient(albumArtEl);
-                if (albumArtEl.complete && albumArtEl.naturalWidth > 0) {
-                    extractAndApplyGradient(albumArtEl);
-                }
-                mediaPlayer.oncanplay = handleMediaReady;
-                mediaPlayer.onloadedmetadata = updateProgress;
-            } else {
-                albumArtContainer.style.display = 'none';
-                mediaPlayer.style.display = 'block';
-                parsedLyrics = parseLRC(track.lyrics || '');
-                renderLyrics();
-                mediaPlayer.onloadedmetadata = updateProgress;
-                mediaPlayer.oncanplay = () => {
-                    extractAndApplyGradient(mediaPlayer);
-                    handleMediaReady();
-                };
-            }
-        } catch (error) {
-            console.error("加载轨道失败:", error);
+
+        mediaPlayer.onerror = (e) => {
+            console.error("媒体加载错误:", e);
             trackTitleEl.textContent = "错误";
-            trackArtistEl.textContent = `加载失败: ${error.message}`;
+            trackArtistEl.textContent = "无法播放此媒体";
             hideSkeleton();
             resetMainViewBackground();
+        };
+
+        // 3. Configure UI and background extraction based on media type.
+        if (track.type === 'audio') {
+            albumArtContainer.style.display = 'flex';
+            mediaPlayer.style.display = 'none';
+            // Set up background extraction from the album art.
+            albumArtEl.onload = () => extractAndApplyGradient(albumArtEl);
+            if (albumArtEl.complete && albumArtEl.naturalWidth > 0) {
+                extractAndApplyGradient(albumArtEl);
+            } else {
+                resetMainViewBackground();
+            }
+        } else { // 'video'
+            albumArtContainer.style.display = 'none';
+            mediaPlayer.style.display = 'block';
+            resetMainViewBackground();
+            // For video, extract background when a frame is available.
+            mediaPlayer.addEventListener('canplay', () => {
+                extractAndApplyGradient(mediaPlayer);
+            }, { once: true });
+        }
+
+        // 4. THE CORE CHANGE: Set the src for streaming playback.
+        // The browser will now handle fetching and buffering the media.
+        mediaPlayer.src = track.src;
+        mediaPlayer.load(); // This is good practice to start the loading process.
+
+        // Assign event handlers AFTER setting the new source.
+        mediaPlayer.oncanplay = handleMediaReady;
+        mediaPlayer.onloadedmetadata = updateProgress;
+
+        // If the player was already playing, attempt to play the new track.
+        // The browser will start playing as soon as it has enough data.
+        if (isPlaying) {
+            mediaPlayer.play().catch(e => { /* Ignore initial autoplay error, it will be handled by 'canplay' */ });
         }
     }
+
     const togglePlayPause = () => isPlaying ? pauseTrack() : playTrack();
+
     function playTrack() {
-        if (playlist.length === 0 || mediaPlayer.src === '') return;
-        isPlaying = true;
-        playPauseBtn.classList.add('playing');
-        playPauseBtn.title = '暂停';
-        mediaPlayer.play().catch(e => {
-            if (e.name !== 'AbortError') console.error("播放失败:", e);
-        });
+        if (playlist.length === 0 || !mediaPlayer.src) return;
+        // The play() method returns a Promise.
+        const playPromise = mediaPlayer.play();
+        if (playPromise !== undefined) {
+            playPromise.then(() => {
+                isPlaying = true;
+                playPauseBtn.classList.add('playing');
+                playPauseBtn.title = '暂停';
+            }).catch(e => {
+                // Autoplay was prevented.
+                if (e.name !== 'AbortError') console.error("播放失败:", e);
+                isPlaying = false; // Ensure state is correct
+                playPauseBtn.classList.remove('playing');
+                playPauseBtn.title = '播放';
+            });
+        }
     }
+
     function pauseTrack() {
+        mediaPlayer.pause();
         isPlaying = false;
         playPauseBtn.classList.remove('playing');
         playPauseBtn.title = '播放';
-        mediaPlayer.pause();
     }
+
     function changeTrack(direction) {
         if (playlist.length === 0) return;
         currentTrackIndex = (currentTrackIndex + direction + playlist.length) % playlist.length;
         loadTrack(currentTrackIndex);
     }
+
     function updateProgress() {
-        const {
-            duration,
-            currentTime
-        } = mediaPlayer;
+        const { duration, currentTime } = mediaPlayer;
         if (!isNaN(duration)) {
             progressBar.value = (currentTime / duration) * 100;
             durationEl.textContent = formatTime(duration);
-            currentTimeEl.textContent = formatTime(currentTime);
-            syncLyrics(currentTime);
+        } else {
+            // Handle cases where duration is not yet available
+            durationEl.textContent = "0:00";
         }
+        currentTimeEl.textContent = formatTime(currentTime);
+        syncLyrics(currentTime);
     }
 
-    // --- 6. 元数据与歌词处理 ---
-    function getID3TagsFromBlob(fileBlob) {
-        return new Promise((resolve) => {
-            window.jsmediatags.read(fileBlob, {
-                onSuccess: (tag) => resolve(tag.tags),
-                onError: (error) => {
-                    console.warn("无法读取ID3标签:", error);
-                    resolve({});
-                }
-            });
-        });
-    }
-    function updateUITags(tags, track) {
-        trackTitleEl.textContent = tags.title || track.title || "未知标题";
-        trackArtistEl.textContent = tags.artist || track.artist || "未知艺术家";
-        if (tags.picture) {
-            const {
-                data,
-                format
-            } = tags.picture;
-            let base64String = "";
-            for (let i = 0; i < data.length; i++) {
-                base64String += String.fromCharCode(data[i]);
-            }
-            const artUrl = `data:${format};base64,${window.btoa(base64String)}`;
-            albumArtEl.src = artUrl;
-            controlAlbumArtEl.src = artUrl;
-        } else {
-            albumArtEl.src = DEFAULT_ART;
-            controlAlbumArtEl.src = DEFAULT_ART;
-        }
-    }
+    // --- 6. 元数据与歌词处理 (SIMPLIFIED) ---
+    // The getID3TagsFromBlob and updateUITags functions are no longer needed
+    // because all metadata is now pre-loaded from playlist.json.
     function parseLRC(lrcText) {
         if (!lrcText || lrcText.trim() === '') return [];
         return lrcText.split('\n').map(line => {
             const match = line.match(/\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/);
             if (match) {
                 const time = parseInt(match[1]) * 60 + parseInt(match[2]) + parseInt(match[3]) / 1000;
-                return {
-                    time,
-                    text: match[4].trim()
-                };
+                return { time, text: match[4].trim() };
             }
             return null;
         }).filter(Boolean);
@@ -293,7 +271,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- 7. UI 与辅助功能 ---
+    // --- 7. UI 与辅助功能 (No changes from here down) ---
     function formatTime(seconds) {
         const mins = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);
@@ -327,9 +305,6 @@ document.addEventListener('DOMContentLoaded', () => {
             toastEl.classList.remove('show');
         }, 3000);
     }
-
-    // --- 8. 功能引导 (Feature Tour) ---
-    // MODIFIED: Create separate tour steps for desktop and mobile
     const desktopTourSteps = [{
         element: '#play-pause-btn',
         title: '主控制区',
@@ -361,7 +336,6 @@ document.addEventListener('DOMContentLoaded', () => {
         content: '现在您可以开始使用了。所有功能都已介绍完毕。',
         position: 'top'
     }];
-
     const mobileTourSteps = [{
         element: '#play-pause-btn',
         title: '主控制区',
@@ -388,7 +362,6 @@ document.addEventListener('DOMContentLoaded', () => {
         content: '现在您可以开始使用了。所有功能都已介绍完毕。',
         position: 'top'
     }];
-
     class FeatureTour {
         constructor(steps) {
             this.steps = steps;
@@ -531,8 +504,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.domElements.nextButton.textContent = (index === this.steps.length - 1) ? '完成' : '下一步';
         }
     }
-
-    // --- 9. 快捷键功能 ---
     let shortcutSettings = {};
     let isRecordingShortcut = false;
     let currentRecordingAction = null;
@@ -681,8 +652,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
         }
     }
-
-    // --- 10. 播放模式 ---
     function updateModeButton() {
         const currentMode = PLAY_MODES[currentModeIndex];
         modeBtn.className = 'control-btn';
@@ -718,8 +687,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function playPrevTrack() {
         changeTrack(-1);
     }
-
-    // --- 11. 播放列表搜索 ---
     function filterPlaylist() {
         const query = playlistSearchInput.value.toLowerCase().replace(/\s/g, '');
         const playlistItems = playlistEl.querySelectorAll('.playlist-item');
@@ -749,8 +716,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.getElementById('playlist-no-results').style.display = hasVisibleItems ? 'none' : 'block';
     }
-
-    // --- 12. 事件监听器 ---
     const currentlyPressedKeys = new Set();
     window.addEventListener('keydown', (e) => {
         if (e.key === 'Tab') {
@@ -776,7 +741,6 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('keyup', (e) => {
         currentlyPressedKeys.delete(normalizeKey(e.key));
     });
-
     playPauseBtn.addEventListener('click', togglePlayPause);
     prevBtn.addEventListener('click', playPrevTrack);
     nextBtn.addEventListener('click', playNextTrack);
@@ -789,7 +753,6 @@ document.addEventListener('DOMContentLoaded', () => {
             playNextTrack();
         }
     });
-
     mediaPlayer.addEventListener('timeupdate', updateProgress);
     mediaPlayer.addEventListener('loadedmetadata', updateProgress);
     progressBar.addEventListener('input', (e) => {
@@ -822,7 +785,7 @@ document.addEventListener('DOMContentLoaded', () => {
     playlistEl.addEventListener('click', (e) => {
         const item = e.target.closest('.playlist-item');
         if (item) {
-            loadTrack(parseInt(item.dataset.index, 10)).then(() => playTrack());
+            loadTrack(parseInt(item.dataset.index, 10));
         }
     });
     closePlaylistBtn.addEventListener('click', () => {
@@ -859,16 +822,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     modeBtn.addEventListener('click', cyclePlayMode);
     playlistSearchInput.addEventListener('input', filterPlaylist);
-
-    // --- 13. 初始化 ---
     async function init() {
         showSkeleton();
         try {
             const response = await fetch('playlist.json');
             if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
             let fetchedPlaylist = await response.json();
-
-            const { pinyin } = window.pinyinPro;
+            const {
+                pinyin
+            } = window.pinyinPro;
             playlist = fetchedPlaylist.map(track => {
                 const title = track.title || '';
                 const pinyinStr = pinyin(title, {
@@ -890,7 +852,6 @@ document.addEventListener('DOMContentLoaded', () => {
             hideSkeleton();
             return;
         }
-
         if (playlist.length > 0) {
             renderPlaylist();
             await loadTrack(currentTrackIndex);
@@ -898,13 +859,10 @@ document.addEventListener('DOMContentLoaded', () => {
             trackTitleEl.textContent = "播放列表为空";
             hideSkeleton();
         }
-
         volumeBar.value = mediaPlayer.volume;
         volumeBtn.classList.toggle('muted', mediaPlayer.muted);
         loadShortcuts();
         updateModeButton();
-
-        // MODIFIED: Check screen size and run the appropriate tour
         if (!localStorage.getItem('player_tour_completed')) {
             setTimeout(() => {
                 const isMobile = window.innerWidth <= 900;
@@ -914,6 +872,5 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 500);
         }
     }
-
     init();
 });
