@@ -62,22 +62,6 @@ function setupEventListeners() {
         savePlayerState();
     });
 
-    // 监听鼠标侧键（前进/后退）
-    window.addEventListener('mousedown', (e) => {
-        // e.button === 3: 浏览器后退按钮
-        if (e.button === 3) {
-            e.preventDefault(); // 阻止默认的页面后退行为
-            playPrevTrack();
-            savePlayerState();
-        }
-        // e.button === 4: 浏览器前进按钮
-        if (e.button === 4) {
-            e.preventDefault(); // 阻止默认的页面前进行为
-            playNextTrack();
-            savePlayerState();
-        }
-    });
-
     // 监听浏览器的前进/后退事件
     window.addEventListener('popstate', (event) => {
         // 检查是否存在我们设置的状态
