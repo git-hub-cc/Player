@@ -1,0 +1,34 @@
+/* base.css */
+/* --- 全局与主题 --- */
+:root {
+    --bg-color: #121212;
+    --surface-color: #181818;
+    --primary-color: #1DB954;
+    --text-primary: #FFFFFF;
+    --text-secondary: #B3B3B3;
+    --slider-track-color: #535353;
+    --slider-thumb-color: #FFFFFF;
+    --highlight-bg: #2a2a2a;
+    --panel-bg: #1c1c1c;
+    --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --controls-height: 90px;
+    --mobile-controls-height: 130px;
+    --skeleton-bg: #282828;
+    --skeleton-shine: #3a3a3a;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* 隐藏用于JS克隆的HTML模板容器 */
+#templates { display: none; }
+
+body {
+    font-family: var(--font-family);
+    background-color: var(--bg-color);
+    color: var(--text-primary);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    padding: 1rem;
+    overflow: hidden;
+}

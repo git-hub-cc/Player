@@ -1,0 +1,78 @@
+/* responsive.css */
+@media (max-width: 900px) {
+    body { padding: 0; }
+    .player-container {
+        height: 100vh;
+        max-height: none;
+        border-radius: 0;
+        grid-template-rows: 1fr var(--mobile-controls-height);
+    }
+    .main-view {
+        grid-template-columns: 1fr;
+    }
+    #media-player, .album-art-container {
+        max-width: 100%;
+        border-radius: 0;
+    }
+    .playlist-panel, .info-panel, .shortcut-panel {
+        bottom: var(--mobile-controls-height);
+    }
+    .player-controls {
+        grid-template-columns: 1fr;
+        padding: 15px;
+        height: var(--mobile-controls-height);
+        align-content: center;
+        gap: 15px;
+    }
+    .track-info, .side-controls {
+        display: none;
+    }
+    .mobile-only-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .main-controls {
+        width: 100%;
+        gap: 15px;
+    }
+    .control-buttons {
+        width: 100%;
+        justify-content: space-around;
+        gap: 0;
+    }
+    .progress-container {
+        width: 100%;
+        max-width: none;
+    }
+    .skeleton-overlay {
+        grid-template-rows: 1fr var(--mobile-controls-height);
+    }
+    .skeleton-controls {
+        grid-template-columns: 1fr;
+        height: var(--mobile-controls-height);
+        align-content: center;
+        gap: 15px;
+    }
+    .skeleton-track-info, .skeleton-side-controls {
+        display: none;
+    }
+    .skeleton-main-controls {
+        width: 100%;
+        gap: 15px;
+    }
+    .skeleton-buttons {
+        width: 100%;
+        justify-content: space-around;
+        gap: 0;
+    }
+    .skeleton-progress-bar {
+        width: 100%;
+        max-width: none;
+    }
+    .skeleton-controls .skeleton-button { display: none; }
+    .skeleton-controls .skeleton-button.mobile-only { display: block; }
+    .skeleton-controls .skeleton-buttons .skeleton-button:nth-child(2),
+    .skeleton-controls .skeleton-buttons .skeleton-button:nth-child(3),
+    .skeleton-controls .skeleton-buttons .skeleton-button:nth-child(4) { display: block; }
+}

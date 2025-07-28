@@ -1,0 +1,65 @@
+/* components.css */
+/* --- Shortcut Modal --- */
+.shortcut-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 3000; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s ease; }
+.shortcut-modal-overlay.visible { opacity: 1; visibility: visible; }
+.shortcut-modal-content { background-color: var(--panel-bg); padding: 30px 40px; border-radius: 8px; text-align: center; box-shadow: 0 5px 20px rgba(0,0,0,0.4); transform: scale(0.9); transition: transform 0.3s ease; }
+.shortcut-modal-overlay.visible .shortcut-modal-content { transform: scale(1); }
+.shortcut-modal-content p { margin: 0 0 20px; font-size: 18px; color: var(--text-primary); }
+.shortcut-modal-content .shortcut-key-preview { min-height: 40px; display: flex; justify-content: center; align-items: center; gap: 8px; margin-bottom: 20px; }
+.shortcut-modal-content small { color: var(--text-secondary); }
+
+/* --- Tour Tooltip --- */
+#tour-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 9998; background-color: rgba(0, 0, 0, 0.5); opacity: 0; transition: opacity 0.3s ease-in-out; pointer-events: none; }
+#tour-overlay.active { opacity: 1; pointer-events: auto; }
+#tour-highlight-box { position: absolute; z-index: 9999; border-radius: 6px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6); transition: all 0.4s cubic-bezier(0.68, -0.55, 0.27, 1.55); }
+#tour-tooltip { position: absolute; z-index: 10000; background-color: var(--panel-bg); padding: 15px 20px; border-radius: 8px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3); width: 300px; max-width: 80vw; opacity: 0; transform: translateY(10px); transition: opacity 0.3s ease, transform 0.3s ease; visibility: hidden; }
+#tour-tooltip.active { opacity: 1; transform: translateY(0); visibility: visible; }
+#tour-tooltip::before { content: ''; position: absolute; border: 8px solid transparent; }
+#tour-tooltip.tour-tooltip-bottom::before { top: -16px; left: 50%; transform: translateX(-50%); border-bottom-color: var(--panel-bg); }
+#tour-tooltip.tour-tooltip-top::before { bottom: -16px; left: 50%; transform: translateX(-50%); border-top-color: var(--panel-bg); }
+#tour-tooltip.tour-tooltip-right::before { left: -16px; top: 50%; transform: translateY(-50%); border-right-color: var(--panel-bg); }
+#tour-tooltip.tour-tooltip-left::before { right: -16px; top: 50%; transform: translateY(-50%); border-left-color: var(--panel-bg); }
+.tour-tooltip-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.tour-tooltip-title { font-size: 1rem; font-weight: bold; color: var(--text-primary); }
+.tour-tooltip-step-counter { font-size: 0.85rem; color: var(--text-secondary); }
+.tour-tooltip-content { font-size: 0.9rem; line-height: 1.6; color: var(--text-secondary); margin-bottom: 20px; }
+.tour-tooltip-footer { display: flex; justify-content: space-between; align-items: center; }
+.tour-skip-button { background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 0.9rem; }
+.tour-skip-button:hover { color: var(--text-primary); }
+.tour-nav-buttons button { background-color: var(--primary-color); color: #000; font-weight: bold; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 0.9rem; margin-left: 10px; transition: background-color 0.2s ease; }
+.tour-nav-buttons button:hover { background-color: #1ed760; }
+.tour-nav-buttons button:disabled { background-color: var(--slider-track-color); color: var(--text-secondary); cursor: not-allowed; }
+
+/* --- Toast Notification --- */
+.toast { visibility: hidden; opacity: 0; position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%); min-width: 250px; background-color: var(--highlight-bg); color: var(--text-primary); text-align: center; border-radius: 4px; padding: 16px; z-index: 10001; box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: opacity 0.5s, visibility 0.5s; font-size: 14px; }
+.toast.show { visibility: visible; opacity: 1; }
+
+/* --- Custom Context Menu --- */
+.custom-context-menu {
+    display: none;
+    position: fixed;
+    z-index: 4000;
+    background-color: var(--panel-bg);
+    border-radius: 6px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    padding: 6px;
+    min-width: 180px;
+    border: 1px solid var(--highlight-bg);
+}
+.custom-context-menu ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.custom-context-menu li {
+    padding: 10px 15px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+.custom-context-menu li:hover {
+    background-color: var(--highlight-bg);
+    color: var(--text-primary);
+}

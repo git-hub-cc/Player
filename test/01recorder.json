@@ -1,0 +1,526 @@
+{
+    "title": "01",
+    "steps": [
+        {
+            "type": "setViewport",
+            "width": 2309,
+            "height": 1440,
+            "deviceScaleFactor": 1,
+            "isMobile": false,
+            "hasTouch": false,
+            "isLandscape": false
+        },
+        {
+            "type": "navigate",
+            "url": "http://localhost:63342/Player/index.html?_ijt=1kcg376iealt2gg15l1mahemtt&_ij_reload=RELOAD_ON_SAVE",
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "http://localhost:63342/Player/index.html?_ijt=1kcg376iealt2gg15l1mahemtt&_ij_reload=RELOAD_ON_SAVE",
+                    "title": "Player - 媒体播放器"
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/下一步"
+                ],
+                [
+                    "button.tour-next-button"
+                ],
+                [
+                    "xpath///*[@id=\"tour-tooltip\"]/div[3]/div/button[2]"
+                ],
+                [
+                    "pierce/button.tour-next-button"
+                ],
+                [
+                    "text/下一步"
+                ]
+            ],
+            "offsetY": 14.5,
+            "offsetX": 51.703125
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/下一步"
+                ],
+                [
+                    "button.tour-next-button"
+                ],
+                [
+                    "xpath///*[@id=\"tour-tooltip\"]/div[3]/div/button[2]"
+                ],
+                [
+                    "pierce/button.tour-next-button"
+                ],
+                [
+                    "text/下一步"
+                ]
+            ],
+            "offsetY": 12.5,
+            "offsetX": 37.703125
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/下一步"
+                ],
+                [
+                    "button.tour-next-button"
+                ],
+                [
+                    "xpath///*[@id=\"tour-tooltip\"]/div[3]/div/button[2]"
+                ],
+                [
+                    "pierce/button.tour-next-button"
+                ],
+                [
+                    "text/下一步"
+                ]
+            ],
+            "offsetY": 19,
+            "offsetX": 43.703125
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/下一步"
+                ],
+                [
+                    "button.tour-next-button"
+                ],
+                [
+                    "xpath///*[@id=\"tour-tooltip\"]/div[3]/div/button[2]"
+                ],
+                [
+                    "pierce/button.tour-next-button"
+                ],
+                [
+                    "text/下一步"
+                ]
+            ],
+            "offsetY": 22,
+            "offsetX": 40.703125
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/下一步"
+                ],
+                [
+                    "button.tour-next-button"
+                ],
+                [
+                    "xpath///*[@id=\"tour-tooltip\"]/div[3]/div/button[2]"
+                ],
+                [
+                    "pierce/button.tour-next-button"
+                ],
+                [
+                    "text/下一步"
+                ]
+            ],
+            "offsetY": 23,
+            "offsetX": 46.703125
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/下一步"
+                ],
+                [
+                    "button.tour-next-button"
+                ],
+                [
+                    "xpath///*[@id=\"tour-tooltip\"]/div[3]/div/button[2]"
+                ],
+                [
+                    "pierce/button.tour-next-button"
+                ],
+                [
+                    "text/下一步"
+                ]
+            ],
+            "offsetY": 11.5,
+            "offsetX": 26.3125
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/播放",
+                    "aria/[role=\"image\"]"
+                ],
+                [
+                    "svg.play-icon"
+                ],
+                [
+                    "xpath///*[@id=\"play-pause-btn\"]/svg[1]"
+                ],
+                [
+                    "pierce/svg.play-icon"
+                ]
+            ],
+            "offsetY": 5.300048828125,
+            "offsetX": 16.300048828125
+        },
+        {
+            "type": "change",
+            "value": "36",
+            "selectors": [
+                [
+                    "#progress-bar"
+                ],
+                [
+                    "xpath///*[@id=\"progress-bar\"]"
+                ],
+                [
+                    "pierce/#progress-bar"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "#progress-bar"
+                ],
+                [
+                    "xpath///*[@id=\"progress-bar\"]"
+                ],
+                [
+                    "pierce/#progress-bar"
+                ]
+            ],
+            "offsetY": 2,
+            "offsetX": 157.484375
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/快捷键设置",
+                    "aria/[role=\"graphics-symbol\"]"
+                ],
+                [
+                    "#shortcut-btn path"
+                ],
+                [
+                    "xpath///*[@id=\"shortcut-btn\"]/svg/path"
+                ],
+                [
+                    "pierce/#shortcut-btn path"
+                ]
+            ],
+            "offsetY": 7.8333740234375,
+            "offsetX": 4.8333740234375
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/快捷键设置",
+                    "aria/[role=\"graphics-symbol\"]"
+                ],
+                [
+                    "#shortcut-btn path"
+                ],
+                [
+                    "xpath///*[@id=\"shortcut-btn\"]/svg/path"
+                ],
+                [
+                    "pierce/#shortcut-btn path"
+                ]
+            ],
+            "offsetY": 7.8333740234375,
+            "offsetX": 5.8333740234375
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/关于",
+                    "aria/[role=\"image\"]"
+                ],
+                [
+                    "#info-btn > svg"
+                ],
+                [
+                    "xpath///*[@id=\"info-btn\"]/svg"
+                ],
+                [
+                    "pierce/#info-btn > svg"
+                ]
+            ],
+            "offsetY": 12,
+            "offsetX": 14.5
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/关于",
+                    "aria/[role=\"image\"]"
+                ],
+                [
+                    "#info-btn > svg"
+                ],
+                [
+                    "xpath///*[@id=\"info-btn\"]/svg"
+                ],
+                [
+                    "pierce/#info-btn > svg"
+                ]
+            ],
+            "offsetY": 12,
+            "offsetX": 13.5
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/列表循环",
+                    "aria/[role=\"image\"]"
+                ],
+                [
+                    "svg.list-loop-icon"
+                ],
+                [
+                    "xpath///*[@id=\"mode-btn\"]/svg[1]"
+                ],
+                [
+                    "pierce/svg.list-loop-icon"
+                ]
+            ],
+            "offsetY": 13.5,
+            "offsetX": 17.5
+        },
+        {
+            "type": "doubleClick",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/单曲循环",
+                    "aria/[role=\"image\"]"
+                ],
+                [
+                    "svg.single-loop-icon"
+                ],
+                [
+                    "xpath///*[@id=\"mode-btn\"]/svg[2]"
+                ],
+                [
+                    "pierce/svg.single-loop-icon"
+                ]
+            ],
+            "offsetY": 13.5,
+            "offsetX": 17.5
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.side-controls"
+                ],
+                [
+                    "xpath//html/body/div[1]/footer/div[3]"
+                ],
+                [
+                    "pierce/div.side-controls"
+                ]
+            ],
+            "offsetY": 18,
+            "offsetX": 223.5
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/显示/隐藏歌词",
+                    "aria/[role=\"image\"]"
+                ],
+                [
+                    "#lyrics-btn > svg"
+                ],
+                [
+                    "xpath///*[@id=\"lyrics-btn\"]/svg"
+                ],
+                [
+                    "pierce/#lyrics-btn > svg"
+                ]
+            ],
+            "offsetY": 11,
+            "offsetX": 16.5
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/显示/隐藏歌词",
+                    "aria/[role=\"graphics-symbol\"]"
+                ],
+                [
+                    "#lyrics-btn path"
+                ],
+                [
+                    "xpath///*[@id=\"lyrics-btn\"]/svg/path"
+                ],
+                [
+                    "pierce/#lyrics-btn path"
+                ]
+            ],
+            "offsetY": 7.6666259765625,
+            "offsetX": 12
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/播放队列",
+                    "aria/[role=\"graphics-symbol\"]"
+                ],
+                [
+                    "#playlist-btn path"
+                ],
+                [
+                    "xpath///*[@id=\"playlist-btn\"]/svg/path"
+                ],
+                [
+                    "pierce/#playlist-btn path"
+                ]
+            ],
+            "offsetY": 4.1666259765625,
+            "offsetX": 1
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "li:nth-of-type(2) div.playlist-title"
+                ],
+                [
+                    "xpath///*[@id=\"playlist\"]/li[2]/div[2]/div[1]"
+                ],
+                [
+                    "pierce/li:nth-of-type(2) div.playlist-title"
+                ],
+                [
+                    "text/Heaven"
+                ]
+            ],
+            "offsetY": 6.5,
+            "offsetX": 22.5
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "li:nth-of-type(37) div.playlist-artist"
+                ],
+                [
+                    "xpath///*[@id=\"playlist\"]/li[37]/div[2]/div[2]"
+                ],
+                [
+                    "pierce/li:nth-of-type(37) div.playlist-artist"
+                ],
+                [
+                    "text/video_artist_002"
+                ]
+            ],
+            "offsetY": 2.5,
+            "offsetX": 83.5
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/上一首",
+                    "aria/[role=\"image\"]"
+                ],
+                [
+                    "#prev-btn > svg"
+                ],
+                [
+                    "xpath///*[@id=\"prev-btn\"]/svg"
+                ],
+                [
+                    "pierce/#prev-btn > svg"
+                ]
+            ],
+            "offsetY": 1,
+            "offsetX": 12.5
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/下一首",
+                    "aria/[role=\"image\"]"
+                ],
+                [
+                    "#next-btn > svg"
+                ],
+                [
+                    "xpath///*[@id=\"next-btn\"]/svg"
+                ],
+                [
+                    "pierce/#next-btn > svg"
+                ]
+            ],
+            "offsetY": 5,
+            "offsetX": 9.5
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/下一首",
+                    "aria/[role=\"image\"]"
+                ],
+                [
+                    "#next-btn > svg"
+                ],
+                [
+                    "xpath///*[@id=\"next-btn\"]/svg"
+                ],
+                [
+                    "pierce/#next-btn > svg"
+                ]
+            ],
+            "offsetY": 5,
+            "offsetX": 9.5
+        }
+    ]
+}
