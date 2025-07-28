@@ -1,6 +1,6 @@
 # Player - 高度可定制的现代媒体播放器
 
-
+https://github.com/user-attachments/assets/33046049-a997-47e6-85e5-f4626889c0f0
 
 ## 简介
 

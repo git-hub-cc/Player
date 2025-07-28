@@ -64,6 +64,12 @@
 .playlist::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; }
 .playlist::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
 
+/* --- 优化点 1: 播放列表过滤 --- */
+/* 用于JS控制的隐藏类，取代直接操作style */
+.playlist-item.hidden {
+    display: none;
+}
+
 /* --- Info Panel Content --- */
 .info-content { padding: 0 20px 20px; flex-grow: 1; overflow-y: auto; line-height: 1.7; color: var(--text-secondary); scrollbar-width: thin; scrollbar-color: var(--slider-track-color) transparent; }
 .info-content h3 { font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 20px 0 12px 0; padding-bottom: 8px; border-bottom: 1px solid var(--highlight-bg); }

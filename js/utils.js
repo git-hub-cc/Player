@@ -1,7 +1,9 @@
 // js/utils.js
 
+import {playerContainer, templatesContainer, getTemplateElementById} from "./dom.js";
+
 export function getTemplate(id) {
-    const template = document.getElementById(id);
+    const template = getTemplateElementById(id);
     if (!template) {
         console.error(`Template with id "${id}" not found.`);
         return document.createDocumentFragment();
@@ -37,9 +39,9 @@ export async function loadTemplates() {
     try {
         const response = await fetch('template.html');
         if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-        document.getElementById('templates').innerHTML = await response.text();
+        templatesContainer.innerHTML = await response.text();
     } catch (error) {
         console.error("无法加载模板文件 'template.html':", error);
-        document.querySelector('.player-container').innerHTML = '<h1>Error: Could not load app templates.</h1>';
+        playerContainer.innerHTML = '<h1>Error: Could not load app templates.</h1>';
     }
 }

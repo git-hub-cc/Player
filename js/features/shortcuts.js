@@ -88,12 +88,20 @@ function handleShortcutKeyDown(e) {
 
 function handleShortcutKeyUp(e) {
     if (!state.isRecordingShortcut || state.pressedShortcutKeys.size === 0) return;
+
+    // BUG修复：在设置快捷键后立即停止录制，防止事件继续冒泡触发全局快捷键
     const modifierKeys = ['Ctrl', 'Alt', 'Shift', 'Cmd'];
     const hasNonModifierKey = Array.from(state.pressedShortcutKeys).some(k => !modifierKeys.includes(k));
+
     if (hasNonModifierKey) {
+        // 1. 先保存新的快捷键
         state.shortcutSettings[state.currentRecordingAction].keys = Array.from(state.pressedShortcutKeys);
         saveShortcuts();
+
+        // 2. 立即停止录制，移除监听器并隐藏模态框
         stopRecording();
+
+        // 3. 最后再更新UI列表
         renderShortcutList();
     }
 }
