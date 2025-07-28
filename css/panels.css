@@ -1,0 +1,95 @@
+/* panels.css */
+/* --- 侧滑面板 (通用样式) --- */
+.playlist-panel, .info-panel, .shortcut-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: var(--controls-height);
+    width: 340px;
+    max-width: 90%;
+    background-color: var(--panel-bg);
+    box-shadow: -5px 0 15px rgba(0,0,0,0.2);
+    z-index: 2000;
+    transform: translateX(100%);
+    visibility: hidden;
+    transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), visibility 0s 0.4s;
+    display: flex;
+    flex-direction: column;
+}
+.playlist-panel.active, .info-panel.active, .shortcut-panel.active {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.panel-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; flex-shrink: 0; border-bottom: 1px solid var(--highlight-bg); }
+.panel-header h2 { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+.panel-header .control-btn:hover { background-color: var(--highlight-bg); border-radius: 50%;}
+
+/* Panel Search Input */
+.panel-search-container {
+    padding: 16px 20px 8px;
+    flex-shrink: 0;
+}
+.panel-search {
+    width: 100%;
+    background-color: var(--highlight-bg);
+    border: 1px solid var(--slider-track-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+    padding: 8px 12px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.panel-search:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.3);
+}
+.panel-search::placeholder {
+    color: var(--text-secondary);
+}
+
+/* --- 播放列表项目样式 --- */
+.playlist { list-style: none; overflow-y: auto; padding: 8px 8px 16px 20px; flex-grow: 1; scrollbar-width: thin; scrollbar-color: var(--slider-track-color) transparent; }
+.playlist-item { display: flex; align-items: center; padding: 10px; border-radius: 6px; cursor: pointer; transition: background-color 0.2s; margin-bottom: 8px; }
+.playlist-item:hover, .playlist-item.active { background-color: var(--highlight-bg); }
+.playlist-item.active .playlist-title { color: var(--primary-color); }
+.playlist-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; margin-right: 15px; font-size: 20px; color: var(--text-secondary); flex-shrink: 0; }
+.playlist-details { overflow: hidden; }
+.playlist-title { font-size: 14px; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+.playlist-artist { font-size: 12px; color: var(--text-secondary); }
+.no-results-message { color: var(--text-secondary); padding: 20px; text-align: center; display: none; /* 默认隐藏，由JS控制显示 */ }
+.playlist::-webkit-scrollbar { width: 8px; }
+.playlist::-webkit-scrollbar-track { background-color: transparent; }
+.playlist::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; }
+.playlist::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
+
+/* --- Info Panel Content --- */
+.info-content { padding: 0 20px 20px; flex-grow: 1; overflow-y: auto; line-height: 1.7; color: var(--text-secondary); scrollbar-width: thin; scrollbar-color: var(--slider-track-color) transparent; }
+.info-content h3 { font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 20px 0 12px 0; padding-bottom: 8px; border-bottom: 1px solid var(--highlight-bg); }
+.info-content p { font-size: 13px; margin-bottom: 10px; }
+.info-content .statement-title { font-weight: bold; color: var(--text-primary); }
+.info-content a { color: var(--primary-color); text-decoration: none; word-break: break-all; transition: color 0.2s ease; }
+.info-content a:hover { text-decoration: underline; }
+.info-content ul { list-style-position: inside; padding-left: 5px; font-size: 13px; }
+.info-content ul li { margin-bottom: 5px; }
+
+/* 用于段落内嵌的图标样式 */
+.info-content .inline-icon {
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+}
+
+.info-content::-webkit-scrollbar { width: 8px; } .info-content::-webkit-scrollbar-track { background-color: transparent; } .info-content::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; } .info-content::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
+
+/* --- Shortcut Panel List --- */
+.shortcut-list { list-style: none; overflow-y: auto; padding: 8px 8px 16px 20px; flex-grow: 1; scrollbar-width: thin; scrollbar-color: var(--slider-track-color) transparent; }
+.shortcut-item { display: flex; align-items: center; padding: 12px 10px; border-bottom: 1px solid var(--highlight-bg); transition: background-color 0.2s; } .shortcut-item:last-child { border-bottom: none; } .shortcut-item:hover { background-color: var(--highlight-bg); }
+.action-label { flex-grow: 1; font-size: 14px; color: var(--text-secondary); }
+.shortcut-display { display: flex; align-items: center; gap: 6px; margin: 0 15px; }
+.shortcut-display kbd { background-color: #3a3a3a; border: 1px solid #535353; border-radius: 4px; padding: 4px 8px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace; font-size: 13px; font-weight: 500; color: var(--text-primary); box-shadow: 0 2px 0 #282828; }
+.shortcut-display .placeholder { color: var(--text-secondary); font-style: italic; font-size: 13px; }
+.shortcut-item .actions { display: flex; gap: 8px; }
+.shortcut-item .actions button { background: none; border: 1px solid var(--text-secondary); color: var(--text-secondary); padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; transition: all 0.2s ease; }
+.shortcut-item .actions button:hover { background-color: var(--highlight-bg); color: var(--text-primary); border-color: var(--text-primary); } .shortcut-item .actions .set-btn:hover { border-color: var(--primary-color); color: var(--primary-color); }

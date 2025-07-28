@@ -20,13 +20,20 @@
     <meta property="twitter:title" content="Player - 媒体播放器">
     <meta property="twitter:description" content="一个功能强大的HTML5媒体播放器，支持音频和视频播放、动态背景和歌词同步。">
 
-    <link rel="stylesheet" href="style.css">
+    <!-- 基础和布局 -->
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/layout.css">
 
-    <!-- 引入第三方库 -->
-    <script src="lib/jsmediatags.min.js"></script>
-    <!-- pinyin-pro is required for advanced playlist search. -->
-    <!-- Make sure you have downloaded this file and placed it in the 'lib' folder. -->
-    <script src="lib/index.min.js"></script>
+    <!-- 主要视图和控制区域 -->
+    <link rel="stylesheet" href="css/player-view.css">
+    <link rel="stylesheet" href="css/player-controls.css">
+
+    <!-- 面板和独立组件 -->
+    <link rel="stylesheet" href="css/panels.css">
+    <link rel="stylesheet" href="css/components.css">
+
+    <!-- 响应式样式 (最后加载) -->
+    <link rel="stylesheet" href="css/responsive.css">
 </head>
 <body>
 
@@ -37,46 +44,38 @@
         <div class="skeleton-main-view">
             <div class="skeleton-block skeleton-album-art"></div>
         </div>
-
         <!-- 模拟底部播放控制条的骨架 -->
         <div class="skeleton-controls">
-            <!-- 模拟歌曲信息 -->
             <div class="skeleton-track-info">
                 <div class="skeleton-block skeleton-album-thumb"></div>
                 <div>
-                    <div class="skeleton-block skeleton-text-line" style="width: 120px;"></div>
-                    <div class="skeleton-block skeleton-text-line" style="width: 80px;"></div>
+                    <div class="skeleton-block skeleton-text-line"></div>
+                    <div class="skeleton-block skeleton-text-line"></div>
                 </div>
             </div>
-
-            <!-- 模拟主控制按钮 -->
             <div class="skeleton-main-controls">
                 <div class="skeleton-buttons">
-                    <!-- Mobile-only Lyrics Button Skeleton -->
                     <div class="skeleton-block skeleton-button mobile-only small"></div>
-                    <div class="skeleton-block skeleton-button small"></div> <!-- Prev button -->
-                    <div class="skeleton-block skeleton-button"></div> <!-- Play/Pause button -->
-                    <div class="skeleton-block skeleton-button small"></div> <!-- Next button -->
-                    <!-- Mobile-only Playlist Button Skeleton -->
+                    <div class="skeleton-block skeleton-button small"></div>
+                    <div class="skeleton-block skeleton-button"></div>
+                    <div class="skeleton-block skeleton-button small"></div>
                     <div class="skeleton-block skeleton-button mobile-only small"></div>
                 </div>
-                <div class="progress-container" style="width: 100%; max-width: 500px; display: flex; align-items: center; gap: 10px;">
-                    <span style="visibility: hidden;">0:00</span> <!-- 占位符，保持布局 -->
+                <div class="progress-container">
+                    <span>0:00</span>
                     <div class="skeleton-block skeleton-progress-bar"></div>
-                    <span style="visibility: hidden;">0:00</span> <!-- 占位符，保持布局 -->
+                    <span>0:00</span>
                 </div>
             </div>
-
-            <!-- 模拟侧边控制按钮 -->
             <div class="skeleton-side-controls">
-                <div class="skeleton-block skeleton-button small"></div> <!-- Shortcut button -->
-                <div class="skeleton-block skeleton-button small"></div> <!-- Info button -->
-                <div class="skeleton-block skeleton-button small"></div> <!-- Immersive button -->
-                <div class="skeleton-block skeleton-button small"></div> <!-- Mode button -->
-                <div class="skeleton-block skeleton-button small"></div> <!-- Lyrics button -->
-                <div class="skeleton-block skeleton-button small"></div> <!-- Playlist button -->
-                <div class="volume-container" style="display: flex; align-items: center; gap: 5px;">
-                    <div class="skeleton-block skeleton-button small"></div> <!-- Volume button -->
+                <div class="skeleton-block skeleton-button small"></div>
+                <div class="skeleton-block skeleton-button small"></div>
+                <div class="skeleton-block skeleton-button small"></div>
+                <div class="skeleton-block skeleton-button small"></div>
+                <div class="skeleton-block skeleton-button small"></div>
+                <div class="skeleton-block skeleton-button small"></div>
+                <div class="volume-container">
+                    <div class="skeleton-block skeleton-button small"></div>
                     <div class="skeleton-block skeleton-volume-bar"></div>
                 </div>
             </div>
@@ -107,12 +106,11 @@
                 <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
             </button>
         </div>
-        <!-- Search Input -->
         <div class="panel-search-container">
             <input type="search" id="playlist-search" class="panel-search" placeholder="搜索 (歌名/歌手/拼音/首字母)">
         </div>
         <ul id="playlist" class="playlist">
-            <!-- 列表项和 "No Results" 消息由JS动态生成 -->
+            <!-- 列表项由JS动态生成 -->
         </ul>
     </aside>
 
@@ -129,7 +127,7 @@
             <p><a href="https://github.com/git-hub-cc/Player" target="_blank" rel="noopener noreferrer">https://github.com/git-hub-cc/Player</a></p>
             <h3>新功能</h3>
             <p>1. <b>功能导览</b>: 首次访问时，将自动启动新功能导览，帮助您快速上手。</p>
-            <p>2. <b>快捷键设置</b>: 点击右下角 <svg style="width:1em;height:1em;vertical-align:-0.125em;" viewBox="0 0 24 24" fill="currentColor"><path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"></path></svg> 按钮可自定义键盘快捷键。</p>
+            <p>2. <b>快捷键设置</b>: 点击右下角 <svg class="inline-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"></path></svg> 按钮可自定义键盘快捷键。</p>
             <p>3. <b>播放模式</b>: 点击播放控制区的循环/随机按钮，即可切换播放模式。</p>
             <p>4. <b>列表搜索</b>: 在播放列表面板中，可使用拼音或首字母进行模糊搜索。</p>
             <h3>设计灵感</h3>
@@ -154,7 +152,6 @@
 
     <!-- 底部播放控制条 -->
     <footer class="player-controls">
-        <!-- 歌曲信息 -->
         <div class="track-info">
             <img id="control-album-art" src="" alt="Album Art" crossorigin="anonymous">
             <div class="track-details">
@@ -162,8 +159,6 @@
                 <div id="track-artist">开始播放</div>
             </div>
         </div>
-
-        <!-- 主控制按钮 -->
         <div class="main-controls">
             <div class="control-buttons">
                 <button id="mobile-lyrics-btn" class="control-btn mobile-only-btn" title="显示/隐藏歌词">
@@ -189,31 +184,20 @@
                 <span id="duration">0:00</span>
             </div>
         </div>
-
-        <!-- 侧边控制按钮 (在桌面端显示) -->
         <div class="side-controls">
-            <button id="shortcut-btn" class="control-btn" title="快捷键设置">
-                <svg viewBox="0 0 24 24"><path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"></path></svg>
-            </button>
-            <button id="info-btn" class="control-btn" title="关于">
-                <svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"></path></svg>
-            </button>
+            <button id="shortcut-btn" class="control-btn" title="快捷键设置"><svg viewBox="0 0 24 24"><path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"></path></svg></button>
+            <button id="info-btn" class="control-btn" title="关于"><svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"></path></svg></button>
             <button id="immersive-btn" class="control-btn" title="沉浸模式">
                 <svg class="enter-immersive-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 2h-2v3h-3v2h5v-5zm-2-4v2h3v3h2V5h-5z"></path></svg>
-                <svg class="exit-immersive-icon" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"></path></svg>
+                <svg class="exit-immersive-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"></path></svg>
             </button>
-            <!-- Playback Mode Button -->
             <button id="mode-btn" class="control-btn" title="列表循环">
                 <svg class="mode-icon list-loop-icon" viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"></path></svg>
                 <svg class="mode-icon single-loop-icon" viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z M13.25 12.75h-1.5v-3.5h-1v3.5h-1.5v1h4v-1z"></path></svg>
                 <svg class="mode-icon shuffle-icon" viewBox="0 0 24 24"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"></path></svg>
             </button>
-            <button id="lyrics-btn" class="control-btn" title="显示/隐藏歌词">
-                <svg viewBox="0 0 24 24"><path d="M15 4v12h3V4h-3M3 4v12h3V4H3m5 0v12h3V4H8m8 16H8v2h8v-2m-5-2h-2v2h2v-2z"/></svg>
-            </button>
-            <button id="playlist-btn" class="control-btn" title="播放队列">
-                <svg viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zm0-8h14V7H7v2z"></path></svg>
-            </button>
+            <button id="lyrics-btn" class="control-btn" title="显示/隐藏歌词"><svg viewBox="0 0 24 24"><path d="M15 4v12h3V4h-3M3 4v12h3V4H3m5 0v12h3V4H8m8 16H8v2h8v-2m-5-2h-2v2h2v-2z"/></svg></button>
+            <button id="playlist-btn" class="control-btn" title="播放队列"><svg viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zm0-8h14V7H7v2z"></path></svg></button>
             <div class="volume-container">
                 <button id="volume-btn" class="control-btn" title="静音">
                     <svg class="volume-icon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"></path></svg>
@@ -244,7 +228,15 @@
 <!-- 提示消息元素 -->
 <div id="toast-notification" class="toast"></div>
 
-<script src="script.js"></script>
+<!-- Container for HTML templates, loaded from template.html -->
+<div id="templates"></div>
+
+<!-- 引入第三方库 -->
+<script src="lib/jsmediatags.min.js"></script>
+<!-- pinyin-pro is required for advanced playlist search. -->
+<!-- Make sure you have downloaded this file and placed it in the 'lib' folder. -->
+<script src="lib/index.min.js"></script>
+<script type="module" src="js/main.js"></script>
 
 </body>
 </html>

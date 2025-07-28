@@ -1,0 +1,130 @@
+/* layout.css */
+/* --- 主容器布局 --- */
+.player-container {
+    width: 100%;
+    max-width: 1400px;
+    height: 90vh;
+    max-height: 850px;
+    background-color: #000;
+    border-radius: 8px;
+    display: grid;
+    grid-template-rows: 1fr var(--controls-height);
+    grid-template-columns: 1fr;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+.player-container.loading .main-view,
+.player-container.loading .player-controls {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+.main-view {
+    grid-row: 1 / 2;
+    overflow: hidden;
+    background: linear-gradient(145deg, #414345, #232526);
+    position: relative;
+    transition: background 0.8s ease-in-out, opacity 0.3s ease, visibility 0.3s ease;
+}
+
+/* --- Skeleton Screen Layout --- */
+.skeleton-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2500;
+    background-color: var(--bg-color);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    display: grid;
+    grid-template-rows: 1fr var(--controls-height);
+    grid-template-columns: 1fr;
+    border-radius: inherit;
+    overflow: hidden;
+}
+.skeleton-overlay.active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+.skeleton-block {
+    background-color: var(--skeleton-bg);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+}
+.skeleton-block::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, var(--skeleton-shine), transparent);
+    transform: translateX(-100%);
+    animation: skeleton-shine 1.5s infinite;
+}
+@keyframes skeleton-shine { to { transform: translateX(100%); } }
+
+.skeleton-main-view {
+    grid-row: 1 / 2;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(145deg, var(--skeleton-bg), var(--skeleton-shine) 45%, var(--skeleton-bg) 55%, var(--skeleton-shine));
+    position: relative;
+}
+.skeleton-album-art {
+    width: 300px;
+    height: 300px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+.skeleton-controls {
+    grid-row: 2 / 3;
+    background-color: var(--surface-color);
+    padding: 0 25px;
+    display: grid;
+    grid-template-columns: 3fr 4fr 3fr;
+    align-items: center;
+    gap: 20px;
+    border-top: 1px solid var(--highlight-bg);
+}
+.skeleton-track-info { display: flex; align-items: center; min-width: 0; gap: 15px; }
+.skeleton-album-thumb { width: 56px; height: 56px; border-radius: 4px; flex-shrink: 0; }
+.skeleton-text-line { height: 14px; margin-bottom: 8px; }
+.skeleton-text-line:last-child { margin-bottom: 0; }
+/* 模拟轨道信息的特定文本行宽度 */
+.skeleton-track-info > div:last-child .skeleton-text-line:first-child { width: 120px; }
+.skeleton-track-info > div:last-child .skeleton-text-line:last-child { width: 80px; }
+
+.skeleton-main-controls { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+/* 模拟进度条容器 */
+.skeleton-main-controls .progress-container {
+    width: 100%;
+    max-width: 500px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+/* 模拟进度条旁边的隐藏时间文本 */
+.skeleton-main-controls .progress-container span {
+    visibility: hidden;
+}
+.skeleton-buttons { display: flex; align-items: center; gap: 20px; }
+.skeleton-button { width: 36px; height: 36px; border-radius: 50%; display: block; }
+.skeleton-button.small { width: 20px; height: 20px; border-radius: 4px; }
+.skeleton-progress-bar { width: 100%; height: 4px; border-radius: 2px; }
+.skeleton-side-controls { display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
+/* 模拟音量条容器 */
+.skeleton-side-controls .volume-container {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.skeleton-volume-bar { width: 80px; height: 4px; border-radius: 2px; }
