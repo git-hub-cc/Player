@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // --- 1. DOM 元素获取 (No changes) ---
+    // --- 1. DOM 元素获取 ---
     const playerContainer = document.querySelector('.player-container');
     const mainView = document.querySelector('.main-view');
     const mediaPlayer = document.getElementById('media-player');
@@ -38,10 +38,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const toastEl = document.getElementById('toast-notification');
     const modeBtn = document.getElementById('mode-btn');
     const playlistSearchInput = document.getElementById('playlist-search');
+    const immersiveBtn = document.getElementById('immersive-btn');
 
     const DEFAULT_ART = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI0IzQjNCMyI+PHBhdGggZD0iTTEyIDNBOS45OSA5Ljk5IDAgMCAwIDIgMTJoLjAyYzAgNC45NyA0LjAzIDkgOC45OCA5czguOTgtNC4wMyA4Ljk4LTlBOS45OSA5Ljk5IDAgMCAwIDEyIDptMCAxNmMyLjYyIDAgNC43NS0yLjEyIDQuNzUtNC43NVMyMSAxMC42MyAyMSAxMGMwLTEuMDQtLjM1LTEuOTktLjkzLTIuNzlsLTYgNEMxMy40MyAxNy42NSA5LjUgMTYgOS41IDEyLjVDOS41IDguMzYgMTIuODYgNSA5LjUgNSBjLTEuOTggMC0zLjY5Ljg1LTQuNzggMi4yMkw2LjA4IDZDNy41IDQuMzQgOS42MiAzIDEyIDN6bS0uNS00YzEuMzggMCAyLjUtMS4xMiAyLjUtMi41UzEzLjg4IDUgMTIuNSA1IDcgNi4xMiA3IDcuNXMyLjEyIDIuNSAyLjUgMi41eiIvPjwvc3ZnPg==";
 
-    // --- 2. 状态管理 (No changes) ---
+    // --- 2. 状态管理 ---
     let playlist = [];
     let currentTrackIndex = 0;
     let isPlaying = false;
@@ -50,7 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const PLAY_MODES = ['list', 'single', 'shuffle'];
     let currentModeIndex = 0;
 
-    // --- 3. 背景色提取功能 (No changes) ---
+    // --- 3. 背景色提取功能 ---
     const bgCanvas = document.createElement('canvas');
     const bgCtx = bgCanvas.getContext('2d', { willReadFrequently: true });
     function extractAndApplyGradient(sourceElement) {
@@ -80,7 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
         mainView.style.background = '';
     }
 
-    // --- 4. 骨架屏显示/隐藏函数 (No changes) ---
+    // --- 4. 骨架屏显示/隐藏函数 ---
     function showSkeleton() {
         playerContainer.classList.add('loading');
         skeletonOverlay.classList.add('active');
@@ -90,32 +91,28 @@ document.addEventListener('DOMContentLoaded', () => {
         playerContainer.classList.remove('loading');
     }
 
-    // --- 5. 核心播放器功能 (REWRITTEN FOR STREAMING) ---
+    // --- 5. 核心播放器功能 ---
     async function loadTrack(trackIndex) {
         if (playlist.length === 0) return;
         showSkeleton();
         currentTrackIndex = trackIndex;
         const track = playlist[trackIndex];
 
-        // 1. Instantly update UI with data from playlist.json for a fast, responsive feel.
         trackTitleEl.textContent = track.title || "未知标题";
         trackArtistEl.textContent = track.artist || "未知艺术家";
-        // NOTE: Assumes you have run the python script to add 'albumArt' to your playlist.json
         const artUrl = track.albumArt || DEFAULT_ART;
         albumArtEl.src = artUrl;
         controlAlbumArtEl.src = artUrl;
 
-        // Reset and render lyrics immediately.
         parsedLyrics = parseLRC(track.lyrics || '');
         renderLyrics();
         updatePlaylistUI();
 
-        // 2. Prepare event listeners for the new media.
         let loadedOnce = false;
         const handleMediaReady = () => {
             if (!loadedOnce) {
                 hideSkeleton();
-                updateProgress(); // Update duration and progress bar
+                updateProgress();
                 if (isPlaying) {
                     mediaPlayer.play().catch(e => {
                         if (e.name !== 'AbortError') console.error("播放失败:", e);
@@ -125,7 +122,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        // Remove previous listeners to prevent memory leaks.
         mediaPlayer.oncanplay = null;
         mediaPlayer.onloadedmetadata = null;
         albumArtEl.onload = null;
@@ -139,11 +135,9 @@ document.addEventListener('DOMContentLoaded', () => {
             resetMainViewBackground();
         };
 
-        // 3. Configure UI and background extraction based on media type.
         if (track.type === 'audio') {
             albumArtContainer.style.display = 'flex';
             mediaPlayer.style.display = 'none';
-            // Set up background extraction from the album art.
             albumArtEl.onload = () => extractAndApplyGradient(albumArtEl);
             if (albumArtEl.complete && albumArtEl.naturalWidth > 0) {
                 extractAndApplyGradient(albumArtEl);
@@ -154,23 +148,17 @@ document.addEventListener('DOMContentLoaded', () => {
             albumArtContainer.style.display = 'none';
             mediaPlayer.style.display = 'block';
             resetMainViewBackground();
-            // For video, extract background when a frame is available.
             mediaPlayer.addEventListener('canplay', () => {
                 extractAndApplyGradient(mediaPlayer);
             }, { once: true });
         }
 
-        // 4. THE CORE CHANGE: Set the src for streaming playback.
-        // The browser will now handle fetching and buffering the media.
         mediaPlayer.src = track.src;
-        mediaPlayer.load(); // This is good practice to start the loading process.
+        mediaPlayer.load();
 
-        // Assign event handlers AFTER setting the new source.
         mediaPlayer.oncanplay = handleMediaReady;
         mediaPlayer.onloadedmetadata = updateProgress;
 
-        // If the player was already playing, attempt to play the new track.
-        // The browser will start playing as soon as it has enough data.
         if (isPlaying) {
             mediaPlayer.play().catch(e => { /* Ignore initial autoplay error, it will be handled by 'canplay' */ });
         }
@@ -180,7 +168,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function playTrack() {
         if (playlist.length === 0 || !mediaPlayer.src) return;
-        // The play() method returns a Promise.
         const playPromise = mediaPlayer.play();
         if (playPromise !== undefined) {
             playPromise.then(() => {
@@ -188,9 +175,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 playPauseBtn.classList.add('playing');
                 playPauseBtn.title = '暂停';
             }).catch(e => {
-                // Autoplay was prevented.
                 if (e.name !== 'AbortError') console.error("播放失败:", e);
-                isPlaying = false; // Ensure state is correct
+                isPlaying = false;
                 playPauseBtn.classList.remove('playing');
                 playPauseBtn.title = '播放';
             });
@@ -216,16 +202,13 @@ document.addEventListener('DOMContentLoaded', () => {
             progressBar.value = (currentTime / duration) * 100;
             durationEl.textContent = formatTime(duration);
         } else {
-            // Handle cases where duration is not yet available
             durationEl.textContent = "0:00";
         }
         currentTimeEl.textContent = formatTime(currentTime);
         syncLyrics(currentTime);
     }
 
-    // --- 6. 元数据与歌词处理 (SIMPLIFIED) ---
-    // The getID3TagsFromBlob and updateUITags functions are no longer needed
-    // because all metadata is now pre-loaded from playlist.json.
+    // --- 6. 元数据与歌词处理 ---
     function parseLRC(lrcText) {
         if (!lrcText || lrcText.trim() === '') return [];
         return lrcText.split('\n').map(line => {
@@ -271,7 +254,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- 7. UI 与辅助功能 (No changes from here down) ---
+    // --- 7. UI 与辅助功能 ---
     function formatTime(seconds) {
         const mins = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);
@@ -600,10 +583,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isRecordingShortcut) return;
         e.preventDefault();
         e.stopPropagation();
-        if (e.key === 'Tab') {
-            showToast('“Tab”键不能用作快捷键。');
-            return;
-        }
         if (e.key === 'Escape') {
             stopRecording();
             return;
@@ -716,15 +695,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.getElementById('playlist-no-results').style.display = hasVisibleItems ? 'none' : 'block';
     }
+
+    // --- NEW: Immersive Mode Logic ---
+    function toggleImmersiveMode() {
+        const isCurrentlyImmersive = playerContainer.classList.contains('immersive-mode');
+
+        if (!isCurrentlyImmersive) {
+            // --- Enter immersive mode ---
+            playerContainer.classList.add('immersive-mode');
+            immersiveBtn.title = "退出沉浸模式";
+            // Request fullscreen on the entire page
+            if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                    // If fullscreen fails, revert the state
+                    playerContainer.classList.remove('immersive-mode');
+                    immersiveBtn.title = "沉浸模式";
+                });
+            }
+        } else {
+            // --- Exit immersive mode ---
+            playerContainer.classList.remove('immersive-mode');
+            immersiveBtn.title = "沉浸模式";
+            // Exit fullscreen if the document is currently in it
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            }
+        }
+    }
+
+    /**
+     * Syncs the UI state if the user exits fullscreen using the 'Esc' key
+     * instead of the dedicated button.
+     */
+    function handleFullscreenChange() {
+        const isInFullscreen = !!document.fullscreenElement;
+        const isImmersiveClassActive = playerContainer.classList.contains('immersive-mode');
+
+        if (!isInFullscreen && isImmersiveClassActive) {
+            // We have exited fullscreen, so ensure our immersive mode UI is also turned off
+            playerContainer.classList.remove('immersive-mode');
+            immersiveBtn.title = "沉浸模式";
+        }
+    }
+
+
+    // --- 8. Event Listeners ---
     const currentlyPressedKeys = new Set();
     window.addEventListener('keydown', (e) => {
-        if (e.key === 'Tab') {
-            e.preventDefault();
-            if (!isRecordingShortcut) {
-                showToast('“Tab”键已被禁用。');
-            }
-            return;
-        }
         if (isRecordingShortcut || ['input', 'textarea'].includes(e.target.tagName.toLowerCase())) {
             return;
         }
@@ -741,6 +759,13 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('keyup', (e) => {
         currentlyPressedKeys.delete(normalizeKey(e.key));
     });
+
+    immersiveBtn.addEventListener('click', toggleImmersiveMode);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange); // For Safari/Chrome
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange); // For Firefox
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange); // For IE/Edge
+
     playPauseBtn.addEventListener('click', togglePlayPause);
     prevBtn.addEventListener('click', playPrevTrack);
     nextBtn.addEventListener('click', playNextTrack);
@@ -822,6 +847,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     modeBtn.addEventListener('click', cyclePlayMode);
     playlistSearchInput.addEventListener('input', filterPlaylist);
+
+    // --- 9. Initialization ---
     async function init() {
         showSkeleton();
         try {

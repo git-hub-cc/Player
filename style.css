@@ -58,6 +58,7 @@ body {
 }
 
 /* --- 侧滑面板 (通用样式) --- */
+/* --- MODIFIED --- */
 .playlist-panel, .info-panel, .shortcut-panel {
     position: absolute;
     top: 0;
@@ -69,11 +70,17 @@ body {
     box-shadow: -5px 0 15px rgba(0,0,0,0.2);
     z-index: 2000;
     transform: translateX(100%);
-    transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+    visibility: hidden; /* ADDED: Makes panel non-interactive and non-focusable when hidden */
+    transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), visibility 0s 0.4s; /* MODIFIED: Delay visibility change on hide */
     display: flex;
     flex-direction: column;
 }
-.playlist-panel.active, .info-panel.active, .shortcut-panel.active { transform: translateX(0); }
+/* --- MODIFIED --- */
+.playlist-panel.active, .info-panel.active, .shortcut-panel.active {
+    transform: translateX(0);
+    visibility: visible; /* ADDED: Makes panel visible and interactive */
+    transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); /* MODIFIED: On show, visibility changes instantly */
+}
 .panel-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; flex-shrink: 0; border-bottom: 1px solid var(--highlight-bg); }
 .panel-header h2 { font-size: 16px; font-weight: 700; color: var(--text-primary); }
 .panel-header .control-btn:hover { background-color: var(--highlight-bg); border-radius: 50%;}
@@ -221,6 +228,61 @@ body {
 /* Highlight the button when mode is not default */
 #mode-btn.mode-single, #mode-btn.mode-shuffle {
     color: var(--primary-color);
+}
+
+/* --- NEW: Immersive Mode Styles --- */
+/* Button icon switching logic */
+#immersive-btn .exit-immersive-icon {
+    display: none;
+}
+.player-container.immersive-mode #immersive-btn .enter-immersive-icon {
+    display: none;
+}
+.player-container.immersive-mode #immersive-btn .exit-immersive-icon {
+    display: block;
+}
+
+/* This is the key element that pops out */
+.player-container.immersive-mode .media-visualizer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    z-index: 5000;
+    background: #000;
+}
+
+/* Ensure the main-view behind it doesn't show its gradient */
+.player-container.immersive-mode .main-view {
+    background: transparent !important; /* Important to override inline style from JS */
+}
+
+/* Make video/art contain within the screen and remove styling */
+.player-container.immersive-mode #media-player,
+.player-container.immersive-mode .album-art-container {
+    max-width: 100%;
+    max-height: 100%;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+/* Ensure both video and album art respect aspect ratio */
+.player-container.immersive-mode #media-player,
+.player-container.immersive-mode #album-art {
+    object-fit: contain;
+}
+
+/* Hide other UI elements */
+.player-container.immersive-mode .player-controls,
+.player-container.immersive-mode .playlist-panel,
+.player-container.immersive-mode .info-panel,
+.player-container.immersive-mode .shortcut-panel,
+.player-container.immersive-mode .lyrics-container {
+    display: none;
 }
 
 
