@@ -39,6 +39,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const modeBtn = document.getElementById('mode-btn');
     const playlistSearchInput = document.getElementById('playlist-search');
     const immersiveBtn = document.getElementById('immersive-btn');
+    // NEW: Get context menu element
+    const contextMenu = document.getElementById('custom-context-menu');
 
     const DEFAULT_ART = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI0IzQjNCMyI+PHBhdGggZD0iTTEyIDNBOS45OSA5Ljk5IDAgMCAwIDIgMTJoLjAyYzAgNC45NyA0LjAzIDkgOC45OCA5czguOTgtNC4wMyA4Ljk4LTlBOS45OSA5Ljk5IDAgMCAwIDEyIDptMCAxNmMyLjYyIDAgNC43NS0yLjEyIDQuNzUtNC43NVMyMSAxMC42MyAyMSAxMGMwLTEuMDQtLjM1LTEuOTktLjkzLTIuNzlsLTYgNEMxMy40MyAxNy42NSA5LjUgMTYgOS41IDEyLjVDOS41IDguMzYgMTIuODYgNSA5LjUgNSBjLTEuOTggMC0zLjY5Ljg1LTQuNzggMi4yMkw2LjA4IDZDNy41IDQuMzQgOS42MiAzIDEyIDN6bS0uNS00YzEuMzggMCAyLjUtMS4xMiAyLjUtMi41UzEzLjg4IDUgMTIuNSA1IDcgNi4xMiA3IDcuNXMyLjEyIDIuNSAyLjUgMi41eiIvPjwvc3ZnPg==";
 
@@ -196,17 +198,27 @@ document.addEventListener('DOMContentLoaded', () => {
         loadTrack(currentTrackIndex);
     }
 
+    // --- MODIFICATION START ---
     function updateProgress() {
         const { duration, currentTime } = mediaPlayer;
-        if (!isNaN(duration)) {
-            progressBar.value = (currentTime / duration) * 100;
+        let progressPercent = 0;
+
+        if (!isNaN(duration) && duration > 0) {
+            progressPercent = (currentTime / duration) * 100;
+            progressBar.value = progressPercent; // Keep updating value for accessibility and state
             durationEl.textContent = formatTime(duration);
         } else {
+            progressBar.value = 0;
             durationEl.textContent = "0:00";
         }
+
+        // This is the new key part: update the CSS variable for the visual fill
+        progressBar.style.setProperty('--value-percent', `${progressPercent}%`);
+
         currentTimeEl.textContent = formatTime(currentTime);
         syncLyrics(currentTime);
     }
+    // --- MODIFICATION END ---
 
     // --- 6. 元数据与歌词处理 ---
     function parseLRC(lrcText) {
@@ -256,10 +268,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 7. UI 与辅助功能 ---
     function formatTime(seconds) {
+        if (isNaN(seconds)) return "0:00";
         const mins = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);
         return `${mins}:${String(secs).padStart(2, '0')}`;
     }
+
+    // --- MODIFICATION START ---
+    // Helper function to update volume bar's visual state
+    function updateVolumeBarVisual(volume, isMuted) {
+        const volumePercent = isMuted ? 0 : volume * 100;
+        volumeBar.value = isMuted ? 0 : volume;
+        volumeBar.style.setProperty('--value-percent', `${volumePercent}%`);
+        volumeBtn.classList.toggle('muted', isMuted || volume === 0);
+    }
+    // --- MODIFICATION END ---
+
     function renderPlaylist() {
         playlistEl.innerHTML = playlist.map((track, index) => ` <li class="playlist-item" data-index="${index}"> <div class="playlist-icon">${track.type === 'video' ? '🎬' : '🎵'}</div> <div class="playlist-details"> <div class="playlist-title">${track.title || '未知标题'}</div> <div class="playlist-artist">${track.artist || '未知艺术家'}</div> </div> </li> `).join('') + `<li id="playlist-no-results" class="no-results-message" style="display: none;">未找到结果</li>`;
     }
@@ -532,6 +556,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const saved = localStorage.getItem('player-shortcuts');
         shortcutSettings = saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(defaultShortcuts));
         renderShortcutList();
+        renderContextMenu(); // NEW: Populate context menu after loading shortcuts
     }
     function formatKeysToHTML(keys) {
         if (!keys || keys.length === 0) {
@@ -613,12 +638,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 playPrevTrack();
                 break;
             case 'volume-up':
+                // --- MODIFICATION START ---
                 mediaPlayer.volume = Math.min(1, mediaPlayer.volume + 0.1);
-                volumeBar.value = mediaPlayer.volume;
+                updateVolumeBarVisual(mediaPlayer.volume, mediaPlayer.muted);
+                // --- MODIFICATION END ---
                 break;
             case 'volume-down':
+                // --- MODIFICATION START ---
                 mediaPlayer.volume = Math.max(0, mediaPlayer.volume - 0.1);
-                volumeBar.value = mediaPlayer.volume;
+                updateVolumeBarVisual(mediaPlayer.volume, mediaPlayer.muted);
+                // --- MODIFICATION END ---
                 break;
             case 'toggle-mute':
                 volumeBtn.click();
@@ -701,51 +730,65 @@ document.addEventListener('DOMContentLoaded', () => {
         const isCurrentlyImmersive = playerContainer.classList.contains('immersive-mode');
 
         if (!isCurrentlyImmersive) {
-            // --- Enter immersive mode ---
             playerContainer.classList.add('immersive-mode');
             immersiveBtn.title = "退出沉浸模式";
-            // Request fullscreen on the entire page
             if (document.documentElement.requestFullscreen) {
                 document.documentElement.requestFullscreen().catch(err => {
                     console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-                    // If fullscreen fails, revert the state
                     playerContainer.classList.remove('immersive-mode');
                     immersiveBtn.title = "沉浸模式";
                 });
             }
         } else {
-            // --- Exit immersive mode ---
             playerContainer.classList.remove('immersive-mode');
             immersiveBtn.title = "沉浸模式";
-            // Exit fullscreen if the document is currently in it
             if (document.fullscreenElement) {
                 document.exitFullscreen();
             }
         }
     }
 
-    /**
-     * Syncs the UI state if the user exits fullscreen using the 'Esc' key
-     * instead of the dedicated button.
-     */
     function handleFullscreenChange() {
         const isInFullscreen = !!document.fullscreenElement;
         const isImmersiveClassActive = playerContainer.classList.contains('immersive-mode');
 
         if (!isInFullscreen && isImmersiveClassActive) {
-            // We have exited fullscreen, so ensure our immersive mode UI is also turned off
             playerContainer.classList.remove('immersive-mode');
             immersiveBtn.title = "沉浸模式";
         }
     }
 
+    // --- NEW: Custom Context Menu Logic ---
+    function renderContextMenu() {
+        const menuList = contextMenu.querySelector('ul');
+        if (!menuList) return;
+        menuList.innerHTML = ''; // Clear previous items
+        for (const actionId in shortcutSettings) {
+            const setting = shortcutSettings[actionId];
+            const li = document.createElement('li');
+            li.textContent = setting.label;
+            li.dataset.action = actionId;
+            menuList.appendChild(li);
+        }
+    }
+
+    function hideContextMenu() {
+        if (contextMenu) {
+            contextMenu.style.display = 'none';
+        }
+    }
 
     // --- 8. Event Listeners ---
     const currentlyPressedKeys = new Set();
     window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            hideContextMenu();
+        }
+
         if (isRecordingShortcut || ['input', 'textarea'].includes(e.target.tagName.toLowerCase())) {
             return;
         }
+
         currentlyPressedKeys.add(normalizeKey(e.key));
         for (const actionId in shortcutSettings) {
             const requiredKeys = new Set(shortcutSettings[actionId].keys);
@@ -760,11 +803,62 @@ document.addEventListener('DOMContentLoaded', () => {
         currentlyPressedKeys.delete(normalizeKey(e.key));
     });
 
+    document.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        hideContextMenu(); // Hide any existing menu first
+
+        const { clientX: mouseX, clientY: mouseY } = e;
+        const { normalizedX, normalizedY } = normalizePosition(mouseX, mouseY);
+
+        contextMenu.style.top = `${normalizedY}px`;
+        contextMenu.style.left = `${normalizedX}px`;
+        contextMenu.style.display = 'block';
+    });
+
+    function normalizePosition(mouseX, mouseY) {
+        const { innerWidth: windowWidth, innerHeight: windowHeight } = window;
+        const menu = contextMenu;
+        const menuWidth = menu.offsetWidth;
+        const menuHeight = menu.offsetHeight;
+
+        let normalizedX = mouseX;
+        let normalizedY = mouseY;
+
+        // Adjust if the menu would go off the right edge
+        if (mouseX + menuWidth > windowWidth) {
+            normalizedX = windowWidth - menuWidth - 5; // 5px padding
+        }
+
+        // Adjust if the menu would go off the bottom edge
+        if (mouseY + menuHeight > windowHeight) {
+            normalizedY = windowHeight - menuHeight - 5; // 5px padding
+        }
+
+        return { normalizedX, normalizedY };
+    }
+
+
+    document.addEventListener('click', (e) => {
+        // Hide the menu if the click is outside of it
+        if (contextMenu.style.display === 'block' && !contextMenu.contains(e.target)) {
+            hideContextMenu();
+        }
+    });
+
+    contextMenu.addEventListener('click', (e) => {
+        const target = e.target;
+        if (target.tagName === 'LI' && target.dataset.action) {
+            executeShortcut(target.dataset.action);
+            hideContextMenu(); // Hide after executing action
+        }
+    });
+
+
     immersiveBtn.addEventListener('click', toggleImmersiveMode);
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange); // For Safari/Chrome
-    document.addEventListener('mozfullscreenchange', handleFullscreenChange); // For Firefox
-    document.addEventListener('MSFullscreenChange', handleFullscreenChange); // For IE/Edge
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
 
     playPauseBtn.addEventListener('click', togglePlayPause);
     prevBtn.addEventListener('click', playPrevTrack);
@@ -780,11 +874,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     mediaPlayer.addEventListener('timeupdate', updateProgress);
     mediaPlayer.addEventListener('loadedmetadata', updateProgress);
+
+    // --- MODIFICATION START ---
     progressBar.addEventListener('input', (e) => {
+        const value = e.target.value;
         if (!isNaN(mediaPlayer.duration)) {
-            mediaPlayer.currentTime = (e.target.value / 100) * mediaPlayer.duration;
+            mediaPlayer.currentTime = (value / 100) * mediaPlayer.duration;
         }
+        // Also update visual fill during drag
+        progressBar.style.setProperty('--value-percent', `${value}%`);
     });
+    // --- MODIFICATION END ---
+
     lyricsBtn.addEventListener('click', toggleLyricsPanel);
     mobileLyricsBtn.addEventListener('click', toggleLyricsPanel);
     playlistBtn.addEventListener('click', togglePlaylistPanel);
@@ -797,16 +898,21 @@ document.addEventListener('DOMContentLoaded', () => {
     lyricsContainer.addEventListener('click', (e) => {
         if (e.target === lyricsContainer) lyricsContainer.classList.remove('active');
     });
+
+    // --- MODIFICATION START ---
     volumeBtn.addEventListener('click', () => {
         mediaPlayer.muted = !mediaPlayer.muted;
-        volumeBtn.classList.toggle('muted', mediaPlayer.muted);
-        volumeBar.value = mediaPlayer.muted ? 0 : mediaPlayer.volume;
+        updateVolumeBarVisual(mediaPlayer.volume, mediaPlayer.muted);
     });
+
     volumeBar.addEventListener('input', (e) => {
-        mediaPlayer.volume = e.target.value;
-        mediaPlayer.muted = e.target.value == 0;
-        volumeBtn.classList.toggle('muted', mediaPlayer.muted);
+        const newVolume = parseFloat(e.target.value);
+        mediaPlayer.volume = newVolume;
+        mediaPlayer.muted = newVolume === 0;
+        updateVolumeBarVisual(newVolume, mediaPlayer.muted);
     });
+    // --- MODIFICATION END ---
+
     playlistEl.addEventListener('click', (e) => {
         const item = e.target.closest('.playlist-item');
         if (item) {
@@ -886,9 +992,15 @@ document.addEventListener('DOMContentLoaded', () => {
             trackTitleEl.textContent = "播放列表为空";
             hideSkeleton();
         }
-        volumeBar.value = mediaPlayer.volume;
-        volumeBtn.classList.toggle('muted', mediaPlayer.muted);
-        loadShortcuts();
+
+        // --- MODIFICATION START ---
+        // Initialize volume bar visual state on load
+        updateVolumeBarVisual(mediaPlayer.volume, mediaPlayer.muted);
+        // Initialize progress bar visual state
+        updateProgress();
+        // --- MODIFICATION END ---
+
+        loadShortcuts(); // This now also calls renderContextMenu()
         updateModeButton();
         if (!localStorage.getItem('player_tour_completed')) {
             setTimeout(() => {
