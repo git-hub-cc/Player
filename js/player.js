@@ -9,7 +9,7 @@ import { renderLyrics, syncLyrics, extractAndApplyGradient, showSkeleton, hideSk
 // --- requestAnimationFrame ---
 let animationFrameId = null;
 
-export async function loadTrack(trackIndex) {
+export async function loadTrack(trackIndex, { fromHistory = false } = {}) {
     if (state.playlist.length === 0) return;
     showSkeleton();
 
@@ -78,6 +78,15 @@ export async function loadTrack(trackIndex) {
 
     if (state.isPlaying) {
         dom.mediaPlayer.play().catch(e => { /* Ignore */ });
+    }
+
+    // 如果不是由浏览器历史导航（前进/后退）触发的，则主动更新历史记录
+    if (!fromHistory) {
+        const newUrl = `#track=${trackIndex + 1}`;
+        // 只有当URL或状态真正改变时才推送，避免重复条目
+        if (window.location.hash !== newUrl || (history.state && history.state.trackIndex !== trackIndex)) {
+            history.pushState({ trackIndex: trackIndex }, track.title || '', newUrl);
+        }
     }
 }
 
