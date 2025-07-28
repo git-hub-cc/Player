@@ -25,7 +25,7 @@ export function renderLyrics() {
         return;
     }
 
-    const fragment = document.createDocumentFragment();
+    const fragment = dom.createFragment();
     state.parsedLyrics.forEach(line => {
         const lineNode = getTemplate('template-lyric-line');
         lineNode.querySelector('p').textContent = line.text || '...';
@@ -37,7 +37,7 @@ export function renderLyrics() {
 
 export function syncLyrics(currentTime) {
     if (state.parsedLyrics.length === 0) return;
-    const allLyricLines = dom.lyricsList.querySelectorAll('p');
+    const allLyricLines = dom.getLyricLines();
     const activeIndex = state.parsedLyrics.findIndex((line, i) => {
         const nextLine = state.parsedLyrics[i + 1];
         return currentTime >= line.time && (!nextLine || currentTime < nextLine.time);
@@ -49,7 +49,7 @@ export function syncLyrics(currentTime) {
         const activeLineElement = allLyricLines[activeIndex];
         if (activeLineElement) {
             activeLineElement.classList.add('active');
-            const listWrapper = document.getElementById('lyrics-list-wrapper');
+            const listWrapper = dom.lyricsListWrapper;
             const listHeight = listWrapper.clientHeight;
             const lineTop = activeLineElement.offsetTop;
             const lineHeight = activeLineElement.clientHeight;
@@ -62,7 +62,7 @@ export function syncLyrics(currentTime) {
 
 export function renderPlaylist() {
     dom.playlistEl.innerHTML = '';
-    const fragment = document.createDocumentFragment();
+    const fragment = dom.createFragment();
     state.playlist.forEach((track, index) => {
         const itemNode = getTemplate('template-playlist-item');
         const itemEl = itemNode.querySelector('.playlist-item');
@@ -77,35 +77,44 @@ export function renderPlaylist() {
 }
 
 export function updatePlaylistUI() {
-    document.querySelectorAll('.playlist-item').forEach(item => {
+    dom.getAllPlaylistItems().forEach(item => {
         item.classList.toggle('active', parseInt(item.dataset.index) === state.currentTrackIndex);
     });
 }
 
+// --- 优化点 1: 播放列表过滤 ---
+// 使用 CSS class 控制显隐，避免直接操作 style 导致的性能问题
 export function filterPlaylist() {
     const query = dom.playlistSearchInput.value.toLowerCase().replace(/\s/g, '');
-    const playlistItems = dom.playlistEl.querySelectorAll('.playlist-item');
+    const playlistItems = dom.getAllPlaylistItems();
     let hasVisibleItems = false;
-    const noResultsEl = document.getElementById('playlist-no-results');
+    const noResultsEl = dom.playlistNoResultsEl;
 
-    if (!query) {
-        playlistItems.forEach(item => { item.style.display = 'flex'; });
-        if (noResultsEl) noResultsEl.style.display = 'none';
-        return;
-    }
     state.playlist.forEach((track, index) => {
+        const item = playlistItems[index];
+        if (!item) return;
+
         const title = track.title || '';
         const artist = track.artist || '';
         const pinyin = track.pinyin || '';
         const initials = track.initials || '';
-        const isMatch = title.toLowerCase().includes(query) || artist.toLowerCase().includes(query) || pinyin.includes(query) || initials.includes(query);
-        if (playlistItems[index]) {
-            playlistItems[index].style.display = isMatch ? 'flex' : 'none';
-            if (isMatch) hasVisibleItems = true;
-        }
+
+        const isMatch = !query || // 如果查询为空，则全部匹配
+            title.toLowerCase().includes(query) ||
+            artist.toLowerCase().includes(query) ||
+            pinyin.includes(query) ||
+            initials.includes(query);
+
+        // 使用 classList.toggle 的第二个参数，更简洁高效
+        item.classList.toggle('hidden', !isMatch);
+        if (isMatch) hasVisibleItems = true;
     });
-    if (noResultsEl) noResultsEl.style.display = hasVisibleItems ? 'none' : 'block';
+
+    if (noResultsEl) {
+        noResultsEl.style.display = hasVisibleItems ? 'none' : 'block';
+    }
 }
+
 
 export function toggleLyricsPanel() { dom.lyricsContainer.classList.toggle('active'); }
 export function togglePlaylistPanel() { dom.playlistPanel.classList.toggle('active'); }
@@ -128,6 +137,8 @@ export function updateVolumeBarVisual(volume, isMuted) {
     dom.volumeBtn.classList.toggle('muted', isMuted || volume === 0);
 }
 
+// --- 优化点 2: 统一状态管理 ---
+// 此函数现在仅负责更新UI，不再显示Toast，因为Toast由state.js中的setter触发
 export function updateModeButton() {
     const currentMode = PLAY_MODES[state.currentModeIndex];
     dom.modeBtn.className = 'control-btn';
@@ -137,24 +148,21 @@ export function updateModeButton() {
     else if (currentMode === 'single') title = '单曲循环';
     else if (currentMode === 'shuffle') title = '随机播放';
     dom.modeBtn.title = title;
-    showToast(`播放模式: ${title}`);
 }
 
-const bgCanvas = document.createElement('canvas');
-const bgCtx = bgCanvas.getContext('2d', { willReadFrequently: true });
 export function extractAndApplyGradient(sourceElement) {
     if (!sourceElement || (sourceElement.tagName === 'IMG' && (!sourceElement.complete || sourceElement.naturalWidth === 0)) || (sourceElement.tagName === 'VIDEO' && sourceElement.readyState < 2)) {
         dom.mainView.style.background = '';
         return;
     }
     try {
-        const w = bgCanvas.width = 100;
-        const h = bgCanvas.height = 100;
-        bgCtx.drawImage(sourceElement, 0, 0, w, h);
-        const p1 = bgCtx.getImageData(1, 1, 1, 1).data;
-        const p2 = bgCtx.getImageData(w - 2, 1, 1, 1).data;
-        const p3 = bgCtx.getImageData(1, h - 2, 1, 1).data;
-        const p4 = bgCtx.getImageData(w - 2, h - 2, 1, 1).data;
+        const w = dom.bgCanvas.width = 100;
+        const h = dom.bgCanvas.height = 100;
+        dom.bgCtx.drawImage(sourceElement, 0, 0, w, h);
+        const p1 = dom.bgCtx.getImageData(1, 1, 1, 1).data;
+        const p2 = dom.bgCtx.getImageData(w - 2, 1, 1, 1).data;
+        const p3 = dom.bgCtx.getImageData(1, h - 2, 1, 1).data;
+        const p4 = dom.bgCtx.getImageData(w - 2, h - 2, 1, 1).data;
         const color1 = `rgba(${p1[0]}, ${p1[1]}, ${p1[2]}, 0.8)`;
         const color2 = `rgba(${p2[0]}, ${p2[1]}, ${p2[2]}, 0.7)`;
         const color3 = `rgba(${p3[0]}, ${p3[1]}, ${p3[2]}, 0.7)`;
@@ -171,8 +179,8 @@ export function toggleImmersiveMode() {
     if (!isCurrentlyImmersive) {
         dom.playerContainer.classList.add('immersive-mode');
         dom.immersiveBtn.title = "退出沉浸模式";
-        if (document.documentElement.requestFullscreen) {
-            document.documentElement.requestFullscreen().catch(err => {
+        if (dom.docElement.requestFullscreen) {
+            dom.docElement.requestFullscreen().catch(err => {
                 console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
                 dom.playerContainer.classList.remove('immersive-mode');
                 dom.immersiveBtn.title = "沉浸模式";
@@ -181,12 +189,12 @@ export function toggleImmersiveMode() {
     } else {
         dom.playerContainer.classList.remove('immersive-mode');
         dom.immersiveBtn.title = "沉浸模式";
-        if (document.fullscreenElement) document.exitFullscreen();
+        if (dom.getFullscreenElement()) dom.exitFullscreen();
     }
 }
 
 export function handleFullscreenChange() {
-    const isInFullscreen = !!document.fullscreenElement;
+    const isInFullscreen = !!dom.getFullscreenElement();
     if (!isInFullscreen && dom.playerContainer.classList.contains('immersive-mode')) {
         dom.playerContainer.classList.remove('immersive-mode');
         dom.immersiveBtn.title = "沉浸模式";
@@ -198,13 +206,13 @@ export function hideContextMenu() {
 }
 
 export function renderContextMenu() {
-    const menuList = dom.contextMenu.querySelector('ul');
+    const menuList = dom.getContextMenuList();
     if (!menuList) return;
     menuList.innerHTML = '';
-    const fragment = document.createDocumentFragment();
+    const fragment = dom.createFragment();
     for (const actionId in state.shortcutSettings) {
         const setting = state.shortcutSettings[actionId];
-        const li = document.createElement('li');
+        const li = dom.createListItem();
         li.textContent = setting.label;
         li.dataset.action = actionId;
         fragment.appendChild(li);

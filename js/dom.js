@@ -17,6 +17,7 @@ export const albumArtContainer = document.getElementById('album-art-container');
 export const lyricsBtn = document.getElementById('lyrics-btn');
 export const lyricsContainer = document.getElementById('lyrics-container');
 export const lyricsList = document.getElementById('lyrics-list');
+export const lyricsListWrapper = document.getElementById('lyrics-list-wrapper');
 export const volumeBtn = document.getElementById('volume-btn');
 export const volumeBar = document.getElementById('volume-bar');
 export const playlistEl = document.getElementById('playlist');
@@ -38,6 +39,25 @@ export const shortcutKeyPreviewEl = document.getElementById('shortcut-key-previe
 export const toastEl = document.getElementById('toast-notification');
 export const modeBtn = document.getElementById('mode-btn');
 export const playlistSearchInput = document.getElementById('playlist-search');
+export const playlistNoResultsEl = document.getElementById('playlist-no-results');
 export const immersiveBtn = document.getElementById('immersive-btn');
 export const contextMenu = document.getElementById('custom-context-menu');
 export const templatesContainer = document.getElementById('templates');
+export const docElement = document.documentElement;
+
+// Canvas for gradient extraction
+export const bgCanvas = document.createElement('canvas');
+export const bgCtx = bgCanvas.getContext('2d', { willReadFrequently: true });
+
+
+// DOM Query/Creation Functions
+export const getTemplateElementById = (id) => document.getElementById(id);
+export const createFragment = () => document.createDocumentFragment();
+export const createListItem = () => document.createElement('li');
+export const getLyricLines = () => lyricsList.querySelectorAll('p');
+export const getAllPlaylistItems = () => playlistEl.querySelectorAll('.playlist-item');
+export const getContextMenuList = () => contextMenu.querySelector('ul');
+
+// Fullscreen API wrappers
+export const getFullscreenElement = () => document.fullscreenElement;
+export const exitFullscreen = () => document.exitFullscreen();

@@ -4,12 +4,18 @@ import * as dom from './dom.js';
 import * as state from './state.js';
 import { PLAY_MODES, DEFAULT_ART } from './config.js';
 import { formatTime, parseLRC } from './utils.js';
-import { renderLyrics, syncLyrics, updatePlaylistUI, extractAndApplyGradient, showSkeleton, hideSkeleton, updateModeButton, updateVolumeBarVisual } from './ui.js';
+import { renderLyrics, syncLyrics, extractAndApplyGradient, showSkeleton, hideSkeleton, updatePlaylistUI, updateModeButton, showToast } from './ui.js';
+
+// --- requestAnimationFrame ---
+let animationFrameId = null;
 
 export async function loadTrack(trackIndex) {
     if (state.playlist.length === 0) return;
     showSkeleton();
+
+    // 1. 设置状态
     state.setCurrentTrackIndex(trackIndex);
+
     const track = state.playlist[trackIndex];
 
     dom.trackTitleEl.textContent = track.title || "未知标题";
@@ -20,6 +26,8 @@ export async function loadTrack(trackIndex) {
 
     state.setParsedLyrics(parseLRC(track.lyrics || ''));
     renderLyrics();
+
+    // 2. 更新UI (职责从 state.js 移至此)
     updatePlaylistUI();
 
     let loadedOnce = false;
@@ -44,7 +52,7 @@ export async function loadTrack(trackIndex) {
         dom.trackTitleEl.textContent = "错误";
         dom.trackArtistEl.textContent = "无法播放此媒体";
         hideSkeleton();
-        dom.mainView.style.background = ''; // Reset background on error
+        dom.mainView.style.background = '';
     };
 
     if (track.type === 'audio') {
@@ -73,28 +81,45 @@ export async function loadTrack(trackIndex) {
     }
 }
 
+function runAnimationFrame() {
+    updateProgress();
+    animationFrameId = requestAnimationFrame(runAnimationFrame);
+}
+
 function playTrack() {
     if (state.playlist.length === 0 || !dom.mediaPlayer.src) return;
     const playPromise = dom.mediaPlayer.play();
     if (playPromise !== undefined) {
         playPromise.then(() => {
+            // 1. 设置状态
             state.setIsPlaying(true);
+
+            // 2. 更新UI (职责从 state.js 移至此)
             dom.playPauseBtn.classList.add('playing');
             dom.playPauseBtn.title = '暂停';
+
+            if (animationFrameId === null) {
+                runAnimationFrame();
+            }
         }).catch(e => {
             if (e.name !== 'AbortError') console.error("播放失败:", e);
             state.setIsPlaying(false);
-            dom.playPauseBtn.classList.remove('playing');
-            dom.playPauseBtn.title = '播放';
         });
     }
 }
 
 function pauseTrack() {
     dom.mediaPlayer.pause();
+
+    // 1. 设置状态
     state.setIsPlaying(false);
+
+    // 2. 更新UI (职责从 state.js 移至此)
     dom.playPauseBtn.classList.remove('playing');
     dom.playPauseBtn.title = '播放';
+
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
 }
 
 export const togglePlayPause = () => state.isPlaying ? pauseTrack() : playTrack();
@@ -146,7 +171,22 @@ export function updateProgress() {
 }
 
 export function cyclePlayMode() {
+    const oldIndex = state.currentModeIndex;
     const newModeIndex = (state.currentModeIndex + 1) % PLAY_MODES.length;
+
+    // 1. 设置状态
     state.setCurrentModeIndex(newModeIndex);
+
+    // 2. 更新UI (职责从 state.js 移至此)
     updateModeButton();
+
+    // 只有在模式真正改变且播放器已初始化后才显示toast
+    if (oldIndex !== newModeIndex && dom.mediaPlayer.src) {
+        const currentMode = PLAY_MODES[state.currentModeIndex];
+        let title = '';
+        if (currentMode === 'list') title = '列表循环';
+        else if (currentMode === 'single') title = '单曲循环';
+        else if (currentMode === 'shuffle') title = '随机播放';
+        showToast(`播放模式: ${title}`);
+    }
 }

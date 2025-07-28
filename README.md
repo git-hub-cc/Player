@@ -1,5 +1,6 @@
 # Player - A Highly Customizable Modern Media Player
 
+https://github.com/user-attachments/assets/33046049-a997-47e6-85e5-f4626889c0f0
 
 ## Introduction
 
