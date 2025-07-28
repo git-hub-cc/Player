@@ -11,12 +11,9 @@
     --panel-bg: #1c1c1c;
     --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --controls-height: 90px;
-    --mobile-controls-height: 130px; /* 新增: 移动端控制条高度 */
-    --loading-spinner-color: var(--primary-color); /* 新增: 加载动画颜色 */
-
-    /* 新增: 骨架屏颜色变量 */
-    --skeleton-bg: #282828; /* 骨架屏背景色，比panel_bg深一点 */
-    --skeleton-shine: #3a3a3a; /* 骨架屏闪烁效果颜色 */
+    --mobile-controls-height: 130px;
+    --skeleton-bg: #282828;
+    --skeleton-shine: #3a3a3a;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -46,25 +43,22 @@ body {
     position: relative;
     box-shadow: 0 8px 32px rgba(0,0,0,0.3);
 }
-
-/* 默认隐藏真实内容，由 JS 控制显示 */
 .player-container.loading .main-view,
 .player-container.loading .player-controls {
     opacity: 0;
     visibility: hidden;
-    pointer-events: none; /* 防止用户在加载时点击 */
+    pointer-events: none;
 }
-
 .main-view {
     grid-row: 1 / 2;
     overflow: hidden;
     background: linear-gradient(145deg, #414345, #232526);
     position: relative;
-    transition: background 0.8s ease-in-out, opacity 0.3s ease, visibility 0.3s ease; /* 添加过渡 */
+    transition: background 0.8s ease-in-out, opacity 0.3s ease, visibility 0.3s ease;
 }
 
 /* --- 侧滑面板 (通用样式) --- */
-.playlist-panel, .info-panel {
+.playlist-panel, .info-panel, .shortcut-panel {
     position: absolute;
     top: 0;
     right: 0;
@@ -79,10 +73,34 @@ body {
     display: flex;
     flex-direction: column;
 }
-.playlist-panel.active, .info-panel.active { transform: translateX(0); }
+.playlist-panel.active, .info-panel.active, .shortcut-panel.active { transform: translateX(0); }
 .panel-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; flex-shrink: 0; border-bottom: 1px solid var(--highlight-bg); }
 .panel-header h2 { font-size: 16px; font-weight: 700; color: var(--text-primary); }
 .panel-header .control-btn:hover { background-color: var(--highlight-bg); border-radius: 50%;}
+
+/* NEW: Panel Search Input */
+.panel-search-container {
+    padding: 16px 20px 8px;
+    flex-shrink: 0;
+}
+.panel-search {
+    width: 100%;
+    background-color: var(--highlight-bg);
+    border: 1px solid var(--slider-track-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+    padding: 8px 12px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.panel-search:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.3);
+}
+.panel-search::placeholder {
+    color: var(--text-secondary);
+}
 
 /* --- 媒体与歌词视图 --- */
 .media-visualizer, .lyrics-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
@@ -109,72 +127,63 @@ body {
 .playlist-details { overflow: hidden; }
 .playlist-title { font-size: 14px; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
 .playlist-artist { font-size: 12px; color: var(--text-secondary); }
+.no-results-message { color: var(--text-secondary); padding: 20px; text-align: center; }
 .playlist::-webkit-scrollbar { width: 8px; }
 .playlist::-webkit-scrollbar-track { background-color: transparent; }
 .playlist::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; }
 .playlist::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
 
-/* --- 新增: 关于面板内容样式 --- */
-.info-content {
-    padding: 0 20px 20px;
-    flex-grow: 1;
-    overflow-y: auto;
-    line-height: 1.7;
-    color: var(--text-secondary);
-    scrollbar-width: thin;
-    scrollbar-color: var(--slider-track-color) transparent;
-}
-.info-content h3 {
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--text-primary);
-    margin: 20px 0 12px 0;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--highlight-bg);
-}
-.info-content p {
-    font-size: 13px;
-    margin-bottom: 10px;
-}
-.info-content .statement-title {
-    font-weight: bold;
-    color: var(--text-primary);
-}
-.info-content a {
-    color: var(--primary-color);
-    text-decoration: none;
-    word-break: break-all;
-    transition: color 0.2s ease;
-}
-.info-content a:hover {
-    text-decoration: underline;
-}
-.info-content ul {
-    list-style-position: inside;
-    padding-left: 5px;
-    font-size: 13px;
-}
-.info-content ul li {
-    margin-bottom: 5px;
-}
-.info-content::-webkit-scrollbar { width: 8px; }
-.info-content::-webkit-scrollbar-track { background-color: transparent; }
-.info-content::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; }
-.info-content::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
-
+/* --- (Info, Shortcut, Tour, Toast styles are unchanged) --- */
+.info-content { padding: 0 20px 20px; flex-grow: 1; overflow-y: auto; line-height: 1.7; color: var(--text-secondary); scrollbar-width: thin; scrollbar-color: var(--slider-track-color) transparent; }
+.info-content h3 { font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 20px 0 12px 0; padding-bottom: 8px; border-bottom: 1px solid var(--highlight-bg); }
+.info-content p { font-size: 13px; margin-bottom: 10px; }
+.info-content .statement-title { font-weight: bold; color: var(--text-primary); }
+.info-content a { color: var(--primary-color); text-decoration: none; word-break: break-all; transition: color 0.2s ease; }
+.info-content a:hover { text-decoration: underline; }
+.info-content ul { list-style-position: inside; padding-left: 5px; font-size: 13px; }
+.info-content ul li { margin-bottom: 5px; }
+.info-content::-webkit-scrollbar { width: 8px; } .info-content::-webkit-scrollbar-track { background-color: transparent; } .info-content::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; } .info-content::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
+.shortcut-list { list-style: none; overflow-y: auto; padding: 8px 8px 16px 20px; flex-grow: 1; scrollbar-width: thin; scrollbar-color: var(--slider-track-color) transparent; }
+.shortcut-item { display: flex; align-items: center; padding: 12px 10px; border-bottom: 1px solid var(--highlight-bg); transition: background-color 0.2s; } .shortcut-item:last-child { border-bottom: none; } .shortcut-item:hover { background-color: var(--highlight-bg); }
+.action-label { flex-grow: 1; font-size: 14px; color: var(--text-secondary); }
+.shortcut-display { display: flex; align-items: center; gap: 6px; margin: 0 15px; }
+.shortcut-display kbd { background-color: #3a3a3a; border: 1px solid #535353; border-radius: 4px; padding: 4px 8px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace; font-size: 13px; font-weight: 500; color: var(--text-primary); box-shadow: 0 2px 0 #282828; }
+.shortcut-display .placeholder { color: var(--text-secondary); font-style: italic; font-size: 13px; }
+.shortcut-item .actions { display: flex; gap: 8px; }
+.shortcut-item .actions button { background: none; border: 1px solid var(--text-secondary); color: var(--text-secondary); padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; transition: all 0.2s ease; }
+.shortcut-item .actions button:hover { background-color: var(--highlight-bg); color: var(--text-primary); border-color: var(--text-primary); } .shortcut-item .actions .set-btn:hover { border-color: var(--primary-color); color: var(--primary-color); }
+.shortcut-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 3000; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s ease; }
+.shortcut-modal-overlay.visible { opacity: 1; visibility: visible; }
+.shortcut-modal-content { background-color: var(--panel-bg); padding: 30px 40px; border-radius: 8px; text-align: center; box-shadow: 0 5px 20px rgba(0,0,0,0.4); transform: scale(0.9); transition: transform 0.3s ease; }
+.shortcut-modal-overlay.visible .shortcut-modal-content { transform: scale(1); }
+.shortcut-modal-content p { margin: 0 0 20px; font-size: 18px; color: var(--text-primary); }
+.shortcut-modal-content .shortcut-key-preview { min-height: 40px; display: flex; justify-content: center; align-items: center; gap: 8px; margin-bottom: 20px; }
+.shortcut-modal-content small { color: var(--text-secondary); }
+#tour-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 9998; background-color: rgba(0, 0, 0, 0.5); opacity: 0; transition: opacity 0.3s ease-in-out; pointer-events: none; }
+#tour-overlay.active { opacity: 1; pointer-events: auto; }
+#tour-highlight-box { position: absolute; z-index: 9999; border-radius: 6px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6); transition: all 0.4s cubic-bezier(0.68, -0.55, 0.27, 1.55); }
+#tour-tooltip { position: absolute; z-index: 10000; background-color: var(--panel-bg); padding: 15px 20px; border-radius: 8px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3); width: 300px; max-width: 80vw; opacity: 0; transform: translateY(10px); transition: opacity 0.3s ease, transform 0.3s ease; visibility: hidden; }
+#tour-tooltip.active { opacity: 1; transform: translateY(0); visibility: visible; }
+#tour-tooltip::before { content: ''; position: absolute; border: 8px solid transparent; }
+#tour-tooltip.tour-tooltip-bottom::before { top: -16px; left: 50%; transform: translateX(-50%); border-bottom-color: var(--panel-bg); }
+#tour-tooltip.tour-tooltip-top::before { bottom: -16px; left: 50%; transform: translateX(-50%); border-top-color: var(--panel-bg); }
+#tour-tooltip.tour-tooltip-right::before { left: -16px; top: 50%; transform: translateY(-50%); border-right-color: var(--panel-bg); }
+#tour-tooltip.tour-tooltip-left::before { right: -16px; top: 50%; transform: translateY(-50%); border-left-color: var(--panel-bg); }
+.tour-tooltip-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.tour-tooltip-title { font-size: 1rem; font-weight: bold; color: var(--text-primary); }
+.tour-tooltip-step-counter { font-size: 0.85rem; color: var(--text-secondary); }
+.tour-tooltip-content { font-size: 0.9rem; line-height: 1.6; color: var(--text-secondary); margin-bottom: 20px; }
+.tour-tooltip-footer { display: flex; justify-content: space-between; align-items: center; }
+.tour-skip-button { background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 0.9rem; }
+.tour-skip-button:hover { color: var(--text-primary); }
+.tour-nav-buttons button { background-color: var(--primary-color); color: #000; font-weight: bold; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 0.9rem; margin-left: 10px; transition: background-color 0.2s ease; }
+.tour-nav-buttons button:hover { background-color: #1ed760; }
+.tour-nav-buttons button:disabled { background-color: var(--slider-track-color); color: var(--text-secondary); cursor: not-allowed; }
+.toast { visibility: hidden; opacity: 0; position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%); min-width: 250px; background-color: var(--highlight-bg); color: var(--text-primary); text-align: center; border-radius: 4px; padding: 16px; z-index: 10001; box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: opacity 0.5s, visibility 0.5s; font-size: 14px; }
+.toast.show { visibility: visible; opacity: 1; }
 
 /* --- 底部控制条 --- */
-.player-controls {
-    grid-row: 2 / 3;
-    background-color: var(--surface-color);
-    padding: 0 25px;
-    display: grid;
-    grid-template-columns: 3fr 4fr 3fr;
-    align-items: center;
-    border-top: 1px solid #282828;
-    z-index: 1;
-    transition: opacity 0.3s ease, visibility 0.3s ease; /* 添加过渡 */
-}
+.player-controls { grid-row: 2 / 3; background-color: var(--surface-color); padding: 0 25px; display: grid; grid-template-columns: 3fr 4fr 3fr; align-items: center; border-top: 1px solid #282828; z-index: 1; transition: opacity 0.3s ease, visibility 0.3s ease; }
 .track-info { display: flex; align-items: center; min-width: 0; }
 .track-info img { width: 56px; height: 56px; margin-right: 15px; border-radius: 4px; flex-shrink: 0; }
 .track-details { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -204,254 +213,58 @@ body {
 .muted .mute-icon { display: block; }
 .volume-bar { width: 100px; }
 
-/* 初始状态下隐藏移动端专用按钮 */
-.mobile-only-btn {
-    display: none;
-}
-
-/* --- 新增： 骨架屏样式 --- */
-.skeleton-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 2500; /* 确保在最顶层 */
-    background-color: var(--bg-color); /* 与 body 背景色匹配 */
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none; /* 允许点击穿透当不活跃时 */
-    transition: opacity 0.3s ease, visibility 0.3s ease;
-    display: grid; /* 模仿 player-container 的 grid 布局 */
-    grid-template-rows: 1fr var(--controls-height);
-    grid-template-columns: 1fr;
-    border-radius: inherit; /* 继承 player-container 的圆角 */
-    overflow: hidden; /* 确保骨架屏内容不溢出 */
-}
-
-.skeleton-overlay.active {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto; /* 阻止点击穿透当活跃时 */
-}
-
-/* 骨架屏内容通用样式 */
-.skeleton-block {
-    background-color: var(--skeleton-bg);
-    border-radius: 4px;
-    position: relative;
-    overflow: hidden;
-}
-
-/* 骨架屏动画 */
-.skeleton-block::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, var(--skeleton-shine), transparent);
-    transform: translateX(-100%);
-    animation: skeleton-shine 1.5s infinite;
-}
-
-@keyframes skeleton-shine {
-    to {
-        transform: translateX(100%);
-    }
-}
-
-/* 骨架屏 - 主视图部分 */
-.skeleton-main-view {
-    grid-row: 1 / 2;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background: linear-gradient(145deg, var(--skeleton-bg), var(--skeleton-shine) 45%, var(--skeleton-bg) 55%, var(--skeleton-shine)); /* 模拟 main-view 的渐变 */
-    position: relative; /* 用于放置中心占位符 */
-}
-
-.skeleton-album-art {
-    width: 300px; /* 模拟专辑艺术的大小 */
-    height: 300px;
-    border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-}
-
-/* 骨架屏 - 底部控制条部分 */
-.skeleton-controls {
-    grid-row: 2 / 3;
-    background-color: var(--surface-color); /* 与实际控制条背景匹配 */
-    padding: 0 25px;
-    display: grid;
-    grid-template-columns: 3fr 4fr 3fr;
-    align-items: center;
-    gap: 20px; /* 模拟实际控制条的间距 */
-    border-top: 1px solid var(--highlight-bg); /* 模拟边框 */
-}
-
-.skeleton-track-info {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    gap: 15px;
-}
-
-.skeleton-album-thumb {
-    width: 56px;
-    height: 56px;
-    border-radius: 4px;
-    flex-shrink: 0;
-}
-
-.skeleton-text-line {
-    height: 14px;
-    margin-bottom: 8px;
-    width: 80%; /* 模拟文本长度 */
-}
-.skeleton-text-line:last-child {
-    width: 60%;
-    margin-bottom: 0;
-}
-
-.skeleton-main-controls {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-}
-
-.skeleton-buttons {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-}
-.skeleton-button {
-    width: 36px; /* 模拟按钮大小 */
-    height: 36px;
-    border-radius: 50%;
-    display: block; /* 默认显示，后面根据媒体查询覆盖 */
-}
-.skeleton-button.small {
-    width: 20px;
-    height: 20px;
-    border-radius: 4px; /* 模拟普通按钮形状 */
-}
-
-.skeleton-progress-bar {
-    width: 100%;
-    height: 4px;
-    border-radius: 2px;
-}
-
-.skeleton-side-controls {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 10px;
-}
-.skeleton-volume-bar {
-    width: 80px; /* 模拟音量条长度 */
-    height: 4px;
-    border-radius: 2px;
+/* NEW: Playback Mode Button Styles */
+#mode-btn .mode-icon { display: none; }
+#mode-btn.mode-list .list-loop-icon { display: block; }
+#mode-btn.mode-single .single-loop-icon { display: block; }
+#mode-btn.mode-shuffle .shuffle-icon { display: block; }
+/* Highlight the button when mode is not default */
+#mode-btn.mode-single, #mode-btn.mode-shuffle {
+    color: var(--primary-color);
 }
 
 
-/* --- 响应式设计: 移动端骨架屏优化 --- */
+/* --- (Skeleton screen and Responsive styles are unchanged) --- */
+.mobile-only-btn { display: none; }
+.skeleton-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2500; background-color: var(--bg-color); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.3s ease, visibility 0.3s ease; display: grid; grid-template-rows: 1fr var(--controls-height); grid-template-columns: 1fr; border-radius: inherit; overflow: hidden; }
+.skeleton-overlay.active { opacity: 1; visibility: visible; pointer-events: auto; }
+.skeleton-block { background-color: var(--skeleton-bg); border-radius: 4px; position: relative; overflow: hidden; }
+.skeleton-block::after { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, var(--skeleton-shine), transparent); transform: translateX(-100%); animation: skeleton-shine 1.5s infinite; }
+@keyframes skeleton-shine { to { transform: translateX(100%); } }
+.skeleton-main-view { grid-row: 1 / 2; display: flex; justify-content: center; align-items: center; background: linear-gradient(145deg, var(--skeleton-bg), var(--skeleton-shine) 45%, var(--skeleton-bg) 55%, var(--skeleton-shine)); position: relative; }
+.skeleton-album-art { width: 300px; height: 300px; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); }
+.skeleton-controls { grid-row: 2 / 3; background-color: var(--surface-color); padding: 0 25px; display: grid; grid-template-columns: 3fr 4fr 3fr; align-items: center; gap: 20px; border-top: 1px solid var(--highlight-bg); }
+.skeleton-track-info { display: flex; align-items: center; min-width: 0; gap: 15px; }
+.skeleton-album-thumb { width: 56px; height: 56px; border-radius: 4px; flex-shrink: 0; }
+.skeleton-text-line { height: 14px; margin-bottom: 8px; width: 80%; } .skeleton-text-line:last-child { width: 60%; margin-bottom: 0; }
+.skeleton-main-controls { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.skeleton-buttons { display: flex; align-items: center; gap: 20px; }
+.skeleton-button { width: 36px; height: 36px; border-radius: 50%; display: block; }
+.skeleton-button.small { width: 20px; height: 20px; border-radius: 4px; }
+.skeleton-progress-bar { width: 100%; height: 4px; border-radius: 2px; }
+.skeleton-side-controls { display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
+.skeleton-volume-bar { width: 80px; height: 4px; border-radius: 2px; }
 @media (max-width: 900px) {
-    .player-container {
-        height: 100vh;
-        max-height: none;
-        border-radius: 0;
-        /* 在移动端，让控制条高度固定，方便计算 */
-        grid-template-rows: 1fr var(--mobile-controls-height);
-    }
+    body { padding: 0; }
+    .player-container { height: 100vh; max-height: none; border-radius: 0; grid-template-rows: 1fr var(--mobile-controls-height); }
     .main-view { grid-template-columns: 1fr; }
     #media-player, .album-art-container { max-width: 100%; border-radius: 0; }
-
-    /* 调整所有侧滑面板以适应移动端控制条 */
-    .playlist-panel, .info-panel {
-        bottom: var(--mobile-controls-height);
-    }
-
-    /* 重新设计控制条布局 */
-    .player-controls {
-        grid-template-columns: 1fr;
-        padding: 15px;
-        height: var(--mobile-controls-height);
-        align-content: center; /* 垂直居中内容 */
-        gap: 15px;
-    }
-    .track-info, .side-controls {
-        display: none; /* 隐藏桌面端的歌曲信息和侧边按钮 */
-    }
-
-    /* 显示移动端专用按钮 */
-    .mobile-only-btn {
-        display: flex; /* 使用 flex 方便居中SVG */
-        align-items: center;
-        justify-content: center;
-    }
-
-    /* 调整主控制区布局 */
-    .main-controls {
-        width: 100%;
-        gap: 15px;
-    }
-    .control-buttons {
-        width: 100%;
-        justify-content: space-around; /* 均匀分布所有按钮 */
-        gap: 0;
-    }
-    .progress-container {
-        width: 100%;
-        max-width: none;
-    }
-
-
-    /* 骨架屏移动端样式覆盖 */
-    .skeleton-overlay {
-        grid-template-rows: 1fr var(--mobile-controls-height);
-    }
-    .skeleton-controls {
-        grid-template-columns: 1fr; /* 移动端控制条变为单列 */
-        height: var(--mobile-controls-height);
-        align-content: center;
-        gap: 15px;
-    }
-    .skeleton-track-info,
-    .skeleton-side-controls {
-        display: none; /* 移动端隐藏这些骨架部分 */
-    }
-
-    .skeleton-main-controls {
-        width: 100%;
-        gap: 15px;
-    }
-    .skeleton-buttons {
-        width: 100%;
-        justify-content: space-around;
-        gap: 0;
-    }
-    .skeleton-progress-bar {
-        width: 100%;
-        max-width: none;
-    }
-
-    /* 修复：移动端骨架屏的按钮显示逻辑 */
-    /* 默认所有 skeleton-button 都是 block，然后在媒体查询里精准控制 */
-    .skeleton-controls .skeleton-button { /* 确保所有骨架按钮默认隐藏，只显示需要模拟的 */
-        display: none;
-    }
-
-    .skeleton-controls .skeleton-button.mobile-only {
-        display: block; /* 模拟移动端专属按钮 */
-    }
-    /* 桌面端/移动端都存在的按钮骨架 */
-    .skeleton-controls .skeleton-buttons .skeleton-button:nth-child(2), /* prev */
-    .skeleton-controls .skeleton-buttons .skeleton-button:nth-child(3), /* play/pause */
-    .skeleton-controls .skeleton-buttons .skeleton-button:nth-child(4) { /* next */
-        display: block;
-    }
+    .playlist-panel, .info-panel, .shortcut-panel { bottom: var(--mobile-controls-height); }
+    .player-controls { grid-template-columns: 1fr; padding: 15px; height: var(--mobile-controls-height); align-content: center; gap: 15px; }
+    .track-info, .side-controls { display: none; }
+    .mobile-only-btn { display: flex; align-items: center; justify-content: center; }
+    .main-controls { width: 100%; gap: 15px; }
+    .control-buttons { width: 100%; justify-content: space-around; gap: 0; }
+    .progress-container { width: 100%; max-width: none; }
+    .skeleton-overlay { grid-template-rows: 1fr var(--mobile-controls-height); }
+    .skeleton-controls { grid-template-columns: 1fr; height: var(--mobile-controls-height); align-content: center; gap: 15px; }
+    .skeleton-track-info, .skeleton-side-controls { display: none; }
+    .skeleton-main-controls { width: 100%; gap: 15px; }
+    .skeleton-buttons { width: 100%; justify-content: space-around; gap: 0; }
+    .skeleton-progress-bar { width: 100%; max-width: none; }
+    .skeleton-controls .skeleton-button { display: none; }
+    .skeleton-controls .skeleton-button.mobile-only { display: block; }
+    .skeleton-controls .skeleton-buttons .skeleton-button:nth-child(2),
+    .skeleton-controls .skeleton-buttons .skeleton-button:nth-child(3),
+    .skeleton-controls .skeleton-buttons .skeleton-button:nth-child(4) { display: block; }
 }

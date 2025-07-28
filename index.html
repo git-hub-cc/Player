@@ -6,8 +6,8 @@
     <title>Player - 媒体播放器</title>
 
     <!-- SEO Meta Tags -->
-    <meta name="description" content="一个功能强大的HTML5媒体播放器，支持音频和视频播放，具有动态背景、歌词同步和播放列表功能。A powerful HTML5 media player supporting both audio and video, with dynamic backgrounds, synchronized lyrics, and playlist functionality.">
-    <meta name="keywords" content="media player, html5 player, javascript, audio player, video player, lyrics, playlist, 抖音, spotify, 媒体播放器, 音乐播放器, 视频播放器, Player">
+    <meta name="description" content="一个功能强大的HTML5媒体播放器，支持音频和视频播放，具有动态背景、歌词同步、快捷键和功能引导。A powerful HTML5 media player with audio/video, dynamic backgrounds, synced lyrics, shortcuts, and a feature tour.">
+    <meta name="keywords" content="media player, html5 player, javascript, audio player, video player, lyrics, playlist, shortcuts, tour, 媒体播放器, 音乐播放器, 视频播放器, 快捷键, Player">
     <meta name="author" content="Player Project">
 
     <!-- Open Graph / Facebook -->
@@ -21,8 +21,12 @@
     <meta property="twitter:description" content="一个功能强大的HTML5媒体播放器，支持音频和视频播放、动态背景和歌词同步。">
 
     <link rel="stylesheet" href="style.css">
-    <!-- 引入 jsmediatags 库，用于从MP3读取元数据 -->
+
+    <!-- 引入第三方库 -->
     <script src="lib/jsmediatags.min.js"></script>
+    <!-- pinyin-pro is required for advanced playlist search. -->
+    <!-- Make sure you have downloaded this file and placed it in the 'lib' folder. -->
+    <script src="lib/index.min.js"></script>
 </head>
 <body>
 
@@ -65,7 +69,9 @@
 
             <!-- 模拟侧边控制按钮 -->
             <div class="skeleton-side-controls">
+                <div class="skeleton-block skeleton-button small"></div> <!-- Shortcut button -->
                 <div class="skeleton-block skeleton-button small"></div> <!-- Info button -->
+                <div class="skeleton-block skeleton-button small"></div> <!-- Mode button -->
                 <div class="skeleton-block skeleton-button small"></div> <!-- Lyrics button -->
                 <div class="skeleton-block skeleton-button small"></div> <!-- Playlist button -->
                 <div class="volume-container" style="display: flex; align-items: center; gap: 5px;">
@@ -100,8 +106,12 @@
                 <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
             </button>
         </div>
+        <!-- Search Input -->
+        <div class="panel-search-container">
+            <input type="search" id="playlist-search" class="panel-search" placeholder="搜索 (歌名/歌手/拼音/首字母)">
+        </div>
         <ul id="playlist" class="playlist">
-            <!-- 列表项由JS动态生成 -->
+            <!-- 列表项和 "No Results" 消息由JS动态生成 -->
         </ul>
     </aside>
 
@@ -116,21 +126,29 @@
         <div class="info-content">
             <h3>项目地址</h3>
             <p><a href="https://github.com/git-hub-cc/Player" target="_blank" rel="noopener noreferrer">https://github.com/git-hub-cc/Player</a></p>
-
+            <h3>新功能</h3>
+            <p>1. <b>功能导览</b>: 首次访问时，将自动启动新功能导览，帮助您快速上手。</p>
+            <p>2. <b>快捷键设置</b>: 点击右下角 <svg style="width:1em;height:1em;vertical-align:-0.125em;" viewBox="0 0 24 24" fill="currentColor"><path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"></path></svg> 按钮可自定义键盘快捷键。</p>
+            <p>3. <b>播放模式</b>: 点击播放控制区的循环/随机按钮，即可切换播放模式。</p>
+            <p>4. <b>列表搜索</b>: 在播放列表面板中，可使用拼音或首字母进行模糊搜索。</p>
             <h3>设计灵感</h3>
             <p>本播放器的用户界面 (UI) 设计语言主要灵感来源于 Spotify 桌面客户端，旨在致敬其现代化、美观且用户友好的交互体验。</p>
-
             <h3>资源来源声明</h3>
             <p class="statement-title">重要提示:</p>
             <p>本项目中使用的所有媒体资源（包括但不限于音频和视频文件）均收集自互联网，仅供学习和技术演示使用，不作任何商业用途。</p>
-            <p>资源的具体来源包括：</p>
-            <ul>
-                <li>网络平台: 抖音、Spotify</li>
-                <li>艺术家/创作者: 旺仔小乔, 尹懿思¹²¹²（大力版）</li>
-                <li>工具: SPOTDOWNLOADER</li>
-            </ul>
             <p>所有媒体内容的版权归原作者或其各自的版权所有者所有。如果您是任何媒体内容的版权所有者，并且认为本项目对您的权利构成了侵犯，请联系我们，我们将立即删除相关内容。</p>
         </div>
+    </aside>
+
+    <!-- 快捷键设置面板 -->
+    <aside id="shortcut-panel" class="shortcut-panel">
+        <div class="panel-header">
+            <h2>快捷键设置</h2>
+            <button id="close-shortcut-btn" class="control-btn" title="关闭"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg></button>
+        </div>
+        <ul id="shortcut-list" class="shortcut-list">
+            <!-- 快捷键项由JS动态生成 -->
+        </ul>
     </aside>
 
     <!-- 底部播放控制条 -->
@@ -147,7 +165,6 @@
         <!-- 主控制按钮 -->
         <div class="main-controls">
             <div class="control-buttons">
-                <!-- Mobile-only Lyrics Button -->
                 <button id="mobile-lyrics-btn" class="control-btn mobile-only-btn" title="显示/隐藏歌词">
                     <svg viewBox="0 0 24 24"><path d="M15 4v12h3V4h-3M3 4v12h3V4H3m5 0v12h3V4H8m8 16H8v2h8v-2m-5-2h-2v2h2v-2z"/></svg>
                 </button>
@@ -161,7 +178,6 @@
                 <button id="next-btn" class="control-btn" title="下一首">
                     <svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zm-3.5 6l-8.5 6V6z"></path></svg>
                 </button>
-                <!-- Mobile-only Playlist Button -->
                 <button id="mobile-playlist-btn" class="control-btn mobile-only-btn" title="播放队列">
                     <svg viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zm0-8h14V7H7v2z"></path></svg>
                 </button>
@@ -175,9 +191,17 @@
 
         <!-- 侧边控制按钮 (在桌面端显示) -->
         <div class="side-controls">
-            <!-- 新增: 关于按钮 -->
+            <button id="shortcut-btn" class="control-btn" title="快捷键设置">
+                <svg viewBox="0 0 24 24"><path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"></path></svg>
+            </button>
             <button id="info-btn" class="control-btn" title="关于">
                 <svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"></path></svg>
+            </button>
+            <!-- Playback Mode Button -->
+            <button id="mode-btn" class="control-btn" title="列表循环">
+                <svg class="mode-icon list-loop-icon" viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"></path></svg>
+                <svg class="mode-icon single-loop-icon" viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z M13.25 12.75h-1.5v-3.5h-1v3.5h-1.5v1h4v-1z"></path></svg>
+                <svg class="mode-icon shuffle-icon" viewBox="0 0 24 24"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"></path></svg>
             </button>
             <button id="lyrics-btn" class="control-btn" title="显示/隐藏歌词">
                 <svg viewBox="0 0 24 24"><path d="M15 4v12h3V4h-3M3 4v12h3V4H3m5 0v12h3V4H8m8 16H8v2h8v-2m-5-2h-2v2h2v-2z"/></svg>
@@ -195,6 +219,18 @@
         </div>
     </footer>
 </div>
+
+<!-- 快捷键录制模态框 -->
+<div class="shortcut-modal-overlay" id="shortcut-modal-overlay">
+    <div class="shortcut-modal-content">
+        <p>请按下您想设置的快捷键组合...</p>
+        <div class="shortcut-display shortcut-key-preview" id="shortcut-key-preview"></div>
+        <small>按下 Esc 键可取消设置</small>
+    </div>
+</div>
+
+<!-- 提示消息元素 -->
+<div id="toast-notification" class="toast"></div>
 
 <script src="script.js"></script>
 
