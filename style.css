@@ -207,12 +207,49 @@ body {
 .playing .play-icon { display: none; }
 .playing .pause-icon { display: block; }
 .progress-container { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 500px; font-size: 12px; color: var(--text-secondary); }
-.progress-bar, .volume-bar { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; background: var(--slider-track-color); border-radius: 2px; outline: none; cursor: pointer; transition: background 0.2s; }
-.progress-bar:hover, .volume-bar:hover { background: var(--primary-color); }
-.progress-bar::-webkit-slider-thumb, .volume-bar::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 12px; height: 12px; background: var(--slider-thumb-color); border-radius: 50%; opacity: 0; transition: opacity 0.2s; }
-.progress-container:hover .progress-bar::-webkit-slider-thumb, .volume-container:hover .volume-bar::-webkit-slider-thumb, .progress-bar:active::-webkit-slider-thumb, .volume-bar:active::-webkit-slider-thumb { opacity: 1; }
-.progress-bar::-moz-range-thumb, .volume-bar::-moz-range-thumb { width: 12px; height: 12px; background: var(--slider-thumb-color); border-radius: 50%; border: none; opacity: 0; transition: opacity 0.2s; }
-.progress-container:hover .progress-bar::-moz-range-thumb, .volume-container:hover .volume-bar::-moz-range-thumb, .progress-bar:active::-moz-range-thumb, .volume-bar:active::-moz-range-thumb { opacity: 1; }
+
+/* --- MODIFICATION START --- */
+/*
+ * MODIFIED: Always show progress fill and thumb.
+ * This technique uses a CSS variable '--value-percent' that should be updated by JavaScript
+ * to reflect the current progress (e.g., progressBar.style.setProperty('--value-percent', '50%')).
+ * This is a robust method that avoids the problematic `linear-gradient` syntax the user mentioned.
+*/
+.progress-bar, .volume-bar {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background-color: var(--slider-track-color); /* The empty part of the track */
+    background-image: linear-gradient(var(--primary-color), var(--primary-color)); /* The filled part of the track */
+    background-size: var(--value-percent, 0%) 100%; /* Controls the width of the fill */
+    background-repeat: no-repeat;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+.progress-bar:hover, .volume-bar:hover {
+    /* The previous incorrect hover effect is removed. Progress is now always visible. */
+}
+.progress-bar::-webkit-slider-thumb, .volume-bar::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    background: var(--slider-thumb-color);
+    border-radius: 50%;
+    opacity: 1; /* Make thumb always visible */
+}
+.progress-bar::-moz-range-thumb, .volume-bar::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    background: var(--slider-thumb-color);
+    border-radius: 50%;
+    border: none;
+    opacity: 1; /* Make thumb always visible */
+}
+/* --- MODIFICATION END --- */
+
 .side-controls { display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
 .volume-container { display: flex; align-items: center; }
 .mute-icon { display: none; }
@@ -228,6 +265,36 @@ body {
 /* Highlight the button when mode is not default */
 #mode-btn.mode-single, #mode-btn.mode-shuffle {
     color: var(--primary-color);
+}
+
+/* --- NEW: Custom Context Menu Styles --- */
+.custom-context-menu {
+    display: none; /* Hidden by default */
+    position: fixed;
+    z-index: 4000; /* High z-index to appear on top */
+    background-color: var(--panel-bg);
+    border-radius: 6px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    padding: 6px;
+    min-width: 180px;
+    border: 1px solid var(--highlight-bg);
+}
+.custom-context-menu ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.custom-context-menu li {
+    padding: 10px 15px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+.custom-context-menu li:hover {
+    background-color: var(--highlight-bg);
+    color: var(--text-primary);
 }
 
 /* --- NEW: Immersive Mode Styles --- */
