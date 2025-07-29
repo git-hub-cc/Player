@@ -1,5 +1,12 @@
 /* layout.css */
 /* --- 主容器布局 --- */
+.container {
+    width: 100%;
+    height: 100%;
+    display: flex; /* Allow player-container to be centered within it */
+    justify-content: center;
+    align-items: center;
+}
 .player-container {
     width: 100%;
     max-width: 1400px;

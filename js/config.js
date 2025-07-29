@@ -18,9 +18,16 @@ export const defaultShortcuts = {
 export const desktopTourSteps = [
     { element: '#play-pause-btn', title: '主控制区', content: '点击这里可以播放或暂停当前媒体。您也可以使用快捷键。', position: 'top' },
     { element: '.progress-container', title: '播放进度', content: '这里显示播放进度，您可以拖动滑块来快进或快退。', position: 'top' },
+    { element: '#shortcut-btn', title: '快捷键设置', content: '点击这里可以自定义控制播放器的键盘快捷键。', position: 'top' },
     { element: '#lyrics-btn', title: '同步歌词', content: '点击此按钮可以显示或隐藏同步歌词界面。', position: 'top' },
     { element: '#playlist-btn', title: '播放列表', content: '在这里查看和切换播放队列中的所有媒体。', position: 'top' },
-    { element: '#shortcut-btn', title: '快捷键设置', content: '点击这里可以自定义控制播放器的键盘快捷键。', position: 'top' },
+    {
+        element: '.container',
+        title: '无限画廊',
+        content: '在播放器外的任意空白区域按住并拖动，即可在音乐库的画廊中漫游，点击封面可直接播放。',
+        position: 'top',
+        isCustomDemo: 'gallery'
+    },
     { element: '.track-info', title: '尽情享受吧！', content: '现在您可以开始使用了。所有功能都已介绍完毕。', position: 'top' }
 ];
 

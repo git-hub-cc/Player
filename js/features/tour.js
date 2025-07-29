@@ -27,6 +27,7 @@ export class FeatureTour {
         document.body.appendChild(this.domElements.tooltip);
         this.domElements.title = this.domElements.tooltip.querySelector('.tour-tooltip-title');
         this.domElements.content = this.domElements.tooltip.querySelector('.tour-tooltip-content');
+        this.domElements.customDemoContainer = this.domElements.tooltip.querySelector('.tour-custom-demo');
         this.domElements.stepCounter = this.domElements.tooltip.querySelector('.tour-tooltip-step-counter');
         this.domElements.skipButton = this.domElements.tooltip.querySelector('.tour-skip-button');
         this.domElements.prevButton = this.domElements.tooltip.querySelector('.tour-prev-button');
@@ -78,6 +79,9 @@ export class FeatureTour {
     }
     showStep(index) {
         const step = this.steps[index];
+        this.domElements.customDemoContainer.style.display = 'none';
+        this.domElements.customDemoContainer.innerHTML = '';
+
         if (!step) return;
         const targetElement = document.querySelector(step.element);
         if (!targetElement || targetElement.offsetParent === null) {
@@ -94,15 +98,37 @@ export class FeatureTour {
         highlightBox.style.borderRadius = window.getComputedStyle(targetElement).borderRadius;
         this.domElements.title.textContent = step.title;
         this.domElements.content.textContent = step.content;
+
+        if (step.isCustomDemo === 'gallery') {
+            const demoNode = getTemplate('template-tour-gallery-demo');
+            if (demoNode) {
+                this.domElements.customDemoContainer.appendChild(demoNode);
+                this.domElements.customDemoContainer.style.display = 'block';
+            }
+        }
+
         this.domElements.stepCounter.textContent = `${index + 1} / ${this.steps.length}`;
         const tooltip = this.domElements.tooltip;
+        // Reset classes first
         tooltip.className = 'tour-tooltip';
         setTimeout(() => {
             const tooltipRect = tooltip.getBoundingClientRect();
             let top, left;
             const margin = 15;
             switch (step.position) {
-                case 'top': top = targetRect.top - tooltipRect.height - margin; left = targetRect.left + (targetRect.width / 2) - (tooltipRect.width / 2); tooltip.classList.add('tour-tooltip-top'); break;
+                case 'top':
+                    top = targetRect.top - tooltipRect.height - margin;
+                    left = targetRect.left + (targetRect.width / 2) - (tooltipRect.width / 2);
+                    tooltip.classList.add('tour-tooltip-top');
+                    // Add specific classes for mobile buttons
+                    if (window.innerWidth <= 900) { // Check if it's mobile
+                        if (step.element === '#mobile-playlist-btn') {
+                            tooltip.classList.add('for-mobile-playlist-btn');
+                        } else if (step.element === '#mobile-lyrics-btn') {
+                            tooltip.classList.add('for-mobile-lyrics-btn');
+                        }
+                    }
+                    break;
                 case 'left': top = targetRect.top + (targetRect.height / 2) - (tooltipRect.height / 2); left = targetRect.left - tooltipRect.width - margin; tooltip.classList.add('tour-tooltip-left'); break;
                 case 'right': top = targetRect.top + (targetRect.height / 2) - (tooltipRect.height / 2); left = targetRect.right + margin; tooltip.classList.add('tour-tooltip-right'); break;
                 default: top = targetRect.bottom + margin; left = targetRect.left + (targetRect.width / 2) - (tooltipRect.width / 2); tooltip.classList.add('tour-tooltip-bottom'); break;
