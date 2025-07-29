@@ -23,12 +23,73 @@
 .tour-tooltip-title { font-size: 1rem; font-weight: bold; color: var(--text-primary); }
 .tour-tooltip-step-counter { font-size: 0.85rem; color: var(--text-secondary); }
 .tour-tooltip-content { font-size: 0.9rem; line-height: 1.6; color: var(--text-secondary); margin-bottom: 20px; }
+.tour-custom-demo {
+    display: none; /* Hidden by default */
+    margin-bottom: 20px;
+}
+.tour-gallery-demo-container {
+    position: relative;
+    height: 120px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--highlight-bg);
+    border-radius: 6px;
+    overflow: hidden;
+    user-select: none;
+}
+.tour-gallery-demo-bg {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    width: 200%; /* Wider to allow movement */
+    display: grid;
+    grid-template-columns: repeat(4, 60px);
+    gap: 10px;
+    animation: tour-bg-drag 5s ease-in-out infinite;
+}
+.demo-tile {
+    width: 60px;
+    height: 60px;
+    background-color: var(--surface-color);
+    border-radius: 4px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: var(--text-secondary);
+}
+.demo-tile svg {
+    width: 24px;
+    height: 24px;
+    fill: currentColor;
+}
+.tour-gallery-demo-hand {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 32px;
+    height: 32px;
+    color: var(--text-primary);
+    transform-origin: 8px 8px; /* Approx top-left of the hand palm */
+    animation: tour-hand-drag 5s ease-in-out infinite;
+    z-index: 10;
+}
 .tour-tooltip-footer { display: flex; justify-content: space-between; align-items: center; }
 .tour-skip-button { background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 0.9rem; }
 .tour-skip-button:hover { color: var(--text-primary); }
 .tour-nav-buttons button { background-color: var(--primary-color); color: #000; font-weight: bold; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 0.9rem; margin-left: 10px; transition: background-color 0.2s ease; }
 .tour-nav-buttons button:hover { background-color: #1ed760; }
 .tour-nav-buttons button:disabled { background-color: var(--slider-track-color); color: var(--text-secondary); cursor: not-allowed; }
+
+@keyframes tour-hand-drag {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    15% { transform: translate(-50%, -50%) scale(0.9); } /* Press down */
+    85% { transform: translate(calc(-50% - 40px), calc(-50% - 15px)) scale(0.9); } /* Drag left and up */
+    95% { transform: translate(calc(-50% - 40px), calc(-50% - 15px)) scale(1); } /* Release */
+}
+
+@keyframes tour-bg-drag {
+    0%, 15%, 95%, 100% { transform: translate(0, 0); }
+    85% { transform: translate(80px, 30px); } /* Move opposite to hand */
+}
 
 /* --- Toast Notification --- */
 .toast { visibility: hidden; opacity: 0; position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%); min-width: 250px; background-color: var(--highlight-bg); color: var(--text-primary); text-align: center; border-radius: 4px; padding: 16px; z-index: 10001; box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: opacity 0.5s, visibility 0.5s; font-size: 14px; }
@@ -62,4 +123,22 @@
 .custom-context-menu li:hover {
     background-color: var(--highlight-bg);
     color: var(--text-primary);
+}
+
+
+/* --- Mobile Tour Tooltip Arrow Adjustments --- */
+@media (max-width: 900px) {
+    /* 通用的顶部箭头在移动端默认居中，不需要额外调整 */
+
+    /* 针对 #mobile-playlist-btn 的顶部箭头 */
+    #tour-tooltip.tour-tooltip-top.for-mobile-playlist-btn::before {
+        left: 90%; /* 播放列表为left：90% */
+        transform: translateX(-50%);
+    }
+
+    /* 针对 #mobile-lyrics-btn 的顶部箭头 */
+    #tour-tooltip.tour-tooltip-top.for-mobile-lyrics-btn::before {
+        left: 13%; /* 同步歌词为left：13% */
+        transform: translateX(-50%);
+    }
 }
