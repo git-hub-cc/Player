@@ -40,10 +40,21 @@ export const toastEl = document.getElementById('toast-notification');
 export const modeBtn = document.getElementById('mode-btn');
 export const playlistSearchInput = document.getElementById('playlist-search');
 export const playlistNoResultsEl = document.getElementById('playlist-no-results');
-export const immersiveBtn = document.getElementById('immersive-btn');
+export const galleryContainer = document.getElementById('gallery-container');
+export const galleryWrapper = document.getElementById('gallery-wrapper');
 export const contextMenu = document.getElementById('custom-context-menu');
 export const templatesContainer = document.getElementById('templates');
 export const docElement = document.documentElement;
+
+// 【更新】故障效果元素
+export const glitchOverlay = document.getElementById('glitch-overlay');
+export const glitchLinesGroup = document.getElementById('glitch-lines');
+export const glitchSpotifyShapesGroup = document.getElementById('glitch-spotify-shapes'); // 新增
+export const feTurbulence = document.querySelector('#glitch-filter-spotify feTurbulence');
+export const feDisplacementMap = document.querySelector('#glitch-filter-spotify feDisplacementMap');
+export const feOffsetR = document.querySelector('#glitch-filter-spotify [result="red_offset"]'); // 新增
+export const feOffsetB = document.querySelector('#glitch-filter-spotify [result="blue_offset"]'); // 新增
+
 
 // Canvas for gradient extraction
 export const bgCanvas = document.createElement('canvas');

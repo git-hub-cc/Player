@@ -4,18 +4,25 @@ import * as dom from './dom.js';
 import * as state from './state.js';
 import { PLAY_MODES, DEFAULT_ART } from './config.js';
 import { formatTime, parseLRC } from './utils.js';
-import { renderLyrics, syncLyrics, extractAndApplyGradient, showSkeleton, hideSkeleton, updatePlaylistUI, updateModeButton, showToast } from './ui.js';
+import { renderLyrics, syncLyrics, extractAndApplyGradient, showSkeleton, hideSkeleton, updatePlaylistUI, updateModeButton, showToast, triggerGlitchEffect } from './ui.js';
 
 // --- requestAnimationFrame ---
 let animationFrameId = null;
+// 【新增】用于控制骨架屏的计时器
+let skeletonTimer = null;
 
-export async function loadTrack(trackIndex, { fromHistory = false } = {}) {
+export async function loadTrack(trackIndex, options = {}) {
+    const { fromHistory = false } = options;
+
+    // 如果计时器存在，说明这是一个由切歌触发的加载，此时清除计时器，因为加载已开始
+    if (skeletonTimer) {
+        clearTimeout(skeletonTimer);
+        skeletonTimer = null;
+    }
+
     if (state.playlist.length === 0) return;
-    showSkeleton();
 
-    // 1. 设置状态
     state.setCurrentTrackIndex(trackIndex);
-
     const track = state.playlist[trackIndex];
 
     dom.trackTitleEl.textContent = track.title || "未知标题";
@@ -26,14 +33,12 @@ export async function loadTrack(trackIndex, { fromHistory = false } = {}) {
 
     state.setParsedLyrics(parseLRC(track.lyrics || ''));
     renderLyrics();
-
-    // 2. 更新UI (职责从 state.js 移至此)
     updatePlaylistUI();
 
     let loadedOnce = false;
     const handleMediaReady = () => {
         if (!loadedOnce) {
-            hideSkeleton();
+            hideSkeleton(); // 无论如何，加载完成就隐藏
             updateProgress();
             if (state.isPlaying) {
                 dom.mediaPlayer.play().catch(e => {
@@ -44,16 +49,19 @@ export async function loadTrack(trackIndex, { fromHistory = false } = {}) {
         }
     };
 
+    const handleError = (e) => {
+        console.error("媒体加载错误:", e);
+        if (skeletonTimer) clearTimeout(skeletonTimer); // 出错时也要清理计时器
+        hideSkeleton(); // 隐藏骨架屏
+        dom.trackTitleEl.textContent = "错误";
+        dom.trackArtistEl.textContent = "无法播放此媒体";
+        dom.mainView.style.background = '';
+    };
+
     dom.mediaPlayer.oncanplay = null;
     dom.mediaPlayer.onloadedmetadata = null;
     dom.albumArtEl.onload = null;
-    dom.mediaPlayer.onerror = (e) => {
-        console.error("媒体加载错误:", e);
-        dom.trackTitleEl.textContent = "错误";
-        dom.trackArtistEl.textContent = "无法播放此媒体";
-        hideSkeleton();
-        dom.mainView.style.background = '';
-    };
+    dom.mediaPlayer.onerror = handleError;
 
     if (track.type === 'audio') {
         dom.albumArtContainer.style.display = 'flex';
@@ -80,10 +88,8 @@ export async function loadTrack(trackIndex, { fromHistory = false } = {}) {
         dom.mediaPlayer.play().catch(e => { /* Ignore */ });
     }
 
-    // 如果不是由浏览器历史导航（前进/后退）触发的，则主动更新历史记录
     if (!fromHistory) {
         const newUrl = `#track=${trackIndex + 1}`;
-        // 只有当URL或状态真正改变时才推送，避免重复条目
         if (window.location.hash !== newUrl || (history.state && history.state.trackIndex !== trackIndex)) {
             history.pushState({ trackIndex: trackIndex }, track.title || '', newUrl);
         }
@@ -100,13 +106,9 @@ function playTrack() {
     const playPromise = dom.mediaPlayer.play();
     if (playPromise !== undefined) {
         playPromise.then(() => {
-            // 1. 设置状态
             state.setIsPlaying(true);
-
-            // 2. 更新UI (职责从 state.js 移至此)
             dom.playPauseBtn.classList.add('playing');
             dom.playPauseBtn.title = '暂停';
-
             if (animationFrameId === null) {
                 runAnimationFrame();
             }
@@ -119,14 +121,9 @@ function playTrack() {
 
 function pauseTrack() {
     dom.mediaPlayer.pause();
-
-    // 1. 设置状态
     state.setIsPlaying(false);
-
-    // 2. 更新UI (职责从 state.js 移至此)
     dom.playPauseBtn.classList.remove('playing');
     dom.playPauseBtn.title = '播放';
-
     cancelAnimationFrame(animationFrameId);
     animationFrameId = null;
 }
@@ -134,27 +131,38 @@ function pauseTrack() {
 export const togglePlayPause = () => state.isPlaying ? pauseTrack() : playTrack();
 
 function changeTrack(direction) {
-    if (state.playlist.length === 0) return;
-    const newIndex = (state.currentTrackIndex + direction + state.playlist.length) % state.playlist.length;
-    loadTrack(newIndex);
+    if (state.playlist.length <= 1) return;
+
+    // 【修改】将故障效果持续时间延长至3秒
+    triggerGlitchEffect(3000);
+
+    clearTimeout(skeletonTimer);
+
+    skeletonTimer = setTimeout(() => {
+        showSkeleton();
+    }, 3000); // 骨架屏的延迟时间保持不变
+
+    setTimeout(() => {
+        let newIndex;
+        if (direction === 1) { // 下一首
+            const currentMode = PLAY_MODES[state.currentModeIndex];
+            if (currentMode === 'shuffle') {
+                do {
+                    newIndex = Math.floor(Math.random() * state.playlist.length);
+                } while (newIndex === state.currentTrackIndex);
+            } else {
+                newIndex = (state.currentTrackIndex + 1) % state.playlist.length;
+            }
+        } else { // 上一首
+            newIndex = (state.currentTrackIndex - 1 + state.playlist.length) % state.playlist.length;
+        }
+
+        loadTrack(newIndex);
+    }, 150);
 }
 
 export function playNextTrack() {
-    if (state.playlist.length === 0) return;
-    const currentMode = PLAY_MODES[state.currentModeIndex];
-    if (currentMode === 'shuffle') {
-        let nextIndex;
-        if (state.playlist.length === 1) {
-            nextIndex = 0;
-        } else {
-            do {
-                nextIndex = Math.floor(Math.random() * state.playlist.length);
-            } while (nextIndex === state.currentTrackIndex);
-        }
-        loadTrack(nextIndex);
-    } else {
-        changeTrack(1);
-    }
+    changeTrack(1);
 }
 
 export function playPrevTrack() {
@@ -182,14 +190,8 @@ export function updateProgress() {
 export function cyclePlayMode() {
     const oldIndex = state.currentModeIndex;
     const newModeIndex = (state.currentModeIndex + 1) % PLAY_MODES.length;
-
-    // 1. 设置状态
     state.setCurrentModeIndex(newModeIndex);
-
-    // 2. 更新UI (职责从 state.js 移至此)
     updateModeButton();
-
-    // 只有在模式真正改变且播放器已初始化后才显示toast
     if (oldIndex !== newModeIndex && dom.mediaPlayer.src) {
         const currentMode = PLAY_MODES[state.currentModeIndex];
         let title = '';

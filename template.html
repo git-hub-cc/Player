@@ -66,3 +66,19 @@
         </div>
     </div>
 </template>
+
+<!-- 在你的 template.html 或 index.html 的 #templates 容器里添加 -->
+<template id="template-gallery-item">
+    <div class="gallery-item">
+        <img class="gallery-item-art" alt="" loading="lazy" crossorigin="anonymous">
+        <div class="gallery-item-overlay">
+            <div class="gallery-item-play-icon">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
+            </div>
+            <div class="gallery-item-details">
+                <h4 class="gallery-item-title"></h4>
+                <p class="gallery-item-artist"></p>
+            </div>
+        </div>
+    </div>
+</template>

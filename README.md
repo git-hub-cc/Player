@@ -4,11 +4,11 @@ https://github.com/user-attachments/assets/33046049-a997-47e6-85e5-f4626889c0f0
 
 ## Introduction
 
-This is a modern, feature-rich media player project built with HTML5, CSS, and vanilla JavaScript (ES6+). **Its interface is heavily inspired by Spotify**, aiming to provide a beautiful, responsive, and user-friendly interface for playing local or online audio and video files. The project is built without any frontend frameworks (like React or Vue), showcasing the power of native web technologies.
+This is a modern, feature-rich media player project built with HTML5, CSS, and vanilla JavaScript (ES6+). **Its interface is heavily inspired by Spotify, JIEJOE**, aiming to provide a beautiful, responsive, and user-friendly interface for playing local or online audio and video files. The project is built without any frontend frameworks (like React or Vue), showcasing the power of native web technologies.
 
 ## ✨ Feature Highlights
 
--   **Modern UI Design**: An interface inspired by Spotify, providing a clean and intuitive user experience, complete with a skeleton loading screen to enhance the initial load.
+-   **Modern UI Design**: An interface inspired by Spotify, JIEJOE,providing a clean and intuitive user experience, complete with a skeleton loading screen to enhance the initial load.
 -   **Hybrid Media Support**: Seamlessly play both audio (e.g., MP3) and video (e.g., MP4) files, with the UI automatically adapting to the media type.
 -   **Dynamic Playlist**: Easily manage and load your media queue through a simple `playlist.json` file.
 -   **Smart Playlist Search**: The playlist panel supports fuzzy search by title, artist, **Pinyin**, or **Pinyin initials**.
