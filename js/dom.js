@@ -18,6 +18,11 @@ export const lyricsBtn = document.getElementById('lyrics-btn');
 export const lyricsContainer = document.getElementById('lyrics-container');
 export const lyricsList = document.getElementById('lyrics-list');
 export const lyricsListWrapper = document.getElementById('lyrics-list-wrapper');
+
+// 【新增】获取歌词拖拽相关元素
+export const lyricsDragIndicator = document.getElementById('lyrics-drag-indicator');
+export const lyricsDragTime = document.getElementById('lyrics-drag-time');
+
 export const volumeBtn = document.getElementById('volume-btn');
 export const volumeBar = document.getElementById('volume-bar');
 export const playlistEl = document.getElementById('playlist');
