@@ -31,7 +31,13 @@ export async function loadTrack(trackIndex, options = {}) {
     dom.albumArtEl.src = artUrl;
     dom.controlAlbumArtEl.src = artUrl;
 
-    state.setParsedLyrics(parseLRC(track.lyrics || ''));
+    // 【修改】确保在传递给 parseLRC 之前，歌词字符串是正确的格式
+    let lyricsToParse = (track.lyrics || '')
+        .replace(/\[/g, '\n[')    // 所有 `[` 前加换行符
+        .replace(/\n{2,}/g, '\n') // 合并多个换行为一个
+        .replace(/^\n/, '');      // 去除开头多余的换行
+    state.setParsedLyrics(parseLRC(lyricsToParse));
+    console.log(lyricsToParse)
     renderLyrics();
     updatePlaylistUI();
 
@@ -101,7 +107,7 @@ function runAnimationFrame() {
     animationFrameId = requestAnimationFrame(runAnimationFrame);
 }
 
-function playTrack() {
+export function playTrack() {
     if (state.playlist.length === 0 || !dom.mediaPlayer.src) return;
     const playPromise = dom.mediaPlayer.play();
     if (playPromise !== undefined) {
@@ -119,7 +125,7 @@ function playTrack() {
     }
 }
 
-function pauseTrack() {
+export function pauseTrack() {
     dom.mediaPlayer.pause();
     state.setIsPlaying(false);
     dom.playPauseBtn.classList.remove('playing');

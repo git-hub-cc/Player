@@ -5,7 +5,7 @@ import * as state from './state.js';
 import { PLAY_MODES, desktopTourSteps, mobileTourSteps } from './config.js';
 import { loadTemplates, normalizeKey } from './utils.js';
 import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode } from './player.js';
-import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI } from './ui.js';
+import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, setupParticleCanvas } from './ui.js';
 import { loadShortcuts, executeShortcut, setupShortcutListeners } from './features/shortcuts.js';
 import { FeatureTour } from './features/tour.js';
 import * as backgroundGallery from './features/gallery.js';
@@ -123,7 +123,11 @@ function setupEventListeners() {
     dom.shortcutBtn.addEventListener('click', toggleShortcutPanel);
 
     // Panel closing
-    [dom.closeInfoBtn, dom.closePlaylistBtn, dom.closeShortcutBtn].forEach(btn => btn.addEventListener('click', () => btn.closest('aside').classList.remove('active')));
+    [dom.closeInfoBtn, dom.closePlaylistBtn, dom.closeShortcutBtn].forEach(btn => {
+        if (btn) {
+            btn.addEventListener('click', () => btn.closest('aside').classList.remove('active'));
+        }
+    });
     [dom.infoPanel, dom.playlistPanel, dom.shortcutPanel, dom.lyricsContainer].forEach(panel => {
         panel.addEventListener('click', (e) => { if (e.target === panel) panel.classList.remove('active'); });
     });
@@ -185,6 +189,9 @@ function setupEventListeners() {
     });
 
     setupShortcutListeners();
+    // 【新增】初始化歌词拖拽监听
+    setupLyricsDragHandler();
+
     window.addEventListener('beforeunload', savePlayerState);
 }
 
@@ -192,6 +199,9 @@ async function init() {
     showSkeleton();
     await loadTemplates();
     loadPlayerState();
+
+    // 【新增】初始化粒子效果的Canvas
+    setupParticleCanvas();
 
     try {
         const response = await fetch('playlist.json');

@@ -12,6 +12,7 @@ export let pressedShortcutKeys = new Set();
 export let isRecordingShortcut = false;
 export let currentRecordingAction = null;
 
+export let isDraggingLyrics = false;
 // Functions to modify state
 export function setPlaylist(newPlaylist) {
     playlist = newPlaylist;
@@ -44,4 +45,8 @@ export function setIsRecordingShortcut(recording) {
 }
 export function setCurrentRecordingAction(action) {
     currentRecordingAction = action;
+}
+
+export function setIsDraggingLyrics(dragging) {
+    isDraggingLyrics = dragging;
 }

@@ -71,9 +71,9 @@
                         <div class="skeleton-block skeleton-button mobile-only small"></div>
                     </div>
                     <div class="progress-container">
-                        <span>0:00</span>
+                        <span></span>
                         <div class="skeleton-block skeleton-progress-bar"></div>
-                        <span>0:00</span>
+                        <span></span>
                     </div>
                 </div>
                 <div class="skeleton-side-controls">
@@ -103,6 +103,10 @@
             <div id="lyrics-container" class="lyrics-container">
                 <div id="lyrics-list-wrapper">
                     <div id="lyrics-list" class="lyrics-list"></div>
+                    <div id="lyrics-drag-indicator" class="lyrics-drag-indicator">
+                        <span id="lyrics-drag-time" class="lyrics-drag-time">0:00</span>
+                        <div class="lyrics-drag-line"></div>
+                    </div>
                 </div>
             </div>
             <!-- 【更新】故障效果SVG叠加层与滤镜 -->
@@ -272,10 +276,10 @@
     <!-- Container for HTML templates, loaded from template.html -->
     <div id="templates"></div>
 
-    <!-- 引入第三方库 -->
-    <script src="lib/jsmediatags.min.js"></script>
-    <script src="lib/index.min.js"></script>
-    <script type="module" src="js/main.js"></script>
-
+</div>
 </body>
+<!-- 引入第三方库 -->
+<script src="lib/jsmediatags.min.js"></script>
+<script src="lib/index.min.js"></script>
+<script type="module" src="js/main.js"></script>
 </html>
