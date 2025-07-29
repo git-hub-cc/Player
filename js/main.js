@@ -5,10 +5,10 @@ import * as state from './state.js';
 import { PLAY_MODES, desktopTourSteps, mobileTourSteps } from './config.js';
 import { loadTemplates, normalizeKey } from './utils.js';
 import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode } from './player.js';
-// 注意这里导入的 UI 函数
-import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, toggleImmersiveMode, handleFullscreenChange, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI } from './ui.js';
+import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI } from './ui.js';
 import { loadShortcuts, executeShortcut, setupShortcutListeners } from './features/shortcuts.js';
 import { FeatureTour } from './features/tour.js';
+import * as backgroundGallery from './features/gallery.js';
 
 // --- 持久化 ---
 const PLAYER_STATE_KEY = 'player_state';
@@ -64,11 +64,8 @@ function setupEventListeners() {
 
     // 监听浏览器的前进/后退事件
     window.addEventListener('popstate', (event) => {
-        // 检查是否存在我们设置的状态
         if (event.state && typeof event.state.trackIndex !== 'undefined') {
-            // 仅当目标曲目不是当前曲目时才加载，避免不必要的操作
             if (state.currentTrackIndex !== event.state.trackIndex) {
-                // 从历史记录加载曲目，并传入 fromHistory 标志以防止无限循环
                 loadTrack(event.state.trackIndex, { fromHistory: true });
                 savePlayerState();
             }
@@ -142,11 +139,6 @@ function setupEventListeners() {
     });
     dom.playlistSearchInput.addEventListener('input', filterPlaylist);
 
-    // Immersive Mode
-    dom.immersiveBtn.addEventListener('click', toggleImmersiveMode);
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-
     // Context Menu
     document.addEventListener('contextmenu', (e) => {
         e.preventDefault();
@@ -172,8 +164,11 @@ function setupEventListeners() {
 
     // Global keyboard listener for shortcuts
     window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') hideContextMenu();
+        if (e.key === 'Escape') {
+            hideContextMenu();
+        }
         if (state.isRecordingShortcut || ['input', 'textarea'].includes(e.target.tagName.toLowerCase())) return;
+
         state.pressedShortcutKeys.add(normalizeKey(e.key));
         for (const actionId in state.shortcutSettings) {
             const requiredKeys = new Set(state.shortcutSettings[actionId].keys);
@@ -189,16 +184,14 @@ function setupEventListeners() {
         state.pressedShortcutKeys.delete(normalizeKey(e.key));
     });
 
-    // Setup listeners specific to the shortcuts panel
     setupShortcutListeners();
-
     window.addEventListener('beforeunload', savePlayerState);
 }
 
 async function init() {
     showSkeleton();
     await loadTemplates();
-    loadPlayerState(); // 优先加载状态
+    loadPlayerState();
 
     try {
         const response = await fetch('playlist.json');
@@ -214,6 +207,7 @@ async function init() {
             };
         });
         state.setPlaylist(processedPlaylist);
+        backgroundGallery.init(processedPlaylist);
     } catch (error) {
         console.error("无法加载或处理播放列表:", error);
         dom.trackTitleEl.textContent = "错误";
@@ -224,11 +218,9 @@ async function init() {
 
     if (state.playlist.length > 0) {
         renderPlaylist();
-        // **【修复】** 调用从 ui.js 导入的函数，而不是 state 上的方法
         updatePlaylistUI();
         await loadTrack(state.currentTrackIndex);
 
-        // 设置初始历史状态，替换掉当前条目，这样用户就不会从第一首歌“后退”到无hash的页面
         if (state.playlist.length > 0) {
             const initialTrack = state.playlist[state.currentTrackIndex];
             const initialUrl = `#track=${state.currentTrackIndex + 1}`;
@@ -240,9 +232,8 @@ async function init() {
         hideSkeleton();
     }
 
-    // 在加载状态后，显式调用一次UI更新函数来设置初始界面
     updateVolumeBarVisual(dom.mediaPlayer.volume, dom.mediaPlayer.muted);
-    updateModeButton(); // 确保模式按钮初始可见
+    updateModeButton();
     updateProgress();
 
     loadShortcuts();

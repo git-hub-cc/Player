@@ -6,6 +6,106 @@ import { getTemplate } from './utils.js';
 
 let toastTimeout;
 let lastActiveLyricIndex = -1;
+let glitchAnimationId;
+
+// --- 【重写】故障效果函数 ---
+/**
+ * 触发一个持续、逐渐减弱的“故障”效果。
+ * @param {number} duration - 效果持续的总毫秒数。
+ */
+export function triggerGlitchEffect(duration = 800) { // 默认值可以设小一点，但外部调用会传入3000
+    if (!dom.mainView || !dom.glitchOverlay || !dom.feTurbulence) return;
+
+    cancelAnimationFrame(glitchAnimationId);
+
+    let startTime = null;
+
+    const primaryColor = getComputedStyle(dom.docElement).getPropertyValue('--primary-color').trim();
+    const whiteColor = '#FFFFFF';
+
+    const animateGlitch = (currentTime) => {
+        if (!startTime) startTime = currentTime;
+        const elapsedTime = currentTime - startTime;
+
+        if (elapsedTime >= duration) {
+            // 动画结束，清理现场
+            dom.mainView.classList.remove('glitching');
+            dom.glitchOverlay.classList.remove('active');
+            dom.glitchLinesGroup.innerHTML = '';
+            dom.glitchSpotifyShapesGroup.innerHTML = '';
+            dom.feDisplacementMap.setAttribute('scale', '0');
+            dom.feOffsetR.setAttribute('dx', '0');
+            dom.feOffsetB.setAttribute('dx', '0');
+            return;
+        }
+
+        // --- 动画核心逻辑 ---
+        const progress = elapsedTime / duration; // 动画进度，从 0.0 到 1.0
+
+        // 1. 随机化滤镜种子以保持动态
+        dom.feTurbulence.setAttribute('seed', Math.random() * 200);
+
+        // 2. 位移强度：从一个较高的值（如80）随时间衰减到0。使用平方函数使衰减更自然。
+        const displacementIntensity = Math.pow(1 - progress, 2) * 80;
+        dom.feDisplacementMap.setAttribute('scale', String(displacementIntensity));
+
+        // 3. 色差分离：同样从一个较高的值随时间衰减，并带有随机抖动。
+        const aberrationAmount = Math.pow(1 - progress, 3) * 30 * (Math.random() - 0.5);
+        dom.feOffsetR.setAttribute('dx', String(aberrationAmount));
+        dom.feOffsetB.setAttribute('dx', String(-aberrationAmount));
+
+        // 4. 动态生成并渲染Spotify波形条和扫描线
+        dom.glitchLinesGroup.innerHTML = '';
+        dom.glitchSpotifyShapesGroup.innerHTML = '';
+
+        // 生成波形条：出现的概率和不透明度随时间降低
+        // (progress < 0.7) 让它在后半段完全消失，更干净利落
+        if (progress < 0.7 && Math.random() > progress * 1.2) {
+            const numBars = Math.floor(Math.random() * 15) + 5;
+            for (let i = 0; i < numBars; i++) {
+                const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                const barWidth = (Math.random() * 2 + 1) + '%';
+                const barHeight = (Math.random() * 40 + 5) + '%';
+                const barX = (i / numBars) * 100 + (Math.random() - 0.5) * 5 + '%';
+                const barY = (100 - parseFloat(barHeight)) / 2 + '%';
+
+                bar.setAttribute('x', barX);
+                bar.setAttribute('y', barY);
+                bar.setAttribute('width', barWidth);
+                bar.setAttribute('height', barHeight);
+                bar.setAttribute('fill', primaryColor);
+                // 不透明度也随时间减弱
+                bar.setAttribute('opacity', (Math.random() * 0.5 + 0.3) * (1 - progress));
+                dom.glitchSpotifyShapesGroup.appendChild(bar);
+            }
+        }
+
+        // 生成扫描线：出现的概率、高度和不透明度都随时间降低
+        if (Math.random() > progress * 0.5) {
+            const numLines = Math.floor(Math.random() * 4) + 1;
+            for (let i = 0; i < numLines; i++) {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                line.setAttribute('x', '0');
+                line.setAttribute('y', Math.random() * 100 + '%');
+                line.setAttribute('width', '100%');
+                // 线条高度随时间变细
+                line.setAttribute('height', (Math.random() * 3 + 1) * (1 - progress) + 'px');
+                line.setAttribute('fill', whiteColor);
+                // 不透明度随时间减弱
+                line.setAttribute('opacity', (Math.random() * 0.2) * (1 - progress));
+                dom.glitchLinesGroup.appendChild(line);
+            }
+        }
+
+        glitchAnimationId = requestAnimationFrame(animateGlitch);
+    };
+
+    // 启动动画
+    dom.mainView.classList.add('glitching');
+    dom.glitchOverlay.classList.add('active');
+    glitchAnimationId = requestAnimationFrame(animateGlitch);
+}
+
 
 export function showSkeleton() {
     dom.playerContainer.classList.add('loading');
@@ -82,8 +182,6 @@ export function updatePlaylistUI() {
     });
 }
 
-// --- 优化点 1: 播放列表过滤 ---
-// 使用 CSS class 控制显隐，避免直接操作 style 导致的性能问题
 export function filterPlaylist() {
     const query = dom.playlistSearchInput.value.toLowerCase().replace(/\s/g, '');
     const playlistItems = dom.getAllPlaylistItems();
@@ -99,13 +197,12 @@ export function filterPlaylist() {
         const pinyin = track.pinyin || '';
         const initials = track.initials || '';
 
-        const isMatch = !query || // 如果查询为空，则全部匹配
+        const isMatch = !query ||
             title.toLowerCase().includes(query) ||
             artist.toLowerCase().includes(query) ||
             pinyin.includes(query) ||
             initials.includes(query);
 
-        // 使用 classList.toggle 的第二个参数，更简洁高效
         item.classList.toggle('hidden', !isMatch);
         if (isMatch) hasVisibleItems = true;
     });
@@ -120,6 +217,13 @@ export function toggleLyricsPanel() { dom.lyricsContainer.classList.toggle('acti
 export function togglePlaylistPanel() { dom.playlistPanel.classList.toggle('active'); }
 export function toggleInfoPanel() { dom.infoPanel.classList.toggle('active'); }
 export function toggleShortcutPanel() { dom.shortcutPanel.classList.toggle('active'); }
+
+export function toggleGalleryView() {
+    dom.galleryView.classList.toggle('active');
+    if (dom.galleryView.classList.contains('active')) {
+        hideContextMenu();
+    }
+}
 
 export function showToast(message) {
     clearTimeout(toastTimeout);
@@ -137,8 +241,6 @@ export function updateVolumeBarVisual(volume, isMuted) {
     dom.volumeBtn.classList.toggle('muted', isMuted || volume === 0);
 }
 
-// --- 优化点 2: 统一状态管理 ---
-// 此函数现在仅负责更新UI，不再显示Toast，因为Toast由state.js中的setter触发
 export function updateModeButton() {
     const currentMode = PLAY_MODES[state.currentModeIndex];
     dom.modeBtn.className = 'control-btn';
@@ -171,33 +273,6 @@ export function extractAndApplyGradient(sourceElement) {
     } catch (e) {
         console.error("Error extracting colors:", e);
         dom.mainView.style.background = '';
-    }
-}
-
-export function toggleImmersiveMode() {
-    const isCurrentlyImmersive = dom.playerContainer.classList.contains('immersive-mode');
-    if (!isCurrentlyImmersive) {
-        dom.playerContainer.classList.add('immersive-mode');
-        dom.immersiveBtn.title = "退出沉浸模式";
-        if (dom.docElement.requestFullscreen) {
-            dom.docElement.requestFullscreen().catch(err => {
-                console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-                dom.playerContainer.classList.remove('immersive-mode');
-                dom.immersiveBtn.title = "沉浸模式";
-            });
-        }
-    } else {
-        dom.playerContainer.classList.remove('immersive-mode');
-        dom.immersiveBtn.title = "沉浸模式";
-        if (dom.getFullscreenElement()) dom.exitFullscreen();
-    }
-}
-
-export function handleFullscreenChange() {
-    const isInFullscreen = !!dom.getFullscreenElement();
-    if (!isInFullscreen && dom.playerContainer.classList.contains('immersive-mode')) {
-        dom.playerContainer.classList.remove('immersive-mode');
-        dom.immersiveBtn.title = "沉浸模式";
     }
 }
 

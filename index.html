@@ -23,6 +23,7 @@
     <!-- 基础和布局 -->
     <link rel="stylesheet" href="css/base.css">
     <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/gallery.css"> <!-- 新增样式 -->
 
     <!-- 主要视图和控制区域 -->
     <link rel="stylesheet" href="css/player-view.css">
@@ -36,6 +37,13 @@
     <link rel="stylesheet" href="css/responsive.css">
 </head>
 <body>
+
+<!-- 背景画廊容器，现在是body的直接子元素 -->
+<div id="gallery-container">
+    <div id="gallery-wrapper">
+        <!-- 图片由 gallery.js 动态生成 -->
+    </div>
+</div>
 
 <div class="player-container">
     <!-- 骨架屏 overlay - 在内容加载前显示 -->
@@ -96,6 +104,42 @@
                 <div id="lyrics-list" class="lyrics-list"></div>
             </div>
         </div>
+        <!-- 【更新】故障效果SVG叠加层与滤镜 -->
+        <svg id="glitch-overlay" class="glitch-overlay" aria-hidden="true">
+            <defs>
+                <!-- 一个更复杂的滤镜，包含位移和色差分离 -->
+                <filter id="glitch-filter-spotify">
+                    <!-- 1. 产生噪点图 -->
+                    <feTurbulence type="fractalNoise" baseFrequency="0.8 0.8" numOctaves="1" result="turbulence" seed="0"></feTurbulence>
+
+                    <!-- 2. 图像整体位移 -->
+                    <feDisplacementMap in="SourceGraphic" in2="turbulence" scale="0" xChannelSelector="R" yChannelSelector="B" result="displacement"></feDisplacementMap>
+
+                    <!-- 3. 色差分离：红色通道 -->
+                    <feColorMatrix in="displacement" type="matrix"
+                                   values="1 0 0 0 0
+                                0 0 0 0 0
+                                0 0 0 0 0
+                                0 0 0 1 0" result="red_channel" />
+                    <feOffset in="red_channel" dx="0" dy="0" result="red_offset" />
+
+                    <!-- 4. 色差分离：蓝色通道 -->
+                    <feColorMatrix in="displacement" type="matrix"
+                                   values="0 0 0 0 0
+                                0 0 0 0 0
+                                0 0 1 0 0
+                                0 0 0 1 0" result="blue_channel" />
+                    <feOffset in="blue_channel" dx="0" dy="0" result="blue_offset" />
+
+                    <!-- 5. 合并通道 -->
+                    <feBlend in="red_offset" in2="blue_offset" mode="screen" result="color_aberration"/>
+                    <feBlend in="displacement" in2="color_aberration" mode="lighten"/>
+                </filter>
+            </defs>
+            <!-- 增加一个用于绘制品牌元素的组 -->
+            <g id="glitch-spotify-shapes"></g>
+            <g id="glitch-lines"></g>
+        </svg>
     </main>
 
     <!-- 播放列表面板 -->
@@ -131,7 +175,7 @@
             <p>3. <b>播放模式</b>: 点击播放控制区的循环/随机按钮，即可切换播放模式。</p>
             <p>4. <b>列表搜索</b>: 在播放列表面板中，可使用拼音或首字母进行模糊搜索。</p>
             <h3>设计灵感</h3>
-            <p>本播放器的用户界面 (UI) 设计语言主要灵感来源于 Spotify 桌面客户端，旨在致敬其现代化、美观且用户友好的交互体验。</p>
+            <p>本播放器的用户界面 (UI) 设计语言主要灵感来源于 Spotify 桌面客户端，JIEJOE旨在致敬其现代化、美观且用户友好的交互体验。</p>
             <h3>资源来源声明</h3>
             <p class="statement-title">重要提示:</p>
             <p>本项目中使用的所有媒体资源（包括但不限于音频和视频文件）均收集自互联网，仅供学习和技术演示使用，不作任何商业用途。</p>
@@ -187,10 +231,6 @@
         <div class="side-controls">
             <button id="shortcut-btn" class="control-btn" title="快捷键设置"><svg viewBox="0 0 24 24"><path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"></path></svg></button>
             <button id="info-btn" class="control-btn" title="关于"><svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"></path></svg></button>
-            <button id="immersive-btn" class="control-btn" title="沉浸模式">
-                <svg class="enter-immersive-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zM5 10h2V7h3V5H5v5zM17 14h2v5h-5v-2h3v-3zM19 10h-2V7h-3V5h5v5z"></path></svg>
-                <svg class="exit-immersive-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"></path></svg>
-            </button>
             <button id="mode-btn" class="control-btn" title="列表循环">
                 <svg class="mode-icon list-loop-icon" viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"></path></svg>
                 <svg class="mode-icon single-loop-icon" viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z M13.25 12.75h-1.5v-3.5h-1v3.5h-1.5v1h4v-1z"></path></svg>
@@ -233,8 +273,6 @@
 
 <!-- 引入第三方库 -->
 <script src="lib/jsmediatags.min.js"></script>
-<!-- pinyin-pro is required for advanced playlist search. -->
-<!-- Make sure you have downloaded this file and placed it in the 'lib' folder. -->
 <script src="lib/index.min.js"></script>
 <script type="module" src="js/main.js"></script>
 

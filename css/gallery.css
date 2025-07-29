@@ -1,0 +1,132 @@
+/* css/background-gallery.css */
+
+#gallery-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1; /* Place it behind the player */
+    cursor: grab;
+    user-select: none;
+    overflow: hidden;
+}
+
+#gallery-container.active {
+    cursor: grabbing;
+}
+
+#gallery-wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    will-change: transform;
+}
+
+.gallery-item {
+    position: absolute;
+    width: 280px;
+    aspect-ratio: 1 / 1;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.25), 0 6px 6px rgba(0,0,0,0.23);
+    will-change: transform;
+    opacity: 0;
+    background-color: var(--surface-color);
+    cursor: pointer;
+    transform: translate(var(--x, 0px), var(--y, 0px));
+    transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.5s ease;
+}
+
+.gallery-item.visible {
+    opacity: 1;
+}
+
+.gallery-item:hover {
+    transform: translate(var(--x, 0px), var(--y, 0px)) scale(1.05);
+    z-index: 10;
+}
+
+.gallery-item-art {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+    transition: filter 0.3s ease;
+}
+
+.gallery-item:hover .gallery-item-art {
+    filter: brightness(0.4);
+}
+
+.gallery-item-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 20px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+.gallery-item:hover .gallery-item-overlay {
+    opacity: 1;
+}
+
+.gallery-item-play-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.8);
+    width: 60px;
+    height: 60px;
+    background-color: var(--primary-color);
+    color: #000;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    opacity: 0;
+}
+
+.gallery-item-play-icon svg {
+    width: 30px;
+    height: 30px;
+}
+
+.gallery-item:hover .gallery-item-play-icon {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+}
+
+.gallery-item-details {
+    text-align: left;
+    align-self: flex-end;
+    width: 100%;
+}
+
+.gallery-item-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 5px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.gallery-item-artist {
+    font-size: 14px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

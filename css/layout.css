@@ -11,9 +11,21 @@
     grid-template-rows: 1fr var(--controls-height);
     grid-template-columns: 1fr;
     overflow: hidden;
-    position: relative;
+    position: relative; /* Changed from absolute/fixed */
+    z-index: 10; /* Make sure it's on top of the gallery */
     box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    /* 【新增】为显隐添加过渡效果 */
+    transition: opacity 0.5s ease, transform 0.5s ease;
 }
+
+/* 【新增】用于在拖拽背景时隐藏主播放器 */
+.player-container.hidden-by-gallery {
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.95);
+}
+
+
 .player-container.loading .main-view,
 .player-container.loading .player-controls {
     opacity: 0;
