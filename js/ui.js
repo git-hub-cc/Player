@@ -14,23 +14,55 @@ let particleCanvas;
 let particleCtx;
 let particles = [];
 let particleAnimationId;
+const NORMAL_DECAY_RATE = 1 / (60 * 2);   // 2秒动画 (基于60fps)
+const FAST_DECAY_RATE = 1 / (60 * 0.5); // 0.5秒动画
+
+// --- 【新增】面板管理 ---
+const allSidePanels = [dom.playlistPanel, dom.infoPanel, dom.shortcutPanel];
 
 /**
- * 设置粒子效果的Canvas
+ * 关闭所有已打开的侧边面板。
+ */
+export function closeActivePanels() {
+    allSidePanels.forEach(panel => {
+        if (panel) panel.classList.remove('active');
+    });
+}
+
+/**
+ * 统一管理侧边面板的开关，确保只有一个可见。
+ * @param {HTMLElement} panelToToggle
+ */
+function manageSidePanel(panelToToggle) {
+    if (!panelToToggle) return;
+    const isCurrentlyActive = panelToToggle.classList.contains('active');
+    // 先关闭所有侧边面板
+    closeActivePanels();
+    // 如果目标面板之前不是激活状态，则将其激活
+    if (!isCurrentlyActive) {
+        panelToToggle.classList.add('active');
+    }
+}
+
+/**
+ * 设置并添加粒子效果的Canvas
  */
 export function setupParticleCanvas() {
+    if (document.getElementById('particle-canvas')) return; // 防止重复创建
     particleCanvas = document.createElement('canvas');
     particleCtx = particleCanvas.getContext('2d', { willReadFrequently: true });
     particleCanvas.id = 'particle-canvas';
+    // 将Canvas添加到mainView，确保它覆盖歌词区域
     dom.mainView.appendChild(particleCanvas);
 }
 
 /**
- * 粒子动画循环
+ * 粒子动画主循环
  */
 function animateParticles() {
     if (!particleCanvas || !particleCtx) return;
 
+    // 确保Canvas尺寸与容器一致
     if (particleCanvas.width !== dom.mainView.offsetWidth || particleCanvas.height !== dom.mainView.offsetHeight) {
         particleCanvas.width = dom.mainView.offsetWidth;
         particleCanvas.height = dom.mainView.offsetHeight;
@@ -40,104 +72,99 @@ function animateParticles() {
 
     for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
-
-        p.vx *= 0.97;
-        p.vy += 0.15;
-        p.x += p.vx;
-        p.y += p.vy;
-        p.alpha -= 0.015;
+        p.alpha -= p.decay; // 根据衰变率降低alpha
 
         if (p.alpha <= 0) {
             particles.splice(i, 1);
-        } else {
-            particleCtx.fillStyle = `rgba(${p.color.r}, ${p.color.g}, ${p.color.b}, ${p.alpha})`;
-            particleCtx.fillRect(p.x, p.y, p.size, p.size);
+            continue;
         }
+
+        // 应用物理效果
+        p.vx *= 0.98; // 摩擦力
+        p.vy += 0.05; // 重力
+        p.x += p.vx;
+        p.y += p.vy;
+
+        // 在粒子变得非常透明时开始缩小，增强消失感
+        const scale = p.alpha > 0.5 ? 1 : p.alpha * 2;
+        const size = p.size * scale;
+
+        particleCtx.fillStyle = `rgba(${p.color.r}, ${p.color.g}, ${p.color.b}, ${p.alpha})`;
+        particleCtx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
     }
 
     if (particles.length > 0) {
         particleAnimationId = requestAnimationFrame(animateParticles);
     } else {
-        particleAnimationId = null;
+        particleAnimationId = null; // 无粒子时停止动画循环
     }
 }
 
 /**
- * 【重写】从HTML元素创建粒子，使其在容器顶部中心产生
- * @param {HTMLElement} element - 要为其创建粒子的歌词P元素
- * @param {DOMRect} wrapperRect - #lyrics-list-wrapper 的位置和尺寸
+ * 从HTML元素创建溶解粒子
+ * @param {HTMLElement} element - 要溶解的歌词P元素
  */
-function createParticlesFromElement(element, wrapperRect) {
-    if (!element || !particleCanvas || !particleCtx || element.dataset.particlized === 'true' || !wrapperRect) {
+function createParticlesFromElement(element) {
+    if (!element || !particleCanvas || !particleCtx || element.classList.contains('particlized')) {
         return;
     }
-    element.dataset.particlized = 'true';
+    // 隐藏原始DOM元素，由Canvas接管其视觉呈现
+    element.classList.add('particlized');
+
+    // 加速任何已存在的、正在慢速溶解的粒子
+    particles.forEach(p => {
+        if (p.decay === NORMAL_DECAY_RATE) {
+            p.decay = FAST_DECAY_RATE;
+        }
+    });
 
     const mainViewRect = dom.mainView.getBoundingClientRect();
+    const elemRect = element.getBoundingClientRect();
 
-    particleCanvas.width = dom.mainView.offsetWidth;
-    particleCanvas.height = dom.mainView.offsetHeight;
-
+    // 准备一个临时的、屏幕外的Canvas来渲染文本并提取像素
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
     const computedStyle = window.getComputedStyle(element);
     const font = `${computedStyle.fontWeight} ${computedStyle.fontSize} ${computedStyle.fontFamily}`;
     const color = computedStyle.color;
     const text = element.textContent;
 
-    const tempCanvas = document.createElement('canvas');
-    const tempCtx = tempCanvas.getContext('2d');
-
-    // 我们只需要渲染一行文本的高度即可
-    const lineHeight = parseFloat(computedStyle.lineHeight);
-    tempCanvas.width = wrapperRect.width;
-    tempCanvas.height = lineHeight;
-
+    tempCanvas.width = elemRect.width;
+    tempCanvas.height = elemRect.height;
     tempCtx.font = font;
     tempCtx.fillStyle = color;
     tempCtx.textBaseline = 'middle';
-    tempCtx.textAlign = 'center'; // 文字居中
+    tempCtx.textAlign = 'center';
     tempCtx.fillText(text, tempCanvas.width / 2, tempCanvas.height / 2);
 
-    // 只读取这一行渲染出的像素
     const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height).data;
-    const density = 2;
-
-    // 计算粒子产生的Y坐标基线：容器顶部
-    const startY = wrapperRect.top - mainViewRect.top;
+    const density = 2; // 像素采样密度，值越大粒子越少
 
     for (let y = 0; y < tempCanvas.height; y += density) {
         for (let x = 0; x < tempCanvas.width; x += density) {
-            const index = (y * tempCanvas.width + x) * 4;
-            const alpha = imageData[index + 3];
-
-            if (alpha > 128) {
-                const r = imageData[index];
-                const g = imageData[index + 1];
-                const b = imageData[index + 2];
-
+            const alphaIndex = (y * tempCanvas.width + x) * 4 + 3;
+            if (imageData[alphaIndex] > 128) { // 只为不透明像素创建粒子
+                const colorIndex = alphaIndex - 3;
                 particles.push({
-                    // X坐标相对于容器中心散开
-                    x: (wrapperRect.left - mainViewRect.left) + x,
-                    // Y坐标从容器顶部开始
-                    y: startY + y,
-                    vx: (Math.random() - 0.5) * 4,
-                    vy: (Math.random() - 0.5) * 3 - 1, // 轻微向上弹跳
-                    alpha: Math.random() * 0.6 + 0.4,
+                    x: elemRect.left - mainViewRect.left + x,
+                    y: elemRect.top - mainViewRect.top + y,
+                    vx: (Math.random() - 0.5) * 1.5,
+                    vy: (Math.random() - 0.5) * 1.5 - 0.5, // 初始轻微向上
+                    alpha: 1.0,
+                    decay: NORMAL_DECAY_RATE, // 默认2秒衰变
                     size: Math.random() * 1.5 + 1,
-                    color: { r, g, b }
+                    color: { r: imageData[colorIndex], g: imageData[colorIndex + 1], b: imageData[colorIndex + 2] }
                 });
             }
         }
     }
 
-    element.classList.add('particles-active');
-
+    // 如果动画循环未运行，则启动它
     if (!particleAnimationId) {
         animateParticles();
     }
 }
 
-
-// --- 重写故障效果函数 (代码保持不变) ---
 export function triggerGlitchEffect(duration = 800) {
     if (!dom.mainView || !dom.glitchOverlay || !dom.feTurbulence) return;
     cancelAnimationFrame(glitchAnimationId);
@@ -203,7 +230,6 @@ export function triggerGlitchEffect(duration = 800) {
     glitchAnimationId = requestAnimationFrame(animateGlitch);
 }
 
-
 export function showSkeleton() {
     dom.playerContainer.classList.add('loading');
     dom.skeletonOverlay.classList.add('active');
@@ -216,6 +242,7 @@ export function hideSkeleton() {
 export function renderLyrics() {
     dom.lyricsList.innerHTML = '';
     dom.lyricsList.style.transform = 'translateY(0)';
+    particles = []; // 清空上一首歌的粒子
 
     if (state.parsedLyrics.length === 0) {
         dom.lyricsList.appendChild(getTemplate('template-no-lyrics'));
@@ -233,16 +260,12 @@ export function renderLyrics() {
     lastActiveLyricIndex = -1;
 }
 
-// =================================================================
-// =================== FUNÇÃO CORRIGIDA ABAIXO =====================
-// =================================================================
 export function syncLyrics(currentTime) {
     if (state.isDraggingLyrics) return;
     if (state.parsedLyrics.length === 0) return;
 
     const allLyricLines = dom.getLyricLines();
     const listWrapper = dom.lyricsListWrapper;
-    const wrapperRect = listWrapper.getBoundingClientRect(); // 获取一次即可
 
     const activeIndex = state.parsedLyrics.findIndex((line, i) => {
         const nextLine = state.parsedLyrics[i + 1];
@@ -256,9 +279,7 @@ export function syncLyrics(currentTime) {
             }
             const activeLineElement = allLyricLines[activeIndex];
             if (activeLineElement) {
-                // Ao se tornar ativa, garantimos que a linha não seja uma partícula
-                activeLineElement.classList.remove('particles-active');
-                activeLineElement.dataset.particlized = 'false';
+                activeLineElement.classList.remove('particlized');
                 activeLineElement.classList.add('active');
             }
             lastActiveLyricIndex = activeIndex;
@@ -274,28 +295,26 @@ export function syncLyrics(currentTime) {
         }
     }
 
-    // --- 【LÓGICA DE PARTÍCULAS CORRIGIDA】 ---
-    allLyricLines.forEach((line) => {
-        const lineRect = line.getBoundingClientRect();
+    if (dom.lyricsContainer.classList.contains('active')) {
+        const wrapperRect = listWrapper.getBoundingClientRect();
+        const dissolveBoundary = wrapperRect.top + wrapperRect.height * 0.15;
 
-        // CONDIÇÃO 1: A linha de letra rolou para FORA da tela (no topo)
-        // E ainda não foi transformada em partículas.
-        if (lineRect.bottom < wrapperRect.top && line.dataset.particlized !== 'true') {
-            createParticlesFromElement(line, wrapperRect);
+        allLyricLines.forEach((line) => {
+            if (line.classList.contains('active')) return;
 
-            // CONDIÇÃO 2: A linha de letra está DENTRO da tela
-            // E ela havia sido transformada em partículas anteriormente.
-        } else if (lineRect.bottom >= wrapperRect.top && line.dataset.particlized === 'true') {
-            // Reverte o estado, tornando a letra visível novamente.
-            line.dataset.particlized = 'false';
-            line.classList.remove('particles-active');
-        }
-    });
+            const lineRect = line.getBoundingClientRect();
+
+            // 当歌词进入顶部遮罩区域时触发粒子化
+            if (lineRect.top < dissolveBoundary && !line.classList.contains('particlized')) {
+                createParticlesFromElement(line);
+            }
+            // 当歌词滚回可视区域时恢复其可见性
+            else if (lineRect.top >= dissolveBoundary && line.classList.contains('particlized')) {
+                line.classList.remove('particlized');
+            }
+        });
+    }
 }
-// =================================================================
-// =================== FIM DA FUNÇÃO CORRIGIDA =====================
-// =================================================================
-
 
 export function renderPlaylist() {
     dom.playlistEl.innerHTML = '';
@@ -349,11 +368,10 @@ export function filterPlaylist() {
     }
 }
 
-
 export function toggleLyricsPanel() { dom.lyricsContainer.classList.toggle('active'); }
-export function togglePlaylistPanel() { dom.playlistPanel.classList.toggle('active'); }
-export function toggleInfoPanel() { dom.infoPanel.classList.toggle('active'); }
-export function toggleShortcutPanel() { dom.shortcutPanel.classList.toggle('active'); }
+export function togglePlaylistPanel() { manageSidePanel(dom.playlistPanel); }
+export function toggleInfoPanel() { manageSidePanel(dom.infoPanel); }
+export function toggleShortcutPanel() { manageSidePanel(dom.shortcutPanel); }
 
 export function toggleGalleryView() {
     dom.galleryContainer.classList.toggle('active');
@@ -444,8 +462,6 @@ export function normalizePosition(mouseX, mouseY) {
     return { normalizedX, normalizedY };
 }
 
-// --- 【新增】歌词拖拽功能 ---
-
 let wasPlayingBeforeDrag = false;
 let dragStartY = 0;
 let initialTranslateY = 0;
@@ -453,7 +469,6 @@ let targetTimeOnDragEnd = 0;
 
 function onLyricsDragStart(e) {
     if (state.parsedLyrics.length === 0) return;
-    // 只响应鼠标左键
     if (e.button !== 0) return;
 
     e.preventDefault();
@@ -483,7 +498,6 @@ function onLyricsDragMove(e) {
     const newTranslateY = initialTranslateY + deltaY;
     dom.lyricsList.style.transform = `translateY(${newTranslateY}px)`;
 
-    // 找到中心线对应的歌词
     const wrapperRect = dom.lyricsListWrapper.getBoundingClientRect();
     const centerLineY = wrapperRect.top + wrapperRect.height / 2;
 
@@ -518,7 +532,6 @@ function onLyricsDragEnd(e) {
     window.removeEventListener('mousemove', onLyricsDragMove);
     window.removeEventListener('mouseup', onLyricsDragEnd);
 
-    // 应用新的播放时间
     if (targetTimeOnDragEnd >= 0) {
         dom.mediaPlayer.currentTime = targetTimeOnDragEnd;
     }
@@ -526,7 +539,6 @@ function onLyricsDragEnd(e) {
     if (wasPlayingBeforeDrag) {
         playTrack();
     }
-    // 强制调用一次 syncLyrics 来校准位置
     syncLyrics(dom.mediaPlayer.currentTime);
 }
 

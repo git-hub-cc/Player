@@ -3,16 +3,17 @@
 import * as dom from './dom.js';
 import * as state from './state.js';
 import { PLAY_MODES, desktopTourSteps, mobileTourSteps } from './config.js';
-import { loadTemplates, normalizeKey } from './utils.js';
-import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode } from './player.js';
-import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, setupParticleCanvas } from './ui.js';
+// 【修改】导入 formatTime 用于进度条拖动时的实时时间显示
+import { loadTemplates, normalizeKey, formatTime } from './utils.js';
+import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode, playTrack } from './player.js';
+import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, setupParticleCanvas, closeActivePanels } from './ui.js';
 import { loadShortcuts, executeShortcut, setupShortcutListeners } from './features/shortcuts.js';
 import { FeatureTour } from './features/tour.js';
 import * as backgroundGallery from './features/gallery.js';
 
 // --- 持久化 ---
 const PLAYER_STATE_KEY = 'player_state';
-let initialTime = 0; // 用于恢复上次播放时间
+let initialTime = 0;
 
 // 保存播放器状态到 localStorage
 function savePlayerState() {
@@ -26,16 +27,13 @@ function savePlayerState() {
     localStorage.setItem(PLAYER_STATE_KEY, JSON.stringify(stateToSave));
 }
 
-// 从 localStorage 加载播放器状态
 function loadPlayerState() {
     const savedState = localStorage.getItem(PLAYER_STATE_KEY);
     if (savedState) {
         try {
             const parsedState = JSON.parse(savedState);
-
             state.setCurrentTrackIndex(parsedState.trackIndex || 0);
             state.setCurrentModeIndex(parsedState.modeIndex || 0);
-
             dom.mediaPlayer.volume = parsedState.volume ?? 1;
             dom.mediaPlayer.muted = parsedState.muted ?? false;
             initialTime = parsedState.currentTime || 0;
@@ -62,7 +60,7 @@ function setupEventListeners() {
         savePlayerState();
     });
 
-    // 监听浏览器的前进/后退事件
+    // 浏览器历史事件
     window.addEventListener('popstate', (event) => {
         if (event.state && typeof event.state.trackIndex !== 'undefined') {
             if (state.currentTrackIndex !== event.state.trackIndex) {
@@ -77,13 +75,12 @@ function setupEventListeners() {
         const currentMode = PLAY_MODES[state.currentModeIndex];
         if (currentMode === 'single') {
             dom.mediaPlayer.currentTime = 0;
-            dom.mediaPlayer.play();
+            playTrack();
         } else {
             playNextTrack();
             savePlayerState();
         }
     });
-
     dom.mediaPlayer.addEventListener('loadedmetadata', () => {
         updateProgress();
         if (initialTime > 0) {
@@ -92,15 +89,39 @@ function setupEventListeners() {
         }
     });
 
-    // Progress and Volume bars
-    dom.progressBar.addEventListener('input', (e) => {
-        const value = e.target.value;
-        if (!isNaN(dom.mediaPlayer.duration)) {
-            dom.mediaPlayer.currentTime = (value / 100) * dom.mediaPlayer.duration;
-        }
-        dom.progressBar.style.setProperty('--value-percent', `${value}%`);
+    // 【关键修复】重写进度条的事件监听逻辑
+
+    // 1. 当用户按下鼠标时，进入“拖动模式”
+    dom.progressBar.addEventListener('mousedown', () => {
+        state.setIsScrubbing(true);
     });
 
+    // 2. 当用户拖动滑块时 (input事件)，只更新界面上的时间文本和进度条背景色
+    //    这提供了即时响应，但我们还未改变实际的 audio.currentTime，以避免卡顿
+    dom.progressBar.addEventListener('input', (e) => {
+        const value = e.target.value;
+        dom.progressBar.style.setProperty('--value-percent', `${value}%`);
+
+        if (!isNaN(dom.mediaPlayer.duration)) {
+            const newTime = (value / 100) * dom.mediaPlayer.duration;
+            dom.currentTimeEl.textContent = formatTime(newTime);
+        }
+    });
+
+    // 3. 当用户释放鼠标时 (change事件)，才真正更新音频的播放时间，并退出“拖动模式”
+    dom.progressBar.addEventListener('change', (e) => {
+        if (!isNaN(dom.mediaPlayer.duration)) {
+            dom.mediaPlayer.currentTime = (e.target.value / 100) * dom.mediaPlayer.duration;
+        }
+        state.setIsScrubbing(false);
+
+        // 如果在拖动结束时播放器是暂停的，则开始播放
+        if (!state.isPlaying) {
+            playTrack();
+        }
+    });
+
+    // Volume controls
     dom.volumeBtn.addEventListener('click', () => {
         dom.mediaPlayer.muted = !dom.mediaPlayer.muted;
         updateVolumeBarVisual(dom.mediaPlayer.volume, dom.mediaPlayer.muted);
@@ -114,30 +135,27 @@ function setupEventListeners() {
         savePlayerState();
     });
 
-    // Panel toggles
+    // Panel toggles and closing
     dom.lyricsBtn.addEventListener('click', toggleLyricsPanel);
     dom.mobileLyricsBtn.addEventListener('click', toggleLyricsPanel);
     dom.playlistBtn.addEventListener('click', togglePlaylistPanel);
     dom.mobilePlaylistBtn.addEventListener('click', togglePlaylistPanel);
     dom.infoBtn.addEventListener('click', toggleInfoPanel);
     dom.shortcutBtn.addEventListener('click', toggleShortcutPanel);
-
-    // Panel closing
     [dom.closeInfoBtn, dom.closePlaylistBtn, dom.closeShortcutBtn].forEach(btn => {
-        if (btn) {
-            btn.addEventListener('click', () => btn.closest('aside').classList.remove('active'));
-        }
+        if (btn) btn.addEventListener('click', () => btn.closest('aside').classList.remove('active'));
     });
     [dom.infoPanel, dom.playlistPanel, dom.shortcutPanel, dom.lyricsContainer].forEach(panel => {
         panel.addEventListener('click', (e) => { if (e.target === panel) panel.classList.remove('active'); });
     });
+    dom.mainView.addEventListener('click', closeActivePanels);
 
     // Playlist
     dom.playlistEl.addEventListener('click', (e) => {
         const item = e.target.closest('.playlist-item');
         if (item) {
             const newIndex = parseInt(item.dataset.index, 10);
-            loadTrack(newIndex);
+            loadTrack(newIndex, { forcePlay: true });
             savePlayerState();
         }
     });
@@ -166,13 +184,10 @@ function setupEventListeners() {
         }
     });
 
-    // Global keyboard listener for shortcuts
+    // Global keyboard listener
     window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            hideContextMenu();
-        }
+        if (e.key === 'Escape') hideContextMenu();
         if (state.isRecordingShortcut || ['input', 'textarea'].includes(e.target.tagName.toLowerCase())) return;
-
         state.pressedShortcutKeys.add(normalizeKey(e.key));
         for (const actionId in state.shortcutSettings) {
             const requiredKeys = new Set(state.shortcutSettings[actionId].keys);
@@ -189,18 +204,15 @@ function setupEventListeners() {
     });
 
     setupShortcutListeners();
-    // 【新增】初始化歌词拖拽监听
     setupLyricsDragHandler();
-
     window.addEventListener('beforeunload', savePlayerState);
 }
+
 
 async function init() {
     showSkeleton();
     await loadTemplates();
     loadPlayerState();
-
-    // 【新增】初始化粒子效果的Canvas
     setupParticleCanvas();
 
     try {
@@ -236,7 +248,6 @@ async function init() {
             const initialUrl = `#track=${state.currentTrackIndex + 1}`;
             history.replaceState({ trackIndex: state.currentTrackIndex }, initialTrack.title || '', initialUrl);
         }
-
     } else {
         dom.trackTitleEl.textContent = "播放列表为空";
         hideSkeleton();
@@ -245,7 +256,6 @@ async function init() {
     updateVolumeBarVisual(dom.mediaPlayer.volume, dom.mediaPlayer.muted);
     updateModeButton();
     updateProgress();
-
     loadShortcuts();
     renderContextMenu();
     setupEventListeners();
