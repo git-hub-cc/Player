@@ -8,19 +8,21 @@ import { renderLyrics, syncLyrics, extractAndApplyGradient, showSkeleton, hideSk
 
 // --- requestAnimationFrame ---
 let animationFrameId = null;
-// 【新增】用于控制骨架屏的计时器
 let skeletonTimer = null;
 
 export async function loadTrack(trackIndex, options = {}) {
-    const { fromHistory = false } = options;
+    const { fromHistory = false, forcePlay = false } = options;
 
-    // 如果计时器存在，说明这是一个由切歌触发的加载，此时清除计时器，因为加载已开始
     if (skeletonTimer) {
         clearTimeout(skeletonTimer);
         skeletonTimer = null;
     }
 
     if (state.playlist.length === 0) return;
+
+    if (forcePlay) {
+        state.setIsPlaying(true);
+    }
 
     state.setCurrentTrackIndex(trackIndex);
     const track = state.playlist[trackIndex];
@@ -31,25 +33,21 @@ export async function loadTrack(trackIndex, options = {}) {
     dom.albumArtEl.src = artUrl;
     dom.controlAlbumArtEl.src = artUrl;
 
-    // 【修改】确保在传递给 parseLRC 之前，歌词字符串是正确的格式
     let lyricsToParse = (track.lyrics || '')
-        .replace(/\[/g, '\n[')    // 所有 `[` 前加换行符
-        .replace(/\n{2,}/g, '\n') // 合并多个换行为一个
-        .replace(/^\n/, '');      // 去除开头多余的换行
+        .replace(/\[/g, '\n[')
+        .replace(/\n{2,}/g, '\n')
+        .replace(/^\n/, '');
     state.setParsedLyrics(parseLRC(lyricsToParse));
-    console.log(lyricsToParse)
     renderLyrics();
     updatePlaylistUI();
 
     let loadedOnce = false;
     const handleMediaReady = () => {
         if (!loadedOnce) {
-            hideSkeleton(); // 无论如何，加载完成就隐藏
+            hideSkeleton();
             updateProgress();
             if (state.isPlaying) {
-                dom.mediaPlayer.play().catch(e => {
-                    if (e.name !== 'AbortError') console.error("播放失败:", e);
-                });
+                playTrack();
             }
             loadedOnce = true;
         }
@@ -57,8 +55,8 @@ export async function loadTrack(trackIndex, options = {}) {
 
     const handleError = (e) => {
         console.error("媒体加载错误:", e);
-        if (skeletonTimer) clearTimeout(skeletonTimer); // 出错时也要清理计时器
-        hideSkeleton(); // 隐藏骨架屏
+        if (skeletonTimer) clearTimeout(skeletonTimer);
+        hideSkeleton();
         dom.trackTitleEl.textContent = "错误";
         dom.trackArtistEl.textContent = "无法播放此媒体";
         dom.mainView.style.background = '';
@@ -90,10 +88,6 @@ export async function loadTrack(trackIndex, options = {}) {
     dom.mediaPlayer.oncanplay = handleMediaReady;
     dom.mediaPlayer.onloadedmetadata = updateProgress;
 
-    if (state.isPlaying) {
-        dom.mediaPlayer.play().catch(e => { /* Ignore */ });
-    }
-
     if (!fromHistory) {
         const newUrl = `#track=${trackIndex + 1}`;
         if (window.location.hash !== newUrl || (history.state && history.state.trackIndex !== trackIndex)) {
@@ -120,7 +114,6 @@ export function playTrack() {
             }
         }).catch(e => {
             if (e.name !== 'AbortError') console.error("播放失败:", e);
-            state.setIsPlaying(false);
         });
     }
 }
@@ -139,14 +132,11 @@ export const togglePlayPause = () => state.isPlaying ? pauseTrack() : playTrack(
 function changeTrack(direction) {
     if (state.playlist.length <= 1) return;
 
-    // 【修改】将故障效果持续时间延长至3秒
     triggerGlitchEffect(3000);
-
     clearTimeout(skeletonTimer);
-
     skeletonTimer = setTimeout(() => {
         showSkeleton();
-    }, 3000); // 骨架屏的延迟时间保持不变
+    }, 3000);
 
     setTimeout(() => {
         let newIndex;
@@ -162,8 +152,7 @@ function changeTrack(direction) {
         } else { // 上一首
             newIndex = (state.currentTrackIndex - 1 + state.playlist.length) % state.playlist.length;
         }
-
-        loadTrack(newIndex);
+        loadTrack(newIndex, { forcePlay: true });
     }, 150);
 }
 
@@ -176,6 +165,9 @@ export function playPrevTrack() {
 }
 
 export function updateProgress() {
+    // 【关键修复】如果用户正在拖动进度条，则不执行此函数，以防止UI冲突
+    if (state.isScrubbing) return;
+
     const { duration, currentTime } = dom.mediaPlayer;
     let progressPercent = 0;
 

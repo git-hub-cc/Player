@@ -3,7 +3,7 @@
 import * as dom from '../dom.js';
 import { DEFAULT_ART } from '../config.js';
 import { loadTrack } from '../player.js';
-import { getTemplate } from '../utils.js'; // 引入 getTemplate
+import { getTemplate } from '../utils.js';
 
 // --- 配置项 ---
 const ITEM_WIDTH = 280;
@@ -14,9 +14,9 @@ const RENDER_BUFFER = 1;
 const LONG_PRESS_DURATION = 300;
 const FRICTION = 0.92;
 const IDLE_TIMEOUT = 3000;
-const DRAG_THRESHOLD = 5; // 拖动阈值
+const DRAG_THRESHOLD = 5;
 
-// --- 状态变量 (集中管理) ---
+// --- 状态变量 ---
 const state = {
     isInitialized: false,
     isPressing: false,
@@ -26,7 +26,7 @@ const state = {
     startPos: { x: 0, y: 0 },
     currentPos: { x: 0, y: 0 },
     targetPos: { x: 0, y: 0 },
-    lastUpdatePos: { x: 0, y: 0 }, // OPTIMIZATION: 用于节流 DOM 更新
+    lastUpdatePos: { x: 0, y: 0 },
     velocity: { x: 0, y: 0 },
     lastMoveTime: 0,
     lastMovePos: { x: 0, y: 0 },
@@ -47,11 +47,9 @@ function hidePlayer() {
     dom.playerContainer.classList.add('hidden-by-gallery');
 }
 
-// --- 核心：虚拟化渲染 (已优化) ---
+// --- 核心：虚拟化渲染 ---
 function updateGallery() {
-    // OPTIMIZATION: 记录当前位置，用于节流判断
     state.lastUpdatePos = { ...state.targetPos };
-
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
     const fullItemWidth = ITEM_WIDTH + GAP;
@@ -62,7 +60,6 @@ function updateGallery() {
     const startRow = Math.floor(-state.targetPos.y / fullItemHeight) - RENDER_BUFFER;
     const endRow = Math.floor((-state.targetPos.y + viewportHeight) / fullItemHeight) + RENDER_BUFFER;
 
-    // 移除不在视野内的元素
     for (const [cellId, element] of state.renderedCells.entries()) {
         const [row, col] = cellId.split(',').map(Number);
         if (row < startRow || row > endRow || col < startCol || col > endCol) {
@@ -71,17 +68,15 @@ function updateGallery() {
         }
     }
 
-    // OPTIMIZATION: 使用 DocumentFragment 批量添加
     const fragment = document.createDocumentFragment();
 
     for (let row = startRow; row <= endRow; row++) {
         for (let col = startCol; col <= endCol; col++) {
             const cellId = `${row},${col}`;
             if (!state.renderedCells.has(cellId)) {
-                // OPTIMIZATION: 使用 <template> 克隆，比 innerHTML 高效
                 const itemNode = getTemplate('template-gallery-item');
                 const item = itemNode.querySelector('.gallery-item');
-                if (!item) continue; // 模板加载失败保护
+                if (!item) continue;
 
                 const x = col * fullItemWidth + GAP;
                 const y = row * fullItemHeight + GAP;
@@ -94,12 +89,34 @@ function updateGallery() {
                 item.dataset.index = trackIndex;
 
                 const artUrl = track.albumArt || DEFAULT_ART;
-
-                // 填充模板内容
-                item.querySelector('.gallery-item-art').src = artUrl;
-                item.querySelector('.gallery-item-art').alt = track.title;
+                const artElement = item.querySelector('.gallery-item-art');
+                artElement.alt = track.title;
                 item.querySelector('.gallery-item-title').textContent = track.title || '未知标题';
                 item.querySelector('.gallery-item-artist').textContent = track.artist || '未知艺术家';
+
+                artElement.onload = () => {
+                    try {
+                        const canvas = dom.bgCanvas;
+                        const ctx = dom.bgCtx;
+                        const size = 50;
+                        canvas.width = size;
+                        canvas.height = size;
+                        ctx.drawImage(artElement, 0, 0, size, size);
+                        const p = ctx.getImageData(1, 1, 1, 1).data;
+                        const borderColor = `rgb(${p[0]}, ${p[1]}, ${p[2]})`;
+                        item.style.setProperty('--gallery-item-border-color', borderColor);
+                    } catch (e) {
+                        console.warn("Could not extract border color for gallery item.", e);
+                        item.style.setProperty('--gallery-item-border-color', 'var(--highlight-bg)');
+                    }
+                };
+                artElement.onerror = () => {
+                    item.style.setProperty('--gallery-item-border-color', 'var(--highlight-bg)');
+                };
+                artElement.src = artUrl;
+                if (artElement.complete && artElement.naturalWidth > 0) {
+                    artElement.onload();
+                }
 
                 fragment.appendChild(item);
                 requestAnimationFrame(() => item.classList.add('visible'));
@@ -107,7 +124,6 @@ function updateGallery() {
             }
         }
     }
-    // 一次性添加到 DOM
     dom.galleryWrapper.appendChild(fragment);
 }
 
@@ -122,23 +138,17 @@ function animate() {
         state.targetPos.y += state.velocity.y;
     }
 
-    // 保证流畅位移
     dom.galleryWrapper.style.transform = `translate(${state.currentPos.x}px, ${state.currentPos.y}px)`;
-
-    // OPTIMIZATION: 节流 updateGallery 调用
     const movedDistance = Math.hypot(state.targetPos.x - state.lastUpdatePos.x, state.targetPos.y - state.lastUpdatePos.y);
     if (movedDistance > ITEM_WIDTH / 2) {
         updateGallery();
     }
-
     state.animationFrame = requestAnimationFrame(animate);
 }
 
 function onPointerDown(e) {
     e.preventDefault();
-
     hidePlayer();
-
     state.isPressing = true;
     state.justDragged = false;
     state.startPos = { x: e.clientX, y: e.clientY };
@@ -171,7 +181,7 @@ function onPointerDown(e) {
             state.targetPos.x = dragStartTarget.x + deltaX;
             state.targetPos.y = dragStartTarget.y + deltaY;
             if (deltaTime > 0) {
-                const speedMultiplier = 16.67; // ~1000/60
+                const speedMultiplier = 16.67;
                 state.velocity.x = (currentMovePos.x - state.lastMovePos.x) / deltaTime * speedMultiplier;
                 state.velocity.y = (currentMovePos.y - state.lastMovePos.y) / deltaTime * speedMultiplier;
             }
@@ -185,7 +195,6 @@ function onPointerDown(e) {
         clearTimeout(state.longPressTimer);
         state.idleTimer = setTimeout(showPlayer, IDLE_TIMEOUT);
         if (state.isDragging) setTimeout(() => { state.justDragged = false; }, 50);
-
         state.isPressing = false;
         state.isDragging = false;
         dom.galleryContainer.classList.remove('active');
@@ -199,13 +208,13 @@ function onPointerDown(e) {
 
 function onGalleryItemClick(e) {
     if (state.justDragged) return;
-
     const item = e.target.closest('.gallery-item');
     if (!item) return;
 
     const trackIndex = parseInt(item.dataset.index, 10);
     if (!isNaN(trackIndex)) {
-        loadTrack(trackIndex);
+        // 【修改】点击画廊项时，强制播放
+        loadTrack(trackIndex, { forcePlay: true });
         showPlayer();
     }
 }
@@ -213,19 +222,17 @@ function onGalleryItemClick(e) {
 export function init(data) {
     if (state.isInitialized || !data || data.length === 0) return;
     state.playlistData = data;
-
-    // OPTIMIZATION: 将事件监听器绑定到更具体的容器
     dom.galleryContainer.addEventListener('mousedown', onPointerDown);
     dom.galleryContainer.addEventListener('click', onGalleryItemClick);
 
     const centerOffset = {
-        x: (-5 * (ITEM_WIDTH + GAP)) / 2, // 随意居中
+        x: (-5 * (ITEM_WIDTH + GAP)) / 2,
         y: (-5 * (ITEM_HEIGHT + GAP)) / 2,
     };
     state.currentPos = { ...centerOffset };
     state.targetPos = { ...centerOffset };
 
-    updateGallery(); // 初始渲染
+    updateGallery();
     animate();
     state.isInitialized = true;
 }

@@ -11,23 +11,16 @@
     align-items: center;
 }
 .media-visualizer {
-    padding: 24px; /* 在四周都增加一些内边距，让播放器有呼吸空间 */
+    padding: 24px;
 }
 
-/* --- 【优化】让 video 元素自适应内容大小 --- */
+/* --- 视频元素自适应 --- */
 #media-player {
-    /* 移除固定的尺寸和宽高比 */
-    /* width, height, aspect-ratio, and a fixed max-width are removed. */
-
-    /* 设置最大尺寸，使其不超过父容器，并保持内容的宽高比 */
     max-width: 100%;
     max-height: 100%;
-
-    /* 保留视觉样式 */
-    background-color: #000; /* 视频加载前的背景 */
+    background-color: #000;
     border-radius: 12px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-    /* object-fit 属性现在不是必须的，因为元素和内容的宽高比将一致 */
 }
 
 .album-art-container {
@@ -42,18 +35,15 @@
     box-shadow: 0 8px 24px rgba(0,0,0,0.5);
 }
 
-/* 封面图的 object-fit 样式 */
 #album-art {
     width: 100%;
     height: 100%;
-    object-fit: cover; /* 保持封面图填充以获得最佳视觉 */
+    object-fit: cover;
     border-radius: inherit;
 }
 
-
-/* --- 【新增】故障效果样式 --- */
+/* --- 故障效果样式 --- */
 .main-view.glitching .media-visualizer {
-    /* 应用新的、更复杂的滤镜 */
     filter: url(#glitch-filter-spotify);
 }
 .glitch-overlay {
@@ -67,7 +57,6 @@
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.1s ease-out, visibility 0s 0.1s;
-    /* screen 或 hard-light 都有不错的效果 */
     mix-blend-mode: screen;
 }
 .glitch-overlay.active {
@@ -76,7 +65,7 @@
     transition: opacity 0.05s ease-in, visibility 0s;
 }
 .glitch-overlay rect {
-    shape-rendering: crispEdges; /* 保持线条锐利 */
+    shape-rendering: crispEdges;
 }
 
 /* --- 歌词样式 --- */
@@ -98,23 +87,22 @@
     height: 80%;
     max-height: 500px;
     overflow: hidden;
-    touch-action: none; /* 优化移动端触摸 */
+    touch-action: none;
     position: relative;
     cursor: default;
     -webkit-mask-image: linear-gradient(transparent 0%, black 15%, black 85%, transparent 100%);
     mask-image: linear-gradient(transparent 0%, black 15%, black 85%, transparent 100%);
 }
 
-/* --- 【新增】粒子效果Canvas样式 --- */
+/* 【新增】粒子效果Canvas样式 */
 #particle-canvas {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    /* 【修改】提高 z-index 让粒子效果更清晰地覆盖在歌词之上 */
-    z-index: 1001;
-    pointer-events: none; /* 确保不影响鼠标事件 */
+    z-index: 1001; /* 确保在歌词列表之上，但仍在拖动指示器之下 */
+    pointer-events: none;
 }
 
 .lyrics-list {
@@ -126,10 +114,10 @@
 }
 .lyrics-list.dragging {
     cursor: grabbing;
-    transition: none; /* 拖拽时禁用平滑过渡 */
+    transition: none;
 }
 
-/* --- 【新增】歌词拖拽指示器样式 --- */
+/* --- 歌词拖拽指示器样式 --- */
 .lyrics-drag-indicator {
     position: absolute;
     top: 50%;
@@ -142,6 +130,7 @@
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.2s ease;
+    z-index: 1002; /* 确保在粒子之上 */
 }
 .lyrics-drag-indicator.active { opacity: 1; }
 .lyrics-drag-line { flex-grow: 1; height: 1px; background-color: var(--primary-color); }
@@ -152,10 +141,14 @@
     line-height: 1.4;
     transition: color 0.4s ease, transform 0.4s ease, opacity 0.4s ease;
 }
-/* 【新增】用于JS控制，立即隐藏歌词以配合粒子效果 */
-.lyrics-list p.particles-active {
+
+/* 【新增】用于在创建粒子后隐藏原始P元素 */
+.lyrics-list p.particlized {
     opacity: 0 !important;
+    color: var(--text-secondary) !important;
+    transform: scale(1) !important;
 }
+
 .lyrics-list p.active {
     color: var(--text-primary);
     transform: scale(1.1);

@@ -11,8 +11,9 @@ export let shortcutSettings = {};
 export let pressedShortcutKeys = new Set();
 export let isRecordingShortcut = false;
 export let currentRecordingAction = null;
-
 export let isDraggingLyrics = false;
+export let isScrubbing = false; // 【新增】进度条拖动状态
+
 // Functions to modify state
 export function setPlaylist(newPlaylist) {
     playlist = newPlaylist;
@@ -49,4 +50,9 @@ export function setCurrentRecordingAction(action) {
 
 export function setIsDraggingLyrics(dragging) {
     isDraggingLyrics = dragging;
+}
+
+// 【新增】设置进度条拖动状态的函数
+export function setIsScrubbing(scrubbing) {
+    isScrubbing = scrubbing;
 }
