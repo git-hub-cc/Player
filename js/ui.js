@@ -50,12 +50,12 @@ function manageSidePanel(panelToToggle) {
  * 设置并添加粒子效果的Canvas
  */
 export function setupParticleCanvas() {
-    if (document.getElementById('particle-canvas')) return; // 防止重复创建
-    particleCanvas = document.createElement('canvas');
+    particleCanvas = document.getElementById('particle-canvas');
+    if (!particleCanvas) {
+        console.error("Particle canvas element not found.");
+        return;
+    }
     particleCtx = particleCanvas.getContext('2d', { willReadFrequently: true });
-    particleCanvas.id = 'particle-canvas';
-    // 将Canvas添加到mainView，确保它覆盖歌词区域
-    dom.mainView.appendChild(particleCanvas);
 }
 
 /**
@@ -344,7 +344,7 @@ export function filterPlaylist() {
     const query = dom.playlistSearchInput.value.toLowerCase().replace(/\s/g, '');
     const playlistItems = dom.getAllPlaylistItems();
     let hasVisibleItems = false;
-    const noResultsEl = dom.playlistNoResultsEl;
+    const noResultsEl = dom.playlistEl.querySelector('#playlist-no-results');
 
     state.playlist.forEach((track, index) => {
         const item = playlistItems[index];

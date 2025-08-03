@@ -124,7 +124,14 @@
     background-color: var(--highlight-bg);
     color: var(--text-primary);
 }
-
+.step-content p code {
+    background-color: var(--highlight-bg);
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    font-size: 0.9em;
+    color: var(--text-primary);
+}
 
 /* --- Mobile Tour Tooltip Arrow Adjustments --- */
 @media (max-width: 900px) {

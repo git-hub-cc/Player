@@ -69,8 +69,14 @@ export const downloadPanelBtn = document.getElementById('download-panel-btn');
 export const downloadPanel = document.getElementById('download-panel');
 export const closeDownloadBtn = document.getElementById('close-download-btn');
 export const douyinUrlInput = document.getElementById('douyin-url-input');
-export const startDownloadBtn = document.getElementById('start-download-btn');
 export const downloadStatusEl = document.getElementById('download-status');
+
+// 【修改】添加新的按钮和容器引用
+export const downloadActionsContainer = document.getElementById('download-actions-container');
+export const startDownloadBtn = document.getElementById('start-download-btn');
+export const downloadWorksBtn = document.getElementById('download-works-btn');
+export const downloadLikesBtn = document.getElementById('download-likes-btn');
+
 
 // DOM Query/Creation Functions
 export const getTemplateElementById = (id) => document.getElementById(id);

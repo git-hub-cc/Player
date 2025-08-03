@@ -5,11 +5,11 @@ import * as state from './state.js';
 import { PLAY_MODES, desktopTourSteps, mobileTourSteps } from './config.js';
 import { loadTemplates, normalizeKey, formatTime } from './utils.js';
 import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode, playTrack } from './player.js';
-import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, setupParticleCanvas, closeActivePanels, toggleDownloadPanel } from './ui.js';
+import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, setupParticleCanvas, closeActivePanels, toggleDownloadPanel, showToast } from './ui.js';
 import { loadShortcuts, executeShortcut, setupShortcutListeners } from './features/shortcuts.js';
 import { FeatureTour } from './features/tour.js';
 import * as backgroundGallery from './features/gallery.js';
-import { setupDownloaderListeners } from './features/downloader.js'; // 【新增】导入下载器监听设置函数
+import { setupDownloaderListeners } from './features/downloader.js';
 
 // --- 持久化 ---
 const PLAYER_STATE_KEY = 'player_state';
@@ -43,8 +43,6 @@ function loadPlayerState() {
         }
     }
 }
-
-// 【移除】已废弃的 handleDownloadRequest 函数，逻辑已移至 downloader.js
 
 function setupEventListeners() {
     // Player controls
@@ -140,13 +138,11 @@ function setupEventListeners() {
     dom.shortcutBtn.addEventListener('click', toggleShortcutPanel);
     dom.downloadPanelBtn.addEventListener('click', toggleDownloadPanel);
 
-    // 【优化】统一所有面板的关闭按钮逻辑
+    // 统一所有面板的关闭按钮逻辑
     dom.closePlaylistBtn.addEventListener('click', closeActivePanels);
     dom.closeInfoBtn.addEventListener('click', closeActivePanels);
     dom.closeShortcutBtn.addEventListener('click', closeActivePanels);
     dom.closeDownloadBtn.addEventListener('click', closeActivePanels);
-
-    setupDownloaderListeners(); // 调用模块函数来设置下载按钮和输入框的监听器
 
     // 点击外部区域关闭面板
     [dom.infoPanel, dom.playlistPanel, dom.shortcutPanel, dom.lyricsContainer, dom.downloadPanel].forEach(panel => {
@@ -207,6 +203,51 @@ function setupEventListeners() {
         state.pressedShortcutKeys.delete(normalizeKey(e.key));
     });
 
+    // 【新增】监听并处理本地播放列表
+    document.addEventListener('local-playlist-loaded', (event) => {
+        const localPlaylist = event.detail;
+        console.log('接收到本地播放列表:', localPlaylist);
+
+        const existingSrcs = new Set(state.playlist.map(t => t.src));
+        const uniqueLocalTracks = localPlaylist.filter(track => !existingSrcs.has(track.src));
+
+        if (uniqueLocalTracks.length > 0) {
+            state.setPlaylist([...uniqueLocalTracks, ...state.playlist]);
+            // 更新当前播放索引，以保持当前曲目不变
+            state.setCurrentTrackIndex(state.currentTrackIndex + uniqueLocalTracks.length);
+            renderPlaylist();
+            updatePlaylistUI();
+            showToast(`已加载 ${uniqueLocalTracks.length} 个本地作品！`);
+        }
+    });
+
+    // 【修改】监听来自下载代理的新曲目事件
+    document.addEventListener('new-track-added', (event) => {
+        const newTrack = event.detail;
+        console.log('接收到新曲目:', newTrack);
+
+        const isDuplicate = state.playlist.some(track => track.src === newTrack.src);
+        if (isDuplicate) {
+            console.log(`曲目 ${newTrack.title} 已存在，跳过添加。`);
+            showToast(`"${newTrack.title}" 已在播放列表中。`);
+            return;
+        }
+
+        // 1. 将新曲目添加到播放列表的最前面
+        state.setPlaylist([newTrack, ...state.playlist]);
+
+        // 2. 更新当前播放索引，使其指向原来的曲目
+        state.setCurrentTrackIndex(state.currentTrackIndex + 1);
+
+        // 3. 完全重绘播放列表UI以反映新的顺序和索引
+        renderPlaylist();
+        updatePlaylistUI();
+
+        // 4. 通知用户
+        showToast(`已添加 "${newTrack.title}" 到播放列表！`);
+    });
+
+    setupDownloaderListeners();
     setupShortcutListeners();
     setupLyricsDragHandler();
     window.addEventListener('beforeunload', savePlayerState);
@@ -233,6 +274,12 @@ async function init() {
             };
         });
         state.setPlaylist(processedPlaylist);
+
+        if (state.currentTrackIndex >= state.playlist.length || state.currentTrackIndex < 0) {
+            console.warn(`Saved trackIndex ${state.currentTrackIndex} is out of bounds for the current playlist (length: ${state.playlist.length}). Resetting to 0.`);
+            state.setCurrentTrackIndex(0);
+        }
+
         backgroundGallery.init(processedPlaylist);
     } catch (error) {
         console.error("无法加载或处理播放列表:", error);

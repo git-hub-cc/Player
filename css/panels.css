@@ -1,27 +1,23 @@
 /* panels.css */
 /* --- 侧滑面板 (通用样式) --- */
-/* 修改通用样式，将 .download-panel 也包含进去 */
 .playlist-panel, .info-panel, .shortcut-panel, .download-panel {
     position: absolute;
     top: 0;
     right: 0;
-    /* 【修改】将 bottom 设置为 0，并让 footer 的 z-index 更高，以覆盖面板底部 */
     bottom: 0;
     width: 340px;
     max-width: 90%;
     background-color: var(--panel-bg);
     box-shadow: -5px 0 15px rgba(0,0,0,0.2);
-    z-index: 2000; /* 面板的 z-index */
+    z-index: 2000;
     transform: translateX(100%);
     visibility: hidden;
     transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), visibility 0s 0.4s;
     display: flex;
     flex-direction: column;
-    /* 【新增】确保面板内容不会被播放控制器遮挡 */
     padding-bottom: var(--controls-height);
 }
 
-/* 【修改】面板激活时的样式 */
 .playlist-panel.active, .info-panel.active, .shortcut-panel.active, .download-panel.active {
     transform: translateX(0);
     visibility: visible;
@@ -71,8 +67,6 @@
 .playlist::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; }
 .playlist::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
 
-/* --- 优化点 1: 播放列表过滤 --- */
-/* 用于JS控制的隐藏类，取代直接操作style */
 .playlist-item.hidden {
     display: none;
 }
@@ -86,14 +80,11 @@
 .info-content a:hover { text-decoration: underline; }
 .info-content ul { list-style-position: inside; padding-left: 5px; font-size: 13px; }
 .info-content ul li { margin-bottom: 5px; }
-
-/* 用于段落内嵌的图标样式 */
 .info-content .inline-icon {
     width: 1em;
     height: 1em;
     vertical-align: -0.125em;
 }
-
 .info-content::-webkit-scrollbar { width: 8px; } .info-content::-webkit-scrollbar-track { background-color: transparent; } .info-content::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; } .info-content::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
 
 /* --- Shortcut Panel List --- */
@@ -107,15 +98,21 @@
 .shortcut-item .actions button { background: none; border: 1px solid var(--text-secondary); color: var(--text-secondary); padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; transition: all 0.2s ease; }
 .shortcut-item .actions button:hover { background-color: var(--highlight-bg); color: var(--text-primary); border-color: var(--text-primary); } .shortcut-item .actions .set-btn:hover { border-color: var(--primary-color); color: var(--primary-color); }
 
-/* --- 【新增】下载面板专属样式 --- */
+/* --- 下载面板专属样式 --- */
 .download-panel-content {
     padding: 20px;
     display: flex;
     flex-direction: column;
-    gap: 16px; /* 元素之间的间距 */
+    gap: 16px;
     flex-grow: 1;
     overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--slider-track-color) transparent;
 }
+.download-panel-content::-webkit-scrollbar { width: 8px; }
+.download-panel-content::-webkit-scrollbar-track { background-color: transparent; }
+.download-panel-content::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; }
+.download-panel-content::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
 
 .download-panel-content .panel-description {
     font-size: 14px;
@@ -126,7 +123,7 @@
 
 .download-panel-content textarea {
     width: 100%;
-    height: 120px;
+    min-height: 120px; /* 改为最小高度 */
     background-color: var(--highlight-bg);
     border: 1px solid var(--slider-track-color);
     border-radius: 6px;
@@ -134,7 +131,7 @@
     padding: 12px;
     font-size: 14px;
     font-family: var(--font-family);
-    resize: vertical; /* 允许用户垂直调整大小 */
+    resize: vertical;
     outline: none;
     transition: border-color 0.2s, box-shadow 0.2s;
 }
@@ -144,14 +141,14 @@
     box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.3);
 }
 
-/* --- 【新增】通用动作按钮样式 --- */
+/* --- 通用动作按钮样式 --- */
 .action-btn {
     background-color: var(--primary-color);
     color: #000;
     font-weight: bold;
     border: none;
     padding: 12px 20px;
-    border-radius: 50px; /* 圆角按钮 */
+    border-radius: 50px;
     cursor: pointer;
     font-size: 15px;
     text-align: center;
@@ -160,6 +157,7 @@
     justify-content: center;
     align-items: center;
     position: relative;
+    flex-shrink: 0; /* 防止按钮被压缩 */
 }
 
 .action-btn:hover:not(:disabled) {
@@ -174,7 +172,7 @@
     transform: scale(1);
 }
 
-/* --- 【新增】下载状态区域样式 --- */
+/* --- 下载状态区域样式 --- */
 .download-status {
     margin-top: 10px;
     padding: 12px;
@@ -183,9 +181,9 @@
     line-height: 1.6;
     background-color: var(--highlight-bg);
     color: var(--text-secondary);
-    display: none; /* 默认隐藏 */
-    white-space: pre-wrap; /* 保持换行 */
-    word-wrap: break-word; /* 强制长单词换行 */
+    display: none;
+    white-space: pre-wrap;
+    word-wrap: break-word;
 }
 
 .download-status.success {
@@ -198,7 +196,7 @@
     color: #e51414;
 }
 
-/* --- 【新增】加载动画 for action-btn --- */
+/* --- 加载动画 for action-btn --- */
 .action-btn .btn-loader {
     display: none;
     width: 20px;
@@ -219,4 +217,201 @@
 
 .action-btn.loading .btn-loader {
     display: block;
+}
+
+/* --- 下载面板引导视图免责声明样式 --- */
+.setup-disclaimer {
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    line-height: 1.6;
+    background-color: rgba(229, 20, 20, 0.1);
+    border: 1px solid rgba(229, 20, 20, 0.3);
+    color: var(--text-secondary);
+}
+.setup-disclaimer strong {
+    color: #e51414;
+}
+
+/* --- 下载面板引导视图样式 --- */
+.setup-view {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.setup-header {
+    text-align: center;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--highlight-bg);
+}
+
+.setup-header h3 {
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.setup-header p {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.setup-step {
+    display: flex;
+    gap: 15px;
+    align-items: flex-start;
+}
+
+.step-number {
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background-color: var(--highlight-bg);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 16px;
+}
+
+.step-content h4 {
+    margin-bottom: 8px;
+    font-size: 15px;
+    color: var(--text-primary);
+}
+
+.step-content p {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+
+.step-content small {
+    font-size: 12px;
+    color: var(--slider-track-color);
+}
+
+.action-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--primary-color);
+    color: #000;
+    padding: 8px 16px;
+    border-radius: 20px;
+    text-decoration: none;
+    font-weight: bold;
+    font-size: 14px;
+    transition: background-color 0.2s ease;
+    margin-bottom: 8px;
+}
+
+.action-link:hover {
+    background-color: #1ed760;
+}
+
+.action-link svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+}
+
+.code-block {
+    position: relative;
+    background-color: var(--bg-color);
+    border: 1px solid var(--highlight-bg);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+}
+
+.code-block pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.code-block code {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: color 0.2s, background-color 0.2s;
+}
+
+.copy-btn:hover {
+    color: var(--text-primary);
+    background-color: var(--highlight-bg);
+}
+
+.copy-btn .check-icon { display: none; }
+.copy-btn.copied .copy-icon { display: none; }
+.copy-btn.copied .check-icon { display: block; color: var(--primary-color); }
+.copy-btn svg { width: 18px; height: 18px; fill: currentColor; }
+
+
+.setup-footer {
+    text-align: center;
+    margin-top: 10px;
+}
+
+.setup-footer p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 15px;
+}
+
+.connection-status-line {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--primary-color);
+    font-size: 14px;
+}
+
+.spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* 工作状态视图的样式（确保它能填满空间） */
+.downloader-view {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex-grow: 1;
+}
+
+.downloader-view textarea {
+    height: 120px;
+    flex-grow: 1; /* 让文本域在空间足够时可以伸展 */
+}
+
+/* 【新增】下载动作按钮容器样式 */
+.download-actions-container {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+}
+.download-actions-container .action-btn {
+    flex-grow: 1; /* 让按钮平分空间 */
 }
