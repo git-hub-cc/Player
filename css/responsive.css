@@ -14,8 +14,9 @@
         max-width: 100%;
         border-radius: 0;
     }
-    .playlist-panel, .info-panel, .shortcut-panel {
-        bottom: var(--mobile-controls-height);
+    .playlist-panel, .info-panel, .shortcut-panel, .download-panel {
+        bottom: 0;
+        padding-bottom: var(--mobile-controls-height);
     }
     .player-controls {
         grid-template-columns: 1fr;

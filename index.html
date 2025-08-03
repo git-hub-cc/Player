@@ -23,7 +23,7 @@
     <!-- 基础和布局 -->
     <link rel="stylesheet" href="css/base.css">
     <link rel="stylesheet" href="css/layout.css">
-    <link rel="stylesheet" href="css/gallery.css"> <!-- 新增样式 -->
+    <link rel="stylesheet" href="css/gallery.css">
 
     <!-- 主要视图和控制区域 -->
     <link rel="stylesheet" href="css/player-view.css">
@@ -109,39 +109,27 @@
                     </div>
                 </div>
             </div>
-            <!-- 【更新】故障效果SVG叠加层与滤镜 -->
             <svg id="glitch-overlay" class="glitch-overlay" aria-hidden="true">
                 <defs>
-                    <!-- 一个更复杂的滤镜，包含位移和色差分离 -->
                     <filter id="glitch-filter-spotify">
-                        <!-- 1. 产生噪点图 -->
                         <feTurbulence type="fractalNoise" baseFrequency="0.8 0.8" numOctaves="1" result="turbulence" seed="0"></feTurbulence>
-
-                        <!-- 2. 图像整体位移 -->
                         <feDisplacementMap in="SourceGraphic" in2="turbulence" scale="0" xChannelSelector="R" yChannelSelector="B" result="displacement"></feDisplacementMap>
-
-                        <!-- 3. 色差分离：红色通道 -->
                         <feColorMatrix in="displacement" type="matrix"
                                        values="1 0 0 0 0
                                 0 0 0 0 0
                                 0 0 0 0 0
                                 0 0 0 1 0" result="red_channel" />
                         <feOffset in="red_channel" dx="0" dy="0" result="red_offset" />
-
-                        <!-- 4. 色差分离：蓝色通道 -->
                         <feColorMatrix in="displacement" type="matrix"
                                        values="0 0 0 0 0
                                 0 0 0 0 0
                                 0 0 1 0 0
                                 0 0 0 1 0" result="blue_channel" />
                         <feOffset in="blue_channel" dx="0" dy="0" result="blue_offset" />
-
-                        <!-- 5. 合并通道 -->
                         <feBlend in="red_offset" in2="blue_offset" mode="screen" result="color_aberration"/>
                         <feBlend in="displacement" in2="color_aberration" mode="lighten"/>
                     </filter>
                 </defs>
-                <!-- 增加一个用于绘制品牌元素的组 -->
                 <g id="glitch-spotify-shapes"></g>
                 <g id="glitch-lines"></g>
             </svg>
@@ -199,6 +187,25 @@
             </ul>
         </aside>
 
+        <!-- 【新增】下载资源面板 -->
+        <aside id="download-panel" class="download-panel">
+            <div class="panel-header">
+                <h2>下载资源</h2>
+                <button id="close-download-btn" class="control-btn" title="关闭">
+                    <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+                </button>
+            </div>
+            <div class="download-panel-content">
+                <p class="panel-description">在此处粘贴抖音分享链接或包含链接的文本，然后点击下载。</p>
+                <textarea id="douyin-url-input" placeholder="例如: https://v.douyin.com/xxxxxx/"></textarea>
+                <button id="start-download-btn" class="action-btn">
+                    <span class="btn-text">开始下载</span>
+                    <span class="btn-loader"></span>
+                </button>
+                <div id="download-status" class="download-status"></div>
+            </div>
+        </aside>
+
         <!-- 底部播放控制条 -->
         <footer class="player-controls">
             <div class="track-info">
@@ -242,6 +249,12 @@
                     <svg class="mode-icon shuffle-icon" viewBox="0 0 24 24"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"></path></svg>
                 </button>
                 <button id="lyrics-btn" class="control-btn" title="显示/隐藏歌词"><svg viewBox="0 0 24 24"><path d="M6 4h12v2H6V4zm0 4h12v2H6V8zm0 4h8v2H6v-2zm0 4h6v2H6v-2zM4 2h2v20H4V2zm14 0h2v20h-2V2z"/></svg></button>
+
+                <!-- 【新增】下载按钮 -->
+                <button id="download-panel-btn" class="control-btn" title="下载资源">
+                    <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path></svg>
+                </button>
+
                 <button id="playlist-btn" class="control-btn" title="播放队列"><svg viewBox="0 0 24 24"><path d="M3 6h14v2H3V6zm0 5h14v2H3v-2zm0 5h10v2H3v-2zM17 10v8l5-4-5-4z"></path></svg></button>
                 <div class="volume-container">
                     <button id="volume-btn" class="control-btn" title="静音">

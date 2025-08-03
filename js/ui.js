@@ -17,11 +17,13 @@ let particleAnimationId;
 const NORMAL_DECAY_RATE = 1 / (60 * 2);   // 2秒动画 (基于60fps)
 const FAST_DECAY_RATE = 1 / (60 * 0.5); // 0.5秒动画
 
-// --- 【新增】面板管理 ---
-const allSidePanels = [dom.playlistPanel, dom.infoPanel, dom.shortcutPanel];
+// --- 面板管理 ---
+const allSidePanels = [dom.playlistPanel, dom.infoPanel, dom.shortcutPanel, dom.downloadPanel];
+
 
 /**
- * 关闭所有已打开的侧边面板。
+ * 【优化】关闭所有已打开的侧边面板。
+ * 这是所有面板关闭按钮的通用处理函数。
  */
 export function closeActivePanels() {
     allSidePanels.forEach(panel => {
@@ -372,6 +374,7 @@ export function toggleLyricsPanel() { dom.lyricsContainer.classList.toggle('acti
 export function togglePlaylistPanel() { manageSidePanel(dom.playlistPanel); }
 export function toggleInfoPanel() { manageSidePanel(dom.infoPanel); }
 export function toggleShortcutPanel() { manageSidePanel(dom.shortcutPanel); }
+export function toggleDownloadPanel() { manageSidePanel(dom.downloadPanel); }
 
 export function toggleGalleryView() {
     dom.galleryContainer.classList.toggle('active');

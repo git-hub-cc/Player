@@ -20,10 +20,17 @@ https://github.com/user-attachments/assets/33046049-a997-47e6-85e5-f4626889c0f0
 - **高度可定制的快捷键**: 提供独立的快捷键设置面板，用户可以为常用操作（如播放/暂停、下一首、音量调节等）录制和修改自己习惯的键盘快捷键。
 - **沉浸式模式**: 一键进入全屏沉浸式观看/收听体验，隐藏所有干扰元素。
 - **右键快捷菜单**: 在页面任意位置点击右键，即可快速访问核心播放控制命令。
+- **集成媒体下载器 (可选)**: 配合Node.js后端服务，可实现从指定在线平台（如抖音）解析和下载媒体资源的功能。
 - **完全响应式设计**: 无论是桌面宽屏浏览器还是移动设备，都能提供优化的布局和交互体验。
 - **侧滑面板系统**: 将播放列表、关于信息、快捷键设置等功能收纳于独立的侧滑面板中，保持主界面的整洁。
 
 ## 🚀 快速开始
+
+本项目提供两种运行方式：一种是仅运行前端播放器，体验核心播放功能；另一种是运行完整的Node.js后端服务，以启用媒体下载等高级功能。
+
+### 方式一：仅运行播放器前端（基本功能）
+
+此方式适用于快速体验播放器界面和本地播放列表功能。
 
 1.  **克隆或下载项目**
     ```bash
@@ -31,31 +38,70 @@ https://github.com/user-attachments/assets/33046049-a997-47e6-85e5-f4626889c0f0
     cd Player
     ```
 
-2.  **准备依赖库**
-    本项目依赖 `pinyin-pro` 来实现播放列表的拼音搜索功能。请下载该库并放置于 `lib` 文件夹下。
+2.  **准备前端依赖库**
+    本项目前端依赖 `pinyin-pro` 来实现播放列表的拼音搜索功能。请下载该库并放置于 `lib` 文件夹下。
     - [pinyin-pro 下载地址](https://github.com/zh-lx/pinyin-pro)
     - 确保文件路径为 `lib/index.min.js`
 
-3.  **启动本地服务器**
-    由于浏览器安全策略（CORS），直接通过 `file://` 协议打开 `index.html` 可能导致部分功能（如 `fetch` 加载 `playlist.json`）无法正常工作。推荐使用一个简单的本地服务器。
+3.  **启动本地静态服务器**
+    由于浏览器安全策略（CORS），直接通过 `file://` 协议打开 `index.html` 无法正常加载播放列表。您需要一个简单的本地服务器。
 
-    如果你安装了 Node.js，可以使用 `http-server` 或 `live-server`：
-    ```bash
-    # 安装 live-server (如果尚未安装)
-    npm install -g live-server
-    
-    # 在项目根目录运行
-    live-server
-    ```
-    或者使用 Python 自带的 HTTP 服务器：
-    ```bash
-    # Python 3
-    python -m http.server
-    
-    # Python 2
-    python -m SimpleHTTPServer
-    ```
+    - **使用 `live-server` (推荐)**:
+      ```bash
+      # 如果尚未安装，全局安装 live-server
+      npm install -g live-server
+      
+      # 在项目根目录运行
+      live-server
+      ```
+    - **使用 Python**:
+      ```bash
+      # Python 3
+      python -m http.server
+      
+      # Python 2
+      python -m SimpleHTTPServer
+      ```
     然后在浏览器中访问服务器提供的地址（例如 `http://127.0.0.1:8080`）。
+
+### 方式二：运行完整后端服务（含下载等高级功能）
+
+此方式会启动一个Node.js服务器，支持所有前端功能，并额外提供媒体下载等服务端能力。
+
+**前提条件**: 请确保您的电脑已安装 [Node.js](https://nodejs.org/) (建议LTS版本)。
+
+1.  **克隆项目并进入目录**
+    ```bash
+    git clone https://github.com/git-hub-cc/Player.git
+    cd Player
+    ```
+
+2.  **准备前端依赖库**
+    与方式一相同，请确保 `pinyin-pro` 库已放置在 `lib/index.min.js`。
+
+3.  **安装后端依赖**
+    在项目根目录下，打开终端并运行以下命令，安装后端服务所需的库（如 `playwright`, `axios` 等）：
+    ```bash
+    npm install playwright axios cli-progress
+    ```
+    该命令会将依赖项安装到项目的 `node_modules` 文件夹中。
+
+4.  **安装 Playwright 浏览器（非常重要！）**
+    Playwright 需要下载其用于自动化操作的浏览器核心文件。**请务必执行此步骤**，否则下载功能将无法工作。
+    ```bash
+    npx playwright install
+    ```
+    此过程可能需要一些时间，具体取决于您的网络速度。
+
+5.  **启动后端服务器**
+    所有依赖安装完毕后，运行以下命令来启动服务器：
+    ```bash
+    node server.js
+    ```
+
+6.  **访问应用**
+    服务器启动后，在浏览器中访问 `http://localhost:3000` (或其他在终端中提示的地址)。现在，您可以使用包括媒体下载在内的所有功能了。
+
 
 ## 🔧 如何配置
 
@@ -97,9 +143,15 @@ https://github.com/user-attachments/assets/33046049-a997-47e6-85e5-f4626889c0f0
 ## 🛠️ 技术栈
 
 - **核心**: HTML5, CSS3, JavaScript (ES6+, Modules)
-- **库**:
+- **前端库**:
     - [jsmediatags.js](https://github.com/aadsm/jsmediatags): 用于在客户端读取 MP3 文件的 ID3 元数据。
     - [pinyin-pro](https://github.com/zh-lx/pinyin-pro): 用于实现强大的中文拼音搜索功能。
+- **后端服务 (可选)**:
+    - **环境**: Node.js
+    - **库**:
+        - [Playwright](https://playwright.dev/): 用于自动化浏览器操作，实现媒体资源解析。
+        - [Axios](https://axios-http.com/): 用于发送HTTP请求。
+        - [cli-progress](https://github.com/AndiDittrich/Node.CLI-Progress): 用于在命令行中显示美观的进度条。
 
 ## 📄 资源来源与版权声明
 

@@ -1,26 +1,33 @@
 /* panels.css */
 /* --- 侧滑面板 (通用样式) --- */
-.playlist-panel, .info-panel, .shortcut-panel {
+/* 修改通用样式，将 .download-panel 也包含进去 */
+.playlist-panel, .info-panel, .shortcut-panel, .download-panel {
     position: absolute;
     top: 0;
     right: 0;
-    bottom: var(--controls-height);
+    /* 【修改】将 bottom 设置为 0，并让 footer 的 z-index 更高，以覆盖面板底部 */
+    bottom: 0;
     width: 340px;
     max-width: 90%;
     background-color: var(--panel-bg);
     box-shadow: -5px 0 15px rgba(0,0,0,0.2);
-    z-index: 2000;
+    z-index: 2000; /* 面板的 z-index */
     transform: translateX(100%);
     visibility: hidden;
     transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), visibility 0s 0.4s;
     display: flex;
     flex-direction: column;
+    /* 【新增】确保面板内容不会被播放控制器遮挡 */
+    padding-bottom: var(--controls-height);
 }
-.playlist-panel.active, .info-panel.active, .shortcut-panel.active {
+
+/* 【修改】面板激活时的样式 */
+.playlist-panel.active, .info-panel.active, .shortcut-panel.active, .download-panel.active {
     transform: translateX(0);
     visibility: visible;
     transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
+
 .panel-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; flex-shrink: 0; border-bottom: 1px solid var(--highlight-bg); }
 .panel-header h2 { font-size: 16px; font-weight: 700; color: var(--text-primary); }
 .panel-header .control-btn:hover { background-color: var(--highlight-bg); border-radius: 50%;}
@@ -99,3 +106,117 @@
 .shortcut-item .actions { display: flex; gap: 8px; }
 .shortcut-item .actions button { background: none; border: 1px solid var(--text-secondary); color: var(--text-secondary); padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; transition: all 0.2s ease; }
 .shortcut-item .actions button:hover { background-color: var(--highlight-bg); color: var(--text-primary); border-color: var(--text-primary); } .shortcut-item .actions .set-btn:hover { border-color: var(--primary-color); color: var(--primary-color); }
+
+/* --- 【新增】下载面板专属样式 --- */
+.download-panel-content {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px; /* 元素之间的间距 */
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+.download-panel-content .panel-description {
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-bottom: 4px;
+}
+
+.download-panel-content textarea {
+    width: 100%;
+    height: 120px;
+    background-color: var(--highlight-bg);
+    border: 1px solid var(--slider-track-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    padding: 12px;
+    font-size: 14px;
+    font-family: var(--font-family);
+    resize: vertical; /* 允许用户垂直调整大小 */
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.download-panel-content textarea:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.3);
+}
+
+/* --- 【新增】通用动作按钮样式 --- */
+.action-btn {
+    background-color: var(--primary-color);
+    color: #000;
+    font-weight: bold;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 50px; /* 圆角按钮 */
+    cursor: pointer;
+    font-size: 15px;
+    text-align: center;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+}
+
+.action-btn:hover:not(:disabled) {
+    background-color: #1ed760;
+    transform: scale(1.03);
+}
+
+.action-btn:disabled {
+    background-color: var(--slider-track-color);
+    color: var(--text-secondary);
+    cursor: not-allowed;
+    transform: scale(1);
+}
+
+/* --- 【新增】下载状态区域样式 --- */
+.download-status {
+    margin-top: 10px;
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.6;
+    background-color: var(--highlight-bg);
+    color: var(--text-secondary);
+    display: none; /* 默认隐藏 */
+    white-space: pre-wrap; /* 保持换行 */
+    word-wrap: break-word; /* 强制长单词换行 */
+}
+
+.download-status.success {
+    background-color: rgba(29, 185, 84, 0.2);
+    color: #1ed760;
+}
+
+.download-status.error {
+    background-color: rgba(229, 20, 20, 0.2);
+    color: #e51414;
+}
+
+/* --- 【新增】加载动画 for action-btn --- */
+.action-btn .btn-loader {
+    display: none;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(0, 0, 0, 0.3);
+    border-radius: 50%;
+    border-top-color: #000;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.action-btn.loading .btn-text {
+    display: none;
+}
+
+.action-btn.loading .btn-loader {
+    display: block;
+}

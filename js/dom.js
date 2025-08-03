@@ -19,7 +19,7 @@ export const lyricsContainer = document.getElementById('lyrics-container');
 export const lyricsList = document.getElementById('lyrics-list');
 export const lyricsListWrapper = document.getElementById('lyrics-list-wrapper');
 
-// 【新增】获取歌词拖拽相关元素
+// 获取歌词拖拽相关元素
 export const lyricsDragIndicator = document.getElementById('lyrics-drag-indicator');
 export const lyricsDragTime = document.getElementById('lyrics-drag-time');
 
@@ -51,20 +51,26 @@ export const contextMenu = document.getElementById('custom-context-menu');
 export const templatesContainer = document.getElementById('templates');
 export const docElement = document.documentElement;
 
-// 【更新】故障效果元素
+// 故障效果元素
 export const glitchOverlay = document.getElementById('glitch-overlay');
 export const glitchLinesGroup = document.getElementById('glitch-lines');
-export const glitchSpotifyShapesGroup = document.getElementById('glitch-spotify-shapes'); // 新增
+export const glitchSpotifyShapesGroup = document.getElementById('glitch-spotify-shapes');
 export const feTurbulence = document.querySelector('#glitch-filter-spotify feTurbulence');
 export const feDisplacementMap = document.querySelector('#glitch-filter-spotify feDisplacementMap');
-export const feOffsetR = document.querySelector('#glitch-filter-spotify [result="red_offset"]'); // 新增
-export const feOffsetB = document.querySelector('#glitch-filter-spotify [result="blue_offset"]'); // 新增
-
+export const feOffsetR = document.querySelector('#glitch-filter-spotify [result="red_offset"]');
+export const feOffsetB = document.querySelector('#glitch-filter-spotify [result="blue_offset"]');
 
 // Canvas for gradient extraction
 export const bgCanvas = document.createElement('canvas');
 export const bgCtx = bgCanvas.getContext('2d', { willReadFrequently: true });
 
+// --- 【新增】下载功能相关元素 ---
+export const downloadPanelBtn = document.getElementById('download-panel-btn');
+export const downloadPanel = document.getElementById('download-panel');
+export const closeDownloadBtn = document.getElementById('close-download-btn');
+export const douyinUrlInput = document.getElementById('douyin-url-input');
+export const startDownloadBtn = document.getElementById('start-download-btn');
+export const downloadStatusEl = document.getElementById('download-status');
 
 // DOM Query/Creation Functions
 export const getTemplateElementById = (id) => document.getElementById(id);

@@ -8,7 +8,8 @@
     grid-template-columns: 3fr 4fr 3fr;
     align-items: center;
     border-top: 1px solid #282828;
-    z-index: 1;
+    z-index: 2001; /* 【修改】确保 z-index 高于面板 */
+    position: relative; /* 【新增】确保 z-index 生效 */
     transition: opacity 0.3s ease, visibility 0.3s ease;
 }
 .track-info {

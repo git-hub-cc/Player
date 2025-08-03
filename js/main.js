@@ -3,13 +3,13 @@
 import * as dom from './dom.js';
 import * as state from './state.js';
 import { PLAY_MODES, desktopTourSteps, mobileTourSteps } from './config.js';
-// 【修改】导入 formatTime 用于进度条拖动时的实时时间显示
 import { loadTemplates, normalizeKey, formatTime } from './utils.js';
 import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode, playTrack } from './player.js';
-import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, setupParticleCanvas, closeActivePanels } from './ui.js';
+import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, setupParticleCanvas, closeActivePanels, toggleDownloadPanel } from './ui.js';
 import { loadShortcuts, executeShortcut, setupShortcutListeners } from './features/shortcuts.js';
 import { FeatureTour } from './features/tour.js';
 import * as backgroundGallery from './features/gallery.js';
+import { setupDownloaderListeners } from './features/downloader.js'; // 【新增】导入下载器监听设置函数
 
 // --- 持久化 ---
 const PLAYER_STATE_KEY = 'player_state';
@@ -43,6 +43,8 @@ function loadPlayerState() {
         }
     }
 }
+
+// 【移除】已废弃的 handleDownloadRequest 函数，逻辑已移至 downloader.js
 
 function setupEventListeners() {
     // Player controls
@@ -89,15 +91,11 @@ function setupEventListeners() {
         }
     });
 
-    // 【关键修复】重写进度条的事件监听逻辑
-
-    // 1. 当用户按下鼠标时，进入“拖动模式”
+    // 进度条的事件监听逻辑
     dom.progressBar.addEventListener('mousedown', () => {
         state.setIsScrubbing(true);
     });
 
-    // 2. 当用户拖动滑块时 (input事件)，只更新界面上的时间文本和进度条背景色
-    //    这提供了即时响应，但我们还未改变实际的 audio.currentTime，以避免卡顿
     dom.progressBar.addEventListener('input', (e) => {
         const value = e.target.value;
         dom.progressBar.style.setProperty('--value-percent', `${value}%`);
@@ -108,14 +106,12 @@ function setupEventListeners() {
         }
     });
 
-    // 3. 当用户释放鼠标时 (change事件)，才真正更新音频的播放时间，并退出“拖动模式”
     dom.progressBar.addEventListener('change', (e) => {
         if (!isNaN(dom.mediaPlayer.duration)) {
             dom.mediaPlayer.currentTime = (e.target.value / 100) * dom.mediaPlayer.duration;
         }
         state.setIsScrubbing(false);
 
-        // 如果在拖动结束时播放器是暂停的，则开始播放
         if (!state.isPlaying) {
             playTrack();
         }
@@ -135,17 +131,25 @@ function setupEventListeners() {
         savePlayerState();
     });
 
-    // Panel toggles and closing
+    // Panel toggles
     dom.lyricsBtn.addEventListener('click', toggleLyricsPanel);
     dom.mobileLyricsBtn.addEventListener('click', toggleLyricsPanel);
     dom.playlistBtn.addEventListener('click', togglePlaylistPanel);
     dom.mobilePlaylistBtn.addEventListener('click', togglePlaylistPanel);
     dom.infoBtn.addEventListener('click', toggleInfoPanel);
     dom.shortcutBtn.addEventListener('click', toggleShortcutPanel);
-    [dom.closeInfoBtn, dom.closePlaylistBtn, dom.closeShortcutBtn].forEach(btn => {
-        if (btn) btn.addEventListener('click', () => btn.closest('aside').classList.remove('active'));
-    });
-    [dom.infoPanel, dom.playlistPanel, dom.shortcutPanel, dom.lyricsContainer].forEach(panel => {
+    dom.downloadPanelBtn.addEventListener('click', toggleDownloadPanel);
+
+    // 【优化】统一所有面板的关闭按钮逻辑
+    dom.closePlaylistBtn.addEventListener('click', closeActivePanels);
+    dom.closeInfoBtn.addEventListener('click', closeActivePanels);
+    dom.closeShortcutBtn.addEventListener('click', closeActivePanels);
+    dom.closeDownloadBtn.addEventListener('click', closeActivePanels);
+
+    setupDownloaderListeners(); // 调用模块函数来设置下载按钮和输入框的监听器
+
+    // 点击外部区域关闭面板
+    [dom.infoPanel, dom.playlistPanel, dom.shortcutPanel, dom.lyricsContainer, dom.downloadPanel].forEach(panel => {
         panel.addEventListener('click', (e) => { if (e.target === panel) panel.classList.remove('active'); });
     });
     dom.mainView.addEventListener('click', closeActivePanels);
