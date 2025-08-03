@@ -23,6 +23,7 @@
     margin-right: 15px;
     border-radius: 4px;
     flex-shrink: 0;
+    object-fit: cover; /* 【新增】确保图片保持宽高比，裁剪以适应容器 */
 }
 .track-details {
     white-space: nowrap;

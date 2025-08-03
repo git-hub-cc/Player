@@ -43,8 +43,8 @@ async function closeLoginModalIfNeeded(page, sendMessage) {
         sendMessage('status', '检查登录弹窗...');
         const closeButton = page.locator(closeButtonSelector);
 
-        // 等待按钮出现，设置一个较短的超时时间（例如5秒）
-        await closeButton.waitFor({ state: 'visible', timeout: 5000 });
+        // 【修改】等待登录弹窗的超时时间从 5 秒增加到 20 秒
+        await closeButton.waitFor({ state: 'visible', timeout: 20000 });
 
         sendMessage('status', '检测到登录弹窗，正在尝试关闭...');
         await closeButton.click();
@@ -162,11 +162,13 @@ async function downloadSingleVideo(videoUrl, sendMessage) {
         });
 
         sendMessage('status', `正在导航至目标页面...`);
-        await page.goto(videoUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+        // 【修改】页面导航超时从 45 秒增加到 90 秒
+        await page.goto(videoUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
 
         const apiResponseJson = await Promise.race([
             apiResponsePromise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('API拦截超时')), 30000))
+            // 【修改】API 拦截超时从 30 秒增加到 60 秒
+            new Promise((_, reject) => setTimeout(() => reject(new Error('API拦截超时')), 60000))
         ]);
 
         if (!apiResponseJson) {
@@ -228,7 +230,8 @@ async function downloadUserContent(userUrl, downloadType, sendMessage) {
         const page = await context.newPage();
 
         sendMessage('status', `正在导航至用户主页...`);
-        await page.goto(userUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        // 【修改】页面导航超时从 60 秒增加到 120 秒
+        await page.goto(userUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
 
         // 【新增】调用函数关闭登录弹窗
         await closeLoginModalIfNeeded(page, sendMessage);
@@ -236,7 +239,8 @@ async function downloadUserContent(userUrl, downloadType, sendMessage) {
         if (downloadType === 'likes') {
             sendMessage('status', `正在切换到 "${currentConfig.name}" 列表...`);
             try {
-                await page.waitForSelector(currentConfig.tabSelector, { state: 'visible', timeout: 10000 });
+                // 【修改】等待 “喜欢” 标签的超时时间从 10 秒增加到 20 秒
+                await page.waitForSelector(currentConfig.tabSelector, { state: 'visible', timeout: 20000 });
                 await page.click(currentConfig.tabSelector);
             } catch (e) {
                 sendMessage('error', `切换到 "${currentConfig.name}" 列表失败，可能是用户隐藏了此列表或页面结构已更新。`);
@@ -245,7 +249,8 @@ async function downloadUserContent(userUrl, downloadType, sendMessage) {
         }
 
         sendMessage('status', `页面加载中，等待${currentConfig.name}列表出现...`);
-        await page.waitForSelector(currentConfig.listSelector, { timeout: 30000 });
+        // 【修改】等待作品列表的超时时间从 30 秒增加到 60 秒
+        await page.waitForSelector(currentConfig.listSelector, { timeout: 60000 });
         sendMessage('status', `${currentConfig.name}列表已加载，开始抓取...`);
 
         let hasMore = true;
@@ -369,7 +374,7 @@ async function processAndDownloadItem(awemeDetail, sendMessage) {
 }
 
 // ==============================================================================
-// 5. 通用文件下载函数 (无变化)
+// 5. 通用文件下载函数
 // ==============================================================================
 async function downloadFile(url, folder, fileName, description, sendMessage) {
     const filePath = path.join(folder, fileName);
@@ -382,7 +387,8 @@ async function downloadFile(url, folder, fileName, description, sendMessage) {
         const response = await axios({
             method: 'get', url, responseType: 'stream',
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' },
-            timeout: 60000,
+            // 【修改】下载文件本身的超时时间从 60 秒增加到 120 秒
+            timeout: 120000,
         });
         const writer = fs.createWriteStream(filePath);
         response.data.pipe(writer);

@@ -9,9 +9,15 @@ import { renderLyrics, syncLyrics, extractAndApplyGradient, showSkeleton, hideSk
 // --- requestAnimationFrame ---
 let animationFrameId = null;
 let skeletonTimer = null;
+// 【新增】用于节流背景更新的状态变量和常量
+let lastBackgroundUpdateTime = 0;
+const BACKGROUND_UPDATE_INTERVAL = 1000; // 每 1000 毫秒 (1秒) 更新一次背景
 
 export async function loadTrack(trackIndex, options = {}) {
     const { fromHistory = false, forcePlay = false } = options;
+
+    // 【新增】每次加载新轨道时重置背景更新计时器
+    lastBackgroundUpdateTime = 0;
 
     if (skeletonTimer) {
         clearTimeout(skeletonTimer);
@@ -98,6 +104,17 @@ export async function loadTrack(trackIndex, options = {}) {
 
 function runAnimationFrame() {
     updateProgress();
+
+    // 【新增】动态更新视频背景的逻辑
+    const now = performance.now();
+    const currentTrack = state.playlist[state.currentTrackIndex];
+
+    // 检查是否是视频，并且是否到了更新背景的时间
+    if (currentTrack && currentTrack.type === 'video' && dom.mediaPlayer.readyState > 1 && now - lastBackgroundUpdateTime > BACKGROUND_UPDATE_INTERVAL) {
+        extractAndApplyGradient(dom.mediaPlayer);
+        lastBackgroundUpdateTime = now;
+    }
+
     animationFrameId = requestAnimationFrame(runAnimationFrame);
 }
 

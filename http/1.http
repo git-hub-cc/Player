@@ -1,0 +1,44 @@
+POST http://localhost:80/api/item
+Content-Type: application/json
+
+{}
+
+###
+###
+
+
+curl 'https://ppmc.club/player/download-douyin' \
+  -H 'Accept: */*' \
+  -H 'Accept-Language: zh-CN,zh;q=0.9,en;q=0.8' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json' \
+  -b 'Idea-b98ac1fc=6aef539c-b2e8-4f41-98e0-5c228895f65e' \
+  -H 'DNT: 1' \
+  -H 'Origin: https://ppmc.club' \
+  -H 'Referer: https://ppmc.club/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Not)A;Brand";v="8", "Chromium";v="138", "Google Chrome";v="138"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' \
+  --data-raw '{"urlText":"2.87 a@A.go 12/11 OkP:/ # 马云经典语录 # 智慧  https://v.douyin.com/RoGPGAMSCS4/ 复制此链接，打开Dou音搜索，直接观看视频！"}'
+
+curl ^"https://ppmc.club/player/download-douyin^" ^
+  -H ^"Accept: */*^" ^
+  -H ^"Accept-Language: zh-CN,zh;q=0.9,en;q=0.8^" ^
+  -H ^"Connection: keep-alive^" ^
+  -H ^"Content-Type: application/json^" ^
+  -b ^"Idea-b98ac1fc=6aef539c-b2e8-4f41-98e0-5c228895f65e^" ^
+  -H ^"DNT: 1^" ^
+  -H ^"Origin: https://ppmc.club^" ^
+  -H ^"Referer: https://ppmc.club/^" ^
+  -H ^"Sec-Fetch-Dest: empty^" ^
+  -H ^"Sec-Fetch-Mode: cors^" ^
+  -H ^"Sec-Fetch-Site: same-origin^" ^
+  -H ^"User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36^" ^
+  -H ^"sec-ch-ua: ^\^"Not)A;Brand^\^";v=^\^"8^\^", ^\^"Chromium^\^";v=^\^"138^\^", ^\^"Google Chrome^\^";v=^\^"138^\^"^" ^
+  -H ^"sec-ch-ua-mobile: ?0^" ^
+  -H ^"sec-ch-ua-platform: ^\^"Windows^\^"^" ^
+  --data-raw ^"^{^\^"urlText^\^":^\^"2.87 a^@A.go 12/11 OkP:/ ^# ^马^云^经^典^语^录 ^# ^智^慧  https://v.douyin.com/RoGPGAMSCS4/ ^复^制^此^链^接^，^打^开Dou^音^搜^索^，^直^接^观^看^视^频^！^\^"^}^"
