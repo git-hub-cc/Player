@@ -6,18 +6,38 @@ import { PLAY_MODES, DEFAULT_ART } from './config.js';
 import { formatTime, parseLRC } from './utils.js';
 import { renderLyrics, syncLyrics, extractAndApplyGradient, showSkeleton, hideSkeleton, updatePlaylistUI, updateModeButton, showToast, triggerGlitchEffect } from './ui.js';
 
-// --- requestAnimationFrame ---
+// --- Module-level variables ---
 let animationFrameId = null;
 let skeletonTimer = null;
-// 【新增】用于节流背景更新的状态变量和常量
-let lastBackgroundUpdateTime = 0;
-const BACKGROUND_UPDATE_INTERVAL = 1000; // 每 1000 毫秒 (1秒) 更新一次背景
 
+// --- Background Update Timer ---
+// 使用下一个节拍的时间点来触发，而不是固定的时间间隔
+let nextBackgroundUpdateTime = 0;
+// 如果没有节拍数据，则使用回退的更新间隔
+const FALLBACK_INTERVAL = 1000;
+// 背景节拍乘数，每 N 个节拍更新一次背景 (设置为1表示每个节拍都更新)
+const BACKGROUND_BEAT_MULTIPLIER = 4;
+
+/**
+ * 重置背景节拍计时器。
+ * 在加载新曲目或用户拖动进度条时调用。
+ */
+export function resetBackgroundBeatTimer() {
+    nextBackgroundUpdateTime = 0;
+}
+
+/**
+ * 加载并准备播放指定的轨道。
+ * @param {number} trackIndex - 要加载的轨道在播放列表中的索引。
+ * @param {object} [options={}] - 加载选项。
+ * @param {boolean} [options.fromHistory=false] - 是否由浏览器历史记录导航触发。
+ * @param {boolean} [options.forcePlay=false] - 加载后是否强制开始播放。
+ */
 export async function loadTrack(trackIndex, options = {}) {
     const { fromHistory = false, forcePlay = false } = options;
 
-    // 【新增】每次加载新轨道时重置背景更新计时器
-    lastBackgroundUpdateTime = 0;
+    resetBackgroundBeatTimer();
+    state.setCurrentColorPaletteIndex(0); // 加载新音轨时重置颜色索引
 
     if (skeletonTimer) {
         clearTimeout(skeletonTimer);
@@ -102,17 +122,48 @@ export async function loadTrack(trackIndex, options = {}) {
     }
 }
 
+/**
+ * 动画主循环，用于更新进度条、同步歌词和背景。
+ */
 function runAnimationFrame() {
     updateProgress();
 
-    // 【新增】动态更新视频背景的逻辑
     const now = performance.now();
     const currentTrack = state.playlist[state.currentTrackIndex];
 
-    // 检查是否是视频，并且是否到了更新背景的时间
-    if (currentTrack && currentTrack.type === 'video' && dom.mediaPlayer.readyState > 1 && now - lastBackgroundUpdateTime > BACKGROUND_UPDATE_INTERVAL) {
-        extractAndApplyGradient(dom.mediaPlayer);
-        lastBackgroundUpdateTime = now;
+    // 合并音频和视频的节拍同步背景更新逻辑
+    if (state.isPlaying && currentTrack && dom.mediaPlayer.readyState > 1 && currentTrack.beatInterval > 0) {
+        if (nextBackgroundUpdateTime === 0) {
+            nextBackgroundUpdateTime = now;
+        }
+
+        if (now >= nextBackgroundUpdateTime) {
+            // 根据媒体类型选择不同的背景更新方式
+            if (currentTrack.type === 'video') {
+                // 视频：从当前帧提取颜色
+                extractAndApplyGradient(dom.mediaPlayer);
+            } else if (currentTrack.type === 'audio' && currentTrack.colorPalettes && currentTrack.colorPalettes.length > 0) {
+                // 音频：从预设的调色板中循环切换颜色
+                const palettes = currentTrack.colorPalettes;
+                const currentPalette = palettes[state.currentColorPaletteIndex];
+
+                const gradient = `linear-gradient(145deg, ${currentPalette[0]}, ${currentPalette[1]})`;
+                dom.mainView.style.background = gradient;
+
+                // 更新到下一个颜色组合
+                const nextIndex = (state.currentColorPaletteIndex + 1) % palettes.length;
+                state.setCurrentColorPaletteIndex(nextIndex);
+            }
+
+            const interval = currentTrack.beatInterval * 1000;
+            const updateInterval = interval * BACKGROUND_BEAT_MULTIPLIER;
+            nextBackgroundUpdateTime += updateInterval;
+
+            // 健壮性：如果浏览器标签页被挂起，进行校准以防闪烁
+            if (nextBackgroundUpdateTime < now) {
+                nextBackgroundUpdateTime = now + updateInterval;
+            }
+        }
     }
 
     animationFrameId = requestAnimationFrame(runAnimationFrame);
@@ -126,6 +177,9 @@ export function playTrack() {
             state.setIsPlaying(true);
             dom.playPauseBtn.classList.add('playing');
             dom.playPauseBtn.title = '暂停';
+            if (nextBackgroundUpdateTime === 0) {
+                nextBackgroundUpdateTime = performance.now();
+            }
             if (animationFrameId === null) {
                 runAnimationFrame();
             }
@@ -157,17 +211,24 @@ function changeTrack(direction) {
 
     setTimeout(() => {
         let newIndex;
+        const currentMode = PLAY_MODES[state.currentModeIndex];
+
         if (direction === 1) { // 下一首
-            const currentMode = PLAY_MODES[state.currentModeIndex];
             if (currentMode === 'shuffle') {
                 do {
                     newIndex = Math.floor(Math.random() * state.playlist.length);
-                } while (newIndex === state.currentTrackIndex);
+                } while (state.playlist.length > 1 && newIndex === state.currentTrackIndex);
             } else {
                 newIndex = (state.currentTrackIndex + 1) % state.playlist.length;
             }
-        } else { // 上一首
-            newIndex = (state.currentTrackIndex - 1 + state.playlist.length) % state.playlist.length;
+        } else { // 上一首 (随机模式下上一首也是随机)
+            if (currentMode === 'shuffle') {
+                do {
+                    newIndex = Math.floor(Math.random() * state.playlist.length);
+                } while (state.playlist.length > 1 && newIndex === state.currentTrackIndex);
+            } else {
+                newIndex = (state.currentTrackIndex - 1 + state.playlist.length) % state.playlist.length;
+            }
         }
         loadTrack(newIndex, { forcePlay: true });
     }, 150);
@@ -182,7 +243,6 @@ export function playPrevTrack() {
 }
 
 export function updateProgress() {
-    // 【关键修复】如果用户正在拖动进度条，则不执行此函数，以防止UI冲突
     if (state.isScrubbing) return;
 
     const { duration, currentTime } = dom.mediaPlayer;

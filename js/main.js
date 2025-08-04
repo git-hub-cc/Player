@@ -4,7 +4,8 @@ import * as dom from './dom.js';
 import * as state from './state.js';
 import { PLAY_MODES, desktopTourSteps, mobileTourSteps } from './config.js';
 import { loadTemplates, normalizeKey, formatTime } from './utils.js';
-import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode, playTrack } from './player.js';
+// 【修改】导入新的重置函数
+import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode, playTrack, resetBackgroundBeatTimer } from './player.js';
 import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, setupParticleCanvas, closeActivePanels, toggleDownloadPanel, showToast } from './ui.js';
 import { loadShortcuts, executeShortcut, setupShortcutListeners } from './features/shortcuts.js';
 import { FeatureTour } from './features/tour.js';
@@ -15,7 +16,8 @@ import { setupDownloaderListeners } from './features/downloader.js';
 const PLAYER_STATE_KEY = 'player_state';
 let initialTime = 0;
 
-// 保存播放器状态到 localStorage
+// ... (savePlayerState 和 loadPlayerState 函数保持不变) ...
+
 function savePlayerState() {
     const stateToSave = {
         trackIndex: state.currentTrackIndex,
@@ -108,6 +110,10 @@ function setupEventListeners() {
         if (!isNaN(dom.mediaPlayer.duration)) {
             dom.mediaPlayer.currentTime = (e.target.value / 100) * dom.mediaPlayer.duration;
         }
+
+        // 【修改】在用户拖动进度条后重置背景节拍计时器
+        resetBackgroundBeatTimer();
+
         state.setIsScrubbing(false);
 
         if (!state.isPlaying) {
@@ -115,6 +121,7 @@ function setupEventListeners() {
         }
     });
 
+    // ... (其余的 setupEventListeners 函数内容保持不变) ...
     // Volume controls
     dom.volumeBtn.addEventListener('click', () => {
         dom.mediaPlayer.muted = !dom.mediaPlayer.muted;
@@ -255,6 +262,7 @@ function setupEventListeners() {
 
 
 async function init() {
+    // ... (init 函数的其他部分保持不变) ...
     showSkeleton();
     await loadTemplates();
     loadPlayerState();

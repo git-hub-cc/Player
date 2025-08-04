@@ -1,0 +1,29 @@
+{
+  "name": "player-project",
+  "version": "1.0.0",
+  "description": "A powerful HTML5 media player with beat detection and download agent.",
+  "type": "module",
+  "scripts": {
+    "start-agent": "node download/Player/agent.js",
+    "process-beats": "node script/01beat-processor.js"
+  },
+  "keywords": [
+    "media-player",
+    "html5",
+    "javascript",
+    "beat-detection"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "colorthief": "^2.6.0",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "iconv-lite": "^0.6.3",
+    "jimp": "^1.6.0",
+    "pinyin-pro": "^3.19.6",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "ws": "^8.18.0"
+  }
+}

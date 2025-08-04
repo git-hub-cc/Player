@@ -12,7 +12,6 @@
     max-width: 1400px;
     height: 90vh;
     max-height: 850px;
-    background-color: #000;
     border-radius: 8px;
     display: grid;
     grid-template-rows: 1fr var(--controls-height);
