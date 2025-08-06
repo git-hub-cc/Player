@@ -146,6 +146,20 @@ function animate() {
     state.animationFrame = requestAnimationFrame(animate);
 }
 
+/**
+ * 【新增】更新画廊内部的播放列表数据并强制重新渲染。
+ * @param {Array} newPlaylist - 最新的播放列表数组。
+ */
+export function updatePlaylistData(newPlaylist) {
+    if (!state.isInitialized || !newPlaylist) return;
+    state.playlistData = newPlaylist;
+
+    // 通过清空已渲染的 DOM 元素和缓存来强制重新渲染
+    dom.galleryWrapper.innerHTML = '';
+    state.renderedCells.clear();
+    updateGallery();
+}
+
 function onPointerDown(e) {
     e.preventDefault();
     hidePlayer();

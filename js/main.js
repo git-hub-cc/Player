@@ -224,6 +224,8 @@ function setupEventListeners() {
             state.setCurrentTrackIndex(state.currentTrackIndex + uniqueLocalTracks.length);
             renderPlaylist();
             updatePlaylistUI();
+            // 【修复】当本地播放列表加载后，同步更新画廊数据
+            backgroundGallery.updatePlaylistData(state.playlist);
             showToast(`已加载 ${uniqueLocalTracks.length} 个本地作品！`);
         }
     });
@@ -249,6 +251,8 @@ function setupEventListeners() {
         // 3. 完全重绘播放列表UI以反映新的顺序和索引
         renderPlaylist();
         updatePlaylistUI();
+        // 【修复】当新曲目被添加后，同步更新画廊数据
+        backgroundGallery.updatePlaylistData(state.playlist);
 
         // 4. 通知用户
         showToast(`已添加 "${newTrack.title}" 到播放列表！`);
