@@ -16,7 +16,7 @@ let nextBackgroundUpdateTime = 0;
 // 如果没有节拍数据，则使用回退的更新间隔
 const FALLBACK_INTERVAL = 1000;
 // 背景节拍乘数，每 N 个节拍更新一次背景 (设置为1表示每个节拍都更新)
-const BACKGROUND_BEAT_MULTIPLIER = 4;
+const BACKGROUND_BEAT_MULTIPLIER = 12;
 
 /**
  * 重置背景节拍计时器。
@@ -59,12 +59,33 @@ export async function loadTrack(trackIndex, options = {}) {
     dom.albumArtEl.src = artUrl;
     dom.controlAlbumArtEl.src = artUrl;
 
-    let lyricsToParse = (track.lyrics || '')
-        .replace(/\[/g, '\n[')
-        .replace(/\n{2,}/g, '\n')
-        .replace(/^\n/, '');
-    state.setParsedLyrics(parseLRC(lyricsToParse));
+    // --- ⬇️ 核心修改：异步加载歌词 ⬇️ ---
+
+    // 1. 立即清空旧歌词状态，并渲染“无歌词”或“加载中”的UI
+    state.setParsedLyrics([]);
+    renderLyrics(); // 这会显示“无歌词”模板
+
+    // 2. 如果 track 对象中有 lyrics 路径，则发起异步请求
+    if (track.lyrics) {
+        try {
+            const response = await fetch(track.lyrics);
+            if (!response.ok) {
+                throw new Error(`请求歌词失败: ${response.status} ${response.statusText}`);
+            }
+            const lrcText = await response.text();
+            // 3. 请求成功后，解析歌词并更新状态
+            state.setParsedLyrics(parseLRC(lrcText));
+        } catch (error) {
+            console.error(`无法从路径加载歌词 '${track.lyrics}':`, error);
+            // 如果出错，state.parsedLyrics 仍然是空数组，UI保持“无歌词”状态
+        }
+    }
+
+    // 4. 无论歌词加载成功与否，都再次渲染UI以显示最终结果
     renderLyrics();
+
+    // --- ⬆️ 核心修改结束 ⬆️ ---
+
     updatePlaylistUI();
 
     let loadedOnce = false;
