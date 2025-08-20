@@ -5,6 +5,7 @@ import * as state from './state.js';
 import { PLAY_MODES, DEFAULT_ART } from './config.js';
 import { formatTime, parseLRC } from './utils.js';
 import { renderLyrics, syncLyrics, extractAndApplyGradient, showSkeleton, hideSkeleton, updatePlaylistUI, updateModeButton, showToast, triggerGlitchEffect } from './ui.js';
+import { requestTrackCache } from './features/downloader.js';
 
 // --- Module-level variables ---
 let animationFrameId = null;
@@ -59,32 +60,33 @@ export async function loadTrack(trackIndex, options = {}) {
     dom.albumArtEl.src = artUrl;
     dom.controlAlbumArtEl.src = artUrl;
 
-    // --- ⬇️ 核心修改：异步加载歌词 ⬇️ ---
+    // --- ⬇️ 异步加载歌词 ⬇️ ---
 
-    // 1. 立即清空旧歌词状态，并渲染“无歌词”或“加载中”的UI
     state.setParsedLyrics([]);
-    renderLyrics(); // 这会显示“无歌词”模板
+    renderLyrics();
 
-    // 2. 如果 track 对象中有 lyrics 路径，则发起异步请求
     if (track.lyrics) {
         try {
-            const response = await fetch(track.lyrics);
-            if (!response.ok) {
-                throw new Error(`请求歌词失败: ${response.status} ${response.statusText}`);
+            let lrcText;
+            if (track.lyrics.startsWith('data:text/plain,')) {
+                // [修正] data:URL 的内容是原始文本，不需要解码。
+                lrcText = track.lyrics.substring('data:text/plain,'.length);
+            } else {
+                const response = await fetch(track.lyrics);
+                if (!response.ok) {
+                    throw new Error(`请求歌词失败: ${response.status} ${response.statusText}`);
+                }
+                lrcText = await response.text();
             }
-            const lrcText = await response.text();
-            // 3. 请求成功后，解析歌词并更新状态
             state.setParsedLyrics(parseLRC(lrcText));
         } catch (error) {
             console.error(`无法从路径加载歌词 '${track.lyrics}':`, error);
-            // 如果出错，state.parsedLyrics 仍然是空数组，UI保持“无歌词”状态
         }
     }
-
-    // 4. 无论歌词加载成功与否，都再次渲染UI以显示最终结果
     renderLyrics();
 
-    // --- ⬆️ 核心修改结束 ⬆️ ---
+    // --- ⬆️ 歌词加载结束 ⬆️ ---
+
 
     updatePlaylistUI();
 
