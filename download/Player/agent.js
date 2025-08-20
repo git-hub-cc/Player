@@ -1,80 +1,93 @@
-// agent.js - 客户端下载代理 (Upgraded for Works and Likes - v4 with Modal Closing)
-const express = require('express');
-const cors = require('cors');
-const { WebSocketServer } = require('ws');
-const path = require('path');
-const fs = require('fs');
-const playwright = require('playwright-extra').chromium;
-const stealth = require('puppeteer-extra-plugin-stealth')();
-const axios = require('axios');
+// agent.js - 客户端代理 (v8.4 - 目录独立)
+import express from 'express';
+import cors from 'cors';
+import { WebSocketServer } from 'ws';
+import path from 'path';
+import fs from 'fs';
+import { chromium as playwright } from 'playwright-extra';
+import stealth from 'puppeteer-extra-plugin-stealth';
+import axios from 'axios';
+import { pinyin } from 'pinyin-pro';
+import { fileURLToPath } from 'url';
+import { Buffer } from 'buffer';
 
-stealth.enabledEvasions.delete('iframe.contentWindow');
-stealth.enabledEvasions.delete('media.codecs');
+const stealthPlugin = stealth();
+stealthPlugin.enabledEvasions.delete('iframe.contentWindow');
+stealthPlugin.enabledEvasions.delete('media.codecs');
+playwright.use(stealthPlugin);
 
-// --- 配置 ---
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// [修正] 将根目录定义为代理脚本所在的当前目录
+const AGENT_ROOT_DIR = path.resolve(__dirname, './');
+
 const CONFIG = {
     HTTP_PORT: 9528,
     WEBSOCKET_PORT: 9527,
-    VIDEOS_DIR: 'videos',
-    ALBUMART_DIR: 'albumArt',
-    STATE_PATH: 'state.json',
-    PLAYLIST_PATH: 'playlist.json',
+    // [修正] 所有媒体目录现在都基于代理程序的根目录
+    VIDEOS_DIR: path.join(AGENT_ROOT_DIR, 'videos'),
+    ALBUMART_DIR: path.join(AGENT_ROOT_DIR, 'albumArt'),
+    MUSIC_DIR: path.join(AGENT_ROOT_DIR, 'music'),
+    STATE_PATH: path.join(AGENT_ROOT_DIR, 'state.json'),
+    // [修正] PLAYLIST_PATH 现在指向代理程序目录下的 playlist.json
+    PLAYLIST_PATH: path.join(AGENT_ROOT_DIR, 'playlist.json'),
     HEADLESS_MODE: false,
     USER_WORKS_DELAY_MIN: 2000,
     USER_WORKS_DELAY_MAX: 5000,
     USER_WORKS_DELAY_JITTER: 300,
+    ONLINE_SEARCH_API: 'https://www.myfreemp3.com.cn/',
 };
 
-playwright.use(stealth);
-
-// --- 辅助函数 ---
-const randomDelay = (min, max) => new Promise(resolve => setTimeout(resolve, min + Math.random() * (max - min)));
-
-/**
- * 【新增】尝试关闭登录提示弹窗的函数
- * @param {import('playwright').Page} page
- * @param {(type: string, data: any) => void} sendMessage
- */
-async function closeLoginModalIfNeeded(page, sendMessage) {
-    // 使用您提供的SVG路径数据构造一个精确的CSS属性选择器
-    const closeButtonSelector = `svg path[d="M12.7929 22.2426C12.4024 22.6331 12.4024 23.2663 12.7929 23.6568C13.1834 24.0474 13.8166 24.0474 14.2071 23.6568L18.5 19.3639L22.7929 23.6568C23.1834 24.0474 23.8166 24.0474 24.2071 23.6568C24.5976 23.2663 24.5976 22.6331 24.2071 22.2426L19.9142 17.9497L24.1066 13.7573C24.4971 13.3668 24.4971 12.7336 24.1066 12.3431C23.7161 11.9526 23.0829 11.9526 22.6924 12.3431L18.5 16.5355L14.3076 12.3431C13.9171 11.9526 13.2839 11.9526 12.8934 12.3431C12.5029 12.7336 12.5029 13.3668 12.8934 13.7573L17.0858 17.9497L12.7929 22.2426Z"]`;
-
-    try {
-        sendMessage('status', '检查登录弹窗...');
-        const closeButton = page.locator(closeButtonSelector);
-
-        // 【修改】等待登录弹窗的超时时间从 5 秒增加到 20 秒
-        await closeButton.waitFor({ state: 'visible', timeout: 20000 });
-
-        sendMessage('status', '检测到登录弹窗，正在尝试关闭...');
-        await closeButton.click();
-
-        // 等待弹窗动画消失
-        await page.waitForTimeout(1000);
-        sendMessage('status', '成功关闭登录弹窗。');
-    } catch (error) {
-        // 如果超时，说明弹窗没有出现，这是正常情况，直接继续
-        sendMessage('status', '未检测到登录弹窗，继续操作。');
-    }
+// ... (其他函数保持不变) ...
+function sanitizeFilename(filename) {
+    if (!filename) return 'untitled';
+    return filename.replace(/[\/\\?%*:|"<>]/g, '-').replace(/\s+/g, ' ').trim();
 }
 
-
-// ==============================================================================
-// 1. HTTP 服务器 (无变化)
-// ==============================================================================
 const app = express();
 app.use(cors());
-if (!fs.existsSync(CONFIG.VIDEOS_DIR)) fs.mkdirSync(CONFIG.VIDEOS_DIR, { recursive: true });
-if (!fs.existsSync(CONFIG.ALBUMART_DIR)) fs.mkdirSync(CONFIG.ALBUMART_DIR, { recursive: true });
-app.use(`/${CONFIG.VIDEOS_DIR}`, express.static(path.join(__dirname, CONFIG.VIDEOS_DIR)));
-app.use(`/${CONFIG.ALBUMART_DIR}`, express.static(path.join(__dirname, CONFIG.ALBUMART_DIR)));
-app.listen(CONFIG.HTTP_PORT, () => {
-    console.log(`[HTTP Server] 媒体文件服务器已启动，正在监听 http://localhost:${CONFIG.HTTP_PORT}`);
+
+// 创建代理程序自己的媒体目录
+[CONFIG.VIDEOS_DIR, CONFIG.ALBUMART_DIR, CONFIG.MUSIC_DIR].forEach(dir => {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
 
-// ==============================================================================
-// 2. WebSocket 服务器 (无变化)
-// ==============================================================================
+// Express 从代理目录提供媒体文件
+app.use(`/videos`, express.static(CONFIG.VIDEOS_DIR));
+app.use(`/albumArt`, express.static(CONFIG.ALBUMART_DIR));
+app.use(`/music`, express.static(CONFIG.MUSIC_DIR));
+
+app.get('/proxy', async (req, res) => {
+    const targetUrl = req.query.url;
+    if (!targetUrl) return res.status(400).send('Missing URL parameter');
+    try { new URL(targetUrl); } catch (error) { return res.status(400).send('Invalid URL parameter'); }
+
+    console.log(`[Proxy] Fetching: ${targetUrl}`);
+    try {
+        const headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+            'Referer': new URL(targetUrl).origin
+        };
+        if (req.headers.range) headers.Range = req.headers.range;
+
+        const response = await axios.get(targetUrl, { responseType: 'stream', headers });
+
+        res.status(response.status);
+        res.set('Content-Type', response.headers['content-type']);
+        res.set('Content-Length', response.headers['content-length']);
+        if (response.headers['content-range']) res.set('Content-Range', response.headers['content-range']);
+        res.set('Accept-Ranges', 'bytes');
+
+        response.data.pipe(res);
+    } catch (error) {
+        console.error(`[Proxy] Error fetching ${targetUrl}:`, error.message);
+        res.status(error.response ? error.response.status : 500).send(`Proxy error: ${error.message}`);
+    }
+});
+
+app.listen(CONFIG.HTTP_PORT, () => {
+    console.log(`[HTTP Server] 媒体及代理服务器已启动，监听 http://localhost:${CONFIG.HTTP_PORT}`);
+});
+
 const wss = new WebSocketServer({ port: CONFIG.WEBSOCKET_PORT });
 wss.on('connection', (ws) => {
     console.log('[WebSocket] 网页播放器已连接。');
@@ -83,35 +96,113 @@ wss.on('connection', (ws) => {
     };
     ws.on('message', async (message) => {
         try {
-            const request = JSON.parse(message);
-            if (request.type === 'download' && request.data) {
-                console.log(`[WebSocket] 收到下载请求:`, request.data);
-                await handleDownloadRequest(request.data, sendMessage);
-            }
-            if (request.type === 'get_local_playlist') {
-                console.log('[WebSocket] 收到获取本地播放列表的请求。');
+            const request = JSON.parse(message.toString());
+            if (request.type === 'download') await handleDownloadRequest(request.data, sendMessage);
+            else if (request.type === 'search') await handleSearchRequest(request.data, sendMessage);
+            else if (request.type === 'cache_track') await handleCacheRequest(request.data, sendMessage);
+            else if (request.type === 'get_local_playlist') {
                 try {
+                    // [修正] 读取并发送代理目录下的 playlist.json
                     if (fs.existsSync(CONFIG.PLAYLIST_PATH)) {
-                        const playlistData = fs.readFileSync(CONFIG.PLAYLIST_PATH, 'utf-8');
-                        sendMessage('local_playlist_data', JSON.parse(playlistData));
+                        sendMessage('local_playlist_data', JSON.parse(fs.readFileSync(CONFIG.PLAYLIST_PATH, 'utf-8')));
+                    } else {
+                        sendMessage('local_playlist_data', []);
                     }
-                } catch (e) { console.error(`[Playlist] 读取本地 playlist.json 失败:`, e); }
+                } catch (e) { console.error(`[Playlist] 读取代理 playlist.json 失败:`, e); }
             }
-        } catch (e) { console.error('[WebSocket] 解析消息失败:', e); sendMessage('error', '无效的请求格式。'); }
+        } catch (e) {
+            console.error('[WebSocket] 解析消息失败:', e);
+            sendMessage('error', '无效的请求格式。');
+        }
     });
-    ws.on('close', () => console.log('[WebSocket] 网页播放器已断开连接。'));
+    ws.on('close', () => console.log('[WebSocket] 网页播放器已断开。'));
     ws.on('error', (error) => console.error('[WebSocket] 发生错误:', error));
 });
-console.log(`[WebSocket] 下载代理服务器已启动，正在监听 ws://localhost:${CONFIG.WEBSOCKET_PORT}`);
+
+console.log(`[WebSocket] 代理服务器已启动，监听 ws://localhost:${CONFIG.WEBSOCKET_PORT}`);
 console.log('-------------------------------------------------------------------\n');
 
+// ... handleSearchRequest, handleCacheRequest, 和抖音下载相关函数保持不变 ...
+// 它们现在会自然地使用 CONFIG 中已更新的、指向代理目录的路径。
+async function handleSearchRequest(searchData, sendMessage) {
+    const { query, sourceType } = searchData;
+    try {
+        const params = new URLSearchParams({ input: query, filter: 'name', page: '1', type: sourceType });
+        const response = await axios.post(CONFIG.ONLINE_SEARCH_API, params, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+        });
+        if (response.data.code !== 200 || !response.data.data?.list) throw new Error(response.data.error || 'API返回数据格式不正确');
+        sendMessage('search_results', response.data.data.list);
+    } catch (error) {
+        sendMessage('error', `搜索失败: ${error.message}`);
+    }
+}
 
-// ==============================================================================
-// 3. 请求处理器与逻辑分发 (无变化)
-// ==============================================================================
+async function handleCacheRequest(trackData, sendMessage) {
+    const { originalSrc, originalAlbumArt, originalLyrics, title, artist, pinyin: pinyinStr, initials } = trackData;
+    console.log(`[Download] 收到下载请求: ${artist} - ${title}`);
+
+    const safeFilename = sanitizeFilename(`${artist} - ${title}`);
+    const downloadPromises = [];
+    const encodedSafeFilename = encodeURIComponent(safeFilename);
+
+    if (originalSrc) {
+        const audioPath = path.join(CONFIG.MUSIC_DIR, `${safeFilename}.mp3`);
+        if (!fs.existsSync(audioPath)) {
+            downloadPromises.push(downloadFile(originalSrc, CONFIG.MUSIC_DIR, `${safeFilename}.mp3`));
+        }
+    }
+    if (originalAlbumArt) {
+        const artPath = path.join(CONFIG.ALBUMART_DIR, `${safeFilename}.jpg`);
+        if (!fs.existsSync(artPath)) {
+            downloadPromises.push(downloadFile(originalAlbumArt, CONFIG.ALBUMART_DIR, `${safeFilename}.jpg`));
+        }
+    }
+    const lyricsPath = path.join(CONFIG.MUSIC_DIR, `${safeFilename}.lrc`);
+    if (originalLyrics && !fs.existsSync(lyricsPath)) {
+        if (originalLyrics.startsWith('data:text/plain,')) {
+            try {
+                const lrcContent = Buffer.from(originalLyrics.substring('data:text/plain,'.length), 'base64').toString('utf-8');
+                fs.writeFileSync(lyricsPath, lrcContent, 'utf-8');
+            } catch (e) { console.error(`[Download] 写入Data URL歌词失败: ${e.message}`); }
+        } else if (originalLyrics.startsWith('http')) {
+            downloadPromises.push(downloadFile(originalLyrics, CONFIG.MUSIC_DIR, `${safeFilename}.lrc`));
+        }
+    }
+
+    if (downloadPromises.length > 0) {
+        try {
+            await Promise.all(downloadPromises);
+            console.log(`[Download] 资源下载完成: ${safeFilename}`);
+        } catch (error) {
+            console.error(`[Download] 下载资源失败 for ${safeFilename}:`, error);
+            sendMessage('error', `下载 '${title}' 失败: ${error.message}`);
+            return;
+        }
+    } else {
+        console.log(`[Download] '${safeFilename}' 所有资源已在本地，无需下载。`);
+    }
+
+    const newTrack = {
+        title,
+        artist,
+        src: `music/${encodedSafeFilename}.mp3`,
+        albumArt: `albumArt/${encodedSafeFilename}.jpg`,
+        lyrics: fs.existsSync(lyricsPath) ? `music/${encodedSafeFilename}.lrc` : "",
+        type: "audio",
+        pinyin: pinyinStr,
+        initials,
+        originalSrc: originalSrc,
+        originalAlbumArt: originalAlbumArt,
+        originalLyrics: originalLyrics
+    };
+
+    await updateLocalPlaylist(newTrack, CONFIG.PLAYLIST_PATH);
+    sendMessage('new_track', newTrack);
+}
+
 async function handleDownloadRequest(requestData, sendMessage) {
     let url, downloadType;
-
     if (typeof requestData === 'string') {
         url = requestData;
         downloadType = 'single';
@@ -119,311 +210,184 @@ async function handleDownloadRequest(requestData, sendMessage) {
         url = requestData.url;
         downloadType = requestData.downloadType;
     }
-
-    sendMessage('status', '开始处理，正在提取URL...');
     const match = url.match(/(https?:\/\/[^\s]+)|(MS4wLjABAAAA[^\s]+)/);
-    if (!match) {
-        sendMessage('error', '错误：未在文本中找到有效的URL或用户ID。');
-        return;
-    }
-    let startUrl = match[0];
-    if (startUrl.startsWith('MS4wLjAB')) {
-        startUrl = `https://www.douyin.com/user/${startUrl}`;
-    }
-    sendMessage('status', `成功提取目标: ${startUrl}`);
+    if (!match) return sendMessage('error', '未找到有效的URL或用户ID。');
 
-    if (downloadType === 'single') {
-        await downloadSingleVideo(startUrl, sendMessage);
-    } else {
-        await downloadUserContent(startUrl, downloadType, sendMessage);
+    let startUrl = match[0];
+    if (startUrl.startsWith('MS4wLjAB')) startUrl = `https://www.douyin.com/user/${startUrl}`;
+
+    sendMessage('status', `成功提取目标: ${startUrl}`);
+    if (downloadType === 'single') await downloadSingleVideo(startUrl, sendMessage);
+    else await downloadUserContent(startUrl, downloadType, sendMessage);
+}
+
+async function launchBrowser(sendMessage) {
+    try {
+        return await playwright.launch({ headless: CONFIG.HEADLESS_MODE });
+    } catch (error) {
+        if (error.message.includes("Executable doesn't exist")) {
+            sendMessage('error', "启动浏览器失败: 未找到可执行文件。请在代理程序的终端中运行 'npx playwright install' 来下载必要的浏览器。");
+        } else {
+            sendMessage('error', `启动浏览器时发生未知错误: ${error.message}`);
+        }
+        return null;
     }
 }
 
-// ==============================================================================
-// 4. 核心下载逻辑
-// ==============================================================================
+async function randomDelay(min, max) {
+    return new Promise(resolve => setTimeout(resolve, Math.random() * (max - min) + min));
+}
 
 async function downloadSingleVideo(videoUrl, sendMessage) {
-    const targetApiUrl = "aweme/v1/web/aweme/detail/";
-    let browser;
+    let browser = await launchBrowser(sendMessage);
+    if (!browser) return;
+
     try {
-        sendMessage('status', '正在启动隐身浏览器 (单视频模式)...');
-        browser = await playwright.launch({ headless: CONFIG.HEADLESS_MODE });
+        sendMessage('status', '浏览器已启动 (单视频模式)...');
         const context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' });
         const page = await context.newPage();
-
         const apiResponsePromise = new Promise((resolve, reject) => {
-            page.on('response', async (response) => {
-                if (response.url().includes(targetApiUrl) && response.status() === 200) {
-                    sendMessage('status', `成功拦截到目标API: ${response.url()}`);
-                    try { resolve(await response.json()); } catch (e) { reject(new Error(`解析API响应为JSON时出错: ${e.message}`)); }
+            page.on('response', async (res) => {
+                if (res.url().includes("aweme/v1/web/aweme/detail/") && res.status() === 200) {
+                    try { resolve(await res.json()); } catch (e) { reject(e); }
                 }
             });
         });
-
-        sendMessage('status', `正在导航至目标页面...`);
-        // 【修改】页面导航超时从 45 秒增加到 90 秒
         await page.goto(videoUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
-
-        const apiResponseJson = await Promise.race([
-            apiResponsePromise,
-            // 【修改】API 拦截超时从 30 秒增加到 60 秒
-            new Promise((_, reject) => setTimeout(() => reject(new Error('API拦截超时')), 60000))
-        ]);
-
-        if (!apiResponseJson) {
-            sendMessage('error', '未能拦截到有效的API响应，下载失败。');
+        const apiResponseJson = await Promise.race([apiResponsePromise, new Promise((_, reject) => setTimeout(() => reject(new Error('API拦截超时')), 60000))]);
+        if (!apiResponseJson?.aweme_detail) {
+            sendMessage('error', '未能拦截到有效的API响应或数据结构错误。');
             return;
         }
-
-        const awemeDetail = apiResponseJson?.aweme_detail;
-        if (!awemeDetail) {
-            sendMessage('error', 'API响应中缺少关键的 aweme_detail 数据。');
-            return;
-        }
-
-        await processAndDownloadItem(awemeDetail, sendMessage);
-        sendMessage('success', `视频下载完成！已将新媒体项添加到播放列表。`);
-
+        await processAndDownloadItem(apiResponseJson.aweme_detail, sendMessage);
+        sendMessage('success', `视频下载完成！`);
     } catch (error) {
         sendMessage('error', `浏览器操作失败: ${error.message}`);
     } finally {
-        if (browser) {
-            await browser.close();
-            sendMessage('status', '浏览器已关闭。');
-        }
+        if (browser) await browser.close();
     }
 }
 
-
 async function downloadUserContent(userUrl, downloadType, sendMessage) {
     const configs = {
-        works: {
-            api: "aweme/v1/web/aweme/post/",
-            tabSelector: '[data-e2e="user-tab-post"]',
-            listSelector: 'div[data-e2e="user-post-list"]',
-            name: "作品"
-        },
-        likes: {
-            api: "aweme/v1/web/aweme/favorite/",
-            tabSelector: '#semiTablike',
-            listSelector: 'div[data-e2e="user-like-list"]',
-            name: "喜欢"
-        }
+        works: { api: "aweme/v1/web/aweme/post/", tabSelector: '[data-e2e="user-tab-post"]', listSelector: 'div[data-e2e="user-post-list"]', name: "作品" },
+        likes: { api: "aweme/v1/web/aweme/favorite/", tabSelector: '#semiTablike', listSelector: 'div[data-e2e="user-like-list"]', name: "喜欢" }
     };
     const currentConfig = configs[downloadType];
-    if (!currentConfig) {
-        sendMessage('error', `无效的下载类型: ${downloadType}`);
-        return;
-    }
+    if (!currentConfig) return sendMessage('error', `无效的下载类型: ${downloadType}`);
 
-    let browser;
+    let browser = await launchBrowser(sendMessage);
+    if (!browser) return;
+
     try {
-        sendMessage('status', `启动浏览器 (用户${currentConfig.name}模式)...`);
-        browser = await playwright.launch({ headless: CONFIG.HEADLESS_MODE });
+        sendMessage('status', `浏览器已启动 (${currentConfig.name}模式)...`);
         const contextOptions = { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' };
         if (fs.existsSync(CONFIG.STATE_PATH)) {
-            sendMessage('status', '发现已有会话状态，正在加载...');
+            sendMessage('status', '发现会话状态，正在加载...');
             contextOptions.storageState = CONFIG.STATE_PATH;
         }
         const context = await browser.newContext(contextOptions);
         const page = await context.newPage();
-
-        sendMessage('status', `正在导航至用户主页...`);
-        // 【修改】页面导航超时从 60 秒增加到 120 秒
         await page.goto(userUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
-
-        // 【新增】调用函数关闭登录弹窗
         await closeLoginModalIfNeeded(page, sendMessage);
-
         if (downloadType === 'likes') {
-            sendMessage('status', `正在切换到 "${currentConfig.name}" 列表...`);
             try {
-                // 【修改】等待 “喜欢” 标签的超时时间从 10 秒增加到 20 秒
                 await page.waitForSelector(currentConfig.tabSelector, { state: 'visible', timeout: 20000 });
                 await page.click(currentConfig.tabSelector);
-            } catch (e) {
-                sendMessage('error', `切换到 "${currentConfig.name}" 列表失败，可能是用户隐藏了此列表或页面结构已更新。`);
-                return;
-            }
+            } catch (e) { return sendMessage('error', `切换到 "${currentConfig.name}" 列表失败。`); }
         }
-
-        sendMessage('status', `页面加载中，等待${currentConfig.name}列表出现...`);
-        // 【修改】等待作品列表的超时时间从 30 秒增加到 60 秒
         await page.waitForSelector(currentConfig.listSelector, { timeout: 60000 });
-        sendMessage('status', `${currentConfig.name}列表已加载，开始抓取...`);
 
-        let hasMore = true;
-        let pageNum = 1;
-        let downloadedCount = 0;
+        let hasMore = true, pageNum = 1, downloadedCount = 0;
         const seenAwemeIds = new Set();
-
         while (hasMore) {
-            const apiResponsePromise = new Promise((resolve, reject) => {
-                const responseHandler = async (response) => {
-                    if (response.url().includes(currentConfig.api)) {
-                        page.removeListener('response', responseHandler);
-                        try { resolve(await response.json()); } catch (e) { reject(new Error("解析API失败: " + e.message)); }
-                    }
-                };
-                page.on('response', responseHandler);
-            });
-
+            const apiResponsePromise = new Promise((resolve) => page.once('response', async (res) => res.url().includes(currentConfig.api) && resolve(await res.json())));
             await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-            sendMessage('status', `正在滚动加载第 ${pageNum} 页${currentConfig.name}...`);
+            sendMessage('status', `滚动加载第 ${pageNum} 页...`);
             await randomDelay(500, 1000);
-
-            const postData = await Promise.race([
-                apiResponsePromise,
-                new Promise((_, reject) => setTimeout(() => reject(new Error('获取API超时')), 20000))
-            ]);
-
-            if (!postData || !postData.aweme_list || postData.aweme_list.length === 0) {
-                sendMessage('status', 'API未返回列表，可能已到达末页。');
-                break;
-            }
-
+            const postData = await Promise.race([apiResponsePromise, new Promise((_, reject) => setTimeout(() => reject(new Error('API超时')), 20000))]);
+            if (!postData?.aweme_list?.length) break;
             hasMore = postData.has_more;
-            const worksOnPage = postData.aweme_list;
-            const newWorks = worksOnPage.filter(work => !seenAwemeIds.has(work.aweme_id));
-
-            if (newWorks.length === 0 && worksOnPage.length > 0) {
-                sendMessage('status', `第 ${pageNum} 页未发现新作品，可能已全部加载。`);
-                hasMore = false;
-                break;
-            }
-
-            sendMessage('status', `第 ${pageNum} 页获取成功，发现 ${newWorks.length} 个新${currentConfig.name}。`);
-
+            const newWorks = postData.aweme_list.filter(w => !seenAwemeIds.has(w.aweme_id));
+            if (!newWorks.length && postData.aweme_list.length) break;
             for (const item of newWorks) {
                 seenAwemeIds.add(item.aweme_id);
-                sendMessage('status', `[${++downloadedCount}] 开始处理: ${item.desc || "无标题视频"}`);
+                sendMessage('status', `[${++downloadedCount}] 处理: ${item.desc || "无标题"}`);
                 await processAndDownloadItem(item, sendMessage);
             }
-
             if (hasMore) {
                 pageNum++;
-                const delay = CONFIG.USER_WORKS_DELAY_MIN + Math.random() * (CONFIG.USER_WORKS_DELAY_MAX - CONFIG.USER_WORKS_DELAY_MIN);
-                const jitter = (Math.random() - 0.5) * 2 * CONFIG.USER_WORKS_DELAY_JITTER;
-                const finalDelay = Math.round(delay + jitter);
-
-                sendMessage('status', `本页处理完毕。延迟 ${(finalDelay / 1000).toFixed(1)} 秒后获取下一页...`);
-                await new Promise(resolve => setTimeout(resolve, finalDelay));
+                await new Promise(res => setTimeout(res, Math.round(randomDelay(CONFIG.USER_WORKS_DELAY_MIN, CONFIG.USER_WORKS_DELAY_MAX))));
             }
         }
-
-        sendMessage('success', `所有${currentConfig.name}下载完成！共处理 ${downloadedCount} 个视频。`);
+        sendMessage('success', `所有${currentConfig.name}下载完成！共处理 ${downloadedCount} 个。`);
         await context.storageState({ path: CONFIG.STATE_PATH });
-        sendMessage('status', '会话状态已保存。');
-
     } catch (error) {
         sendMessage('error', `批量下载失败: ${error.message}`);
     } finally {
-        if (browser) {
-            await browser.close();
-            sendMessage('status', '浏览器已关闭。');
-        }
+        if (browser) await browser.close();
     }
 }
 
+async function closeLoginModalIfNeeded(page, sendMessage) {
+    try {
+        const closeButton = page.locator(`svg path[d="M12.7929 22.2426C12.4024 22.6331 12.4024 23.2663 12.7929 23.6568C13.1834 24.0474 13.8166 24.0474 14.2071 23.6568L18.5 19.3639L22.7929 23.6568C23.1834 24.0474 23.8166 24.0474 24.2071 23.6568C24.5976 23.2663 24.5976 22.6331 24.2071 22.2426L19.9142 17.9497L24.1066 13.7573C24.4971 13.3668 24.4971 12.7336 24.1066 12.3431C23.7161 11.9526 23.0829 11.9526 22.6924 12.3431L18.5 16.5355L14.3076 12.3431C13.9171 11.9526 13.2839 11.9526 12.8934 12.3431C12.5029 12.7336 12.5029 13.3668 12.8934 13.7573L17.0858 17.9497L12.7929 22.2426Z"]`);
+        await closeButton.waitFor({ state: 'visible', timeout: 15000 });
+        await closeButton.click();
+    } catch (error) { /* Modal not found, which is fine */ }
+}
 
 async function processAndDownloadItem(awemeDetail, sendMessage) {
     const awemeId = awemeDetail?.aweme_id;
-    if (!awemeId) {
-        sendMessage('status', '警告: 作品缺少 aweme_id，跳过。');
-        return;
-    }
-
+    if (!awemeId) return;
     try {
-        const downloadPromises = [];
+        const promises = [];
         const videoUri = awemeDetail?.video?.play_addr?.uri;
-        const staticCoverUrl = awemeDetail?.video?.cover?.url_list?.[0];
+        const coverUrl = awemeDetail?.video?.cover?.url_list?.[0];
+        if (videoUri) promises.push(downloadFile(`https://www.douyin.com/aweme/v1/play/?video_id=${videoUri}`, CONFIG.VIDEOS_DIR, `${awemeId}.mp4`));
+        if (coverUrl) promises.push(downloadFile(coverUrl, CONFIG.ALBUMART_DIR, `${awemeId}.jpg`));
+        if (promises.length === 0) return;
+        await Promise.all(promises);
 
-        if (videoUri) {
-            const videoUrl = `https://www.douyin.com/aweme/v1/play/?video_id=${videoUri}`;
-            downloadPromises.push(downloadFile(videoUrl, CONFIG.VIDEOS_DIR, `${awemeId}.mp4`, `视频 ${awemeId}`, sendMessage));
-        }
-        if (staticCoverUrl) {
-            downloadPromises.push(downloadFile(staticCoverUrl, CONFIG.ALBUMART_DIR, `${awemeId}.jpg`, `封面 ${awemeId}`, sendMessage));
-        }
-
-        if (downloadPromises.length === 0) {
-            sendMessage('status', `警告: 作品 ${awemeId} 无有效下载链接，跳过。`);
-            return;
-        }
-
-        await Promise.all(downloadPromises);
-
-        const { pinyin } = await import('pinyin-pro');
         const title = awemeDetail.desc || "无标题视频";
         const newTrack = {
-            title: title,
+            title,
             artist: awemeDetail.author?.nickname || "未知作者",
-            src: `http://localhost:${CONFIG.HTTP_PORT}/${CONFIG.VIDEOS_DIR}/${awemeId}.mp4`,
-            albumArt: `http://localhost:${CONFIG.HTTP_PORT}/${CONFIG.ALBUMART_DIR}/${awemeId}.jpg`,
+            src: `videos/${awemeId}.mp4`,
+            albumArt: `albumArt/${awemeId}.jpg`,
             type: "video", lyrics: "",
             pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
             initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '')
         };
-
-        await updateLocalPlaylist(newTrack);
+        await updateLocalPlaylist(newTrack, CONFIG.PLAYLIST_PATH);
         sendMessage('new_track', newTrack);
-    } catch (downloadError) {
-        sendMessage('error', `下载作品 ${awemeId} 时发生错误: ${downloadError.message}`);
-    }
+    } catch (e) { sendMessage('error', `下载作品 ${awemeId} 失败: ${e.message}`); }
 }
 
-// ==============================================================================
-// 5. 通用文件下载函数
-// ==============================================================================
-async function downloadFile(url, folder, fileName, description, sendMessage) {
+async function downloadFile(url, folder, fileName) {
     const filePath = path.join(folder, fileName);
-    if (fs.existsSync(filePath)) {
-        sendMessage('status', `文件 ${fileName} 已存在，跳过下载。`);
-        return;
-    }
-    sendMessage('status', ` -> 开始下载 ${description}...`);
+    if (fs.existsSync(filePath)) return;
     try {
-        const response = await axios({
-            method: 'get', url, responseType: 'stream',
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' },
-            // 【修改】下载文件本身的超时时间从 60 秒增加到 120 秒
-            timeout: 120000,
-        });
+        const response = await axios({ method: 'get', url, responseType: 'stream', headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 120000 });
         const writer = fs.createWriteStream(filePath);
         response.data.pipe(writer);
         return new Promise((resolve, reject) => {
-            writer.on('finish', () => { sendMessage('status', ` -> 下载成功: ${fileName}`); resolve(); });
-            writer.on('error', (err) => { fs.unlink(filePath, () => {}); reject(err); });
+            writer.on('finish', resolve);
+            writer.on('error', reject);
         });
-    } catch (e) { throw new Error(`下载 ${description} 失败: ${e.message}`); }
+    } catch (e) { throw new Error(`下载失败`); }
 }
 
-// ==============================================================================
-// 6. 本地播放列表管理 (无变化)
-// ==============================================================================
-async function updateLocalPlaylist(newTrack) {
+async function updateLocalPlaylist(newTrack, playlistPath) {
     let playlist = [];
     try {
-        if (fs.existsSync(CONFIG.PLAYLIST_PATH)) {
-            playlist = JSON.parse(fs.readFileSync(CONFIG.PLAYLIST_PATH, 'utf-8'));
+        if (fs.existsSync(playlistPath)) {
+            playlist = JSON.parse(fs.readFileSync(playlistPath, 'utf-8'));
         }
-    } catch (e) {
-        console.error(`[Playlist] 解析本地 playlist.json 失败，将创建新文件:`, e);
-        playlist = [];
-    }
-
-    if (playlist.some(track => track.src === newTrack.src)) {
-        console.log(`[Playlist] 曲目 "${newTrack.title}" 已存在，跳过添加。`);
-        return;
-    }
-
+    } catch (e) { console.warn(`[Playlist] 读取 ${playlistPath} 失败，将创建新文件。`, e.message); }
+    if (playlist.some(track => track.src === newTrack.src)) return;
     playlist.unshift(newTrack);
-
     try {
-        fs.writeFileSync(CONFIG.PLAYLIST_PATH, JSON.stringify(playlist, null, 2));
-        console.log(`[Playlist] 成功更新本地 playlist.json，已添加 "${newTrack.title}"。`);
-    } catch (e) {
-        console.error(`[Playlist] 写入本地 playlist.json 失败:`, e);
-    }
+        fs.writeFileSync(playlistPath, JSON.stringify(playlist, null, 2), 'utf-8');
+    } catch (e) { console.error(`[Playlist] 写入 ${playlistPath} 失败:`, e); }
 }

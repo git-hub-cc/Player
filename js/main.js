@@ -4,7 +4,6 @@ import * as dom from './dom.js';
 import * as state from './state.js';
 import { PLAY_MODES, desktopTourSteps, mobileTourSteps } from './config.js';
 import { loadTemplates, normalizeKey, formatTime } from './utils.js';
-// 【修改】导入新的重置函数
 import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode, playTrack, resetBackgroundBeatTimer } from './player.js';
 import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, setupParticleCanvas, closeActivePanels, toggleDownloadPanel, showToast } from './ui.js';
 import { loadShortcuts, executeShortcut, setupShortcutListeners } from './features/shortcuts.js';
@@ -15,8 +14,6 @@ import { setupDownloaderListeners } from './features/downloader.js';
 // --- 持久化 ---
 const PLAYER_STATE_KEY = 'player_state';
 let initialTime = 0;
-
-// ... (savePlayerState 和 loadPlayerState 函数保持不变) ...
 
 function savePlayerState() {
     const stateToSave = {
@@ -47,22 +44,11 @@ function loadPlayerState() {
 }
 
 function setupEventListeners() {
-    // Player controls
+    // ... 其他事件监听器 ...
     dom.playPauseBtn.addEventListener('click', togglePlayPause);
-    dom.prevBtn.addEventListener('click', () => {
-        playPrevTrack();
-        savePlayerState();
-    });
-    dom.nextBtn.addEventListener('click', () => {
-        playNextTrack();
-        savePlayerState();
-    });
-    dom.modeBtn.addEventListener('click', () => {
-        cyclePlayMode();
-        savePlayerState();
-    });
-
-    // 浏览器历史事件
+    dom.prevBtn.addEventListener('click', () => { playPrevTrack(); savePlayerState(); });
+    dom.nextBtn.addEventListener('click', () => { playNextTrack(); savePlayerState(); });
+    dom.modeBtn.addEventListener('click', () => { cyclePlayMode(); savePlayerState(); });
     window.addEventListener('popstate', (event) => {
         if (event.state && typeof event.state.trackIndex !== 'undefined') {
             if (state.currentTrackIndex !== event.state.trackIndex) {
@@ -71,58 +57,30 @@ function setupEventListeners() {
             }
         }
     });
-
-    // Media element events
     dom.mediaPlayer.addEventListener('ended', () => {
         const currentMode = PLAY_MODES[state.currentModeIndex];
-        if (currentMode === 'single') {
-            dom.mediaPlayer.currentTime = 0;
-            playTrack();
-        } else {
-            playNextTrack();
-            savePlayerState();
-        }
+        if (currentMode === 'single') { dom.mediaPlayer.currentTime = 0; playTrack(); }
+        else { playNextTrack(); savePlayerState(); }
     });
     dom.mediaPlayer.addEventListener('loadedmetadata', () => {
         updateProgress();
-        if (initialTime > 0) {
-            dom.mediaPlayer.currentTime = initialTime;
-            initialTime = 0;
-        }
+        if (initialTime > 0) { dom.mediaPlayer.currentTime = initialTime; initialTime = 0; }
     });
-
-    // 进度条的事件监听逻辑
-    dom.progressBar.addEventListener('mousedown', () => {
-        state.setIsScrubbing(true);
-    });
-
+    dom.progressBar.addEventListener('mousedown', () => state.setIsScrubbing(true));
     dom.progressBar.addEventListener('input', (e) => {
         const value = e.target.value;
         dom.progressBar.style.setProperty('--value-percent', `${value}%`);
-
         if (!isNaN(dom.mediaPlayer.duration)) {
             const newTime = (value / 100) * dom.mediaPlayer.duration;
             dom.currentTimeEl.textContent = formatTime(newTime);
         }
     });
-
     dom.progressBar.addEventListener('change', (e) => {
-        if (!isNaN(dom.mediaPlayer.duration)) {
-            dom.mediaPlayer.currentTime = (e.target.value / 100) * dom.mediaPlayer.duration;
-        }
-
-        // 【修改】在用户拖动进度条后重置背景节拍计时器
+        if (!isNaN(dom.mediaPlayer.duration)) { dom.mediaPlayer.currentTime = (e.target.value / 100) * dom.mediaPlayer.duration; }
         resetBackgroundBeatTimer();
-
         state.setIsScrubbing(false);
-
-        if (!state.isPlaying) {
-            playTrack();
-        }
+        if (!state.isPlaying) { playTrack(); }
     });
-
-    // ... (其余的 setupEventListeners 函数内容保持不变) ...
-    // Volume controls
     dom.volumeBtn.addEventListener('click', () => {
         dom.mediaPlayer.muted = !dom.mediaPlayer.muted;
         updateVolumeBarVisual(dom.mediaPlayer.volume, dom.mediaPlayer.muted);
@@ -135,8 +93,6 @@ function setupEventListeners() {
         updateVolumeBarVisual(newVolume, dom.mediaPlayer.muted);
         savePlayerState();
     });
-
-    // Panel toggles
     dom.lyricsBtn.addEventListener('click', toggleLyricsPanel);
     dom.mobileLyricsBtn.addEventListener('click', toggleLyricsPanel);
     dom.playlistBtn.addEventListener('click', togglePlaylistPanel);
@@ -144,65 +100,47 @@ function setupEventListeners() {
     dom.infoBtn.addEventListener('click', toggleInfoPanel);
     dom.shortcutBtn.addEventListener('click', toggleShortcutPanel);
     dom.downloadPanelBtn.addEventListener('click', toggleDownloadPanel);
-
-    // 统一所有面板的关闭按钮逻辑
     dom.closePlaylistBtn.addEventListener('click', closeActivePanels);
     dom.closeInfoBtn.addEventListener('click', closeActivePanels);
     dom.closeShortcutBtn.addEventListener('click', closeActivePanels);
     dom.closeDownloadBtn.addEventListener('click', closeActivePanels);
-
-    // 点击外部区域关闭面板
     [dom.infoPanel, dom.playlistPanel, dom.shortcutPanel, dom.lyricsContainer, dom.downloadPanel].forEach(panel => {
         panel.addEventListener('click', (e) => { if (e.target === panel) panel.classList.remove('active'); });
     });
     dom.mainView.addEventListener('click', closeActivePanels);
-
-    // Playlist
     dom.playlistEl.addEventListener('click', (e) => {
         const item = e.target.closest('.playlist-item');
         if (item) {
             const newIndex = parseInt(item.dataset.index, 10);
-            loadTrack(newIndex, { forcePlay: true });
-            savePlayerState();
+            if (state.currentTrackIndex !== newIndex) {
+                loadTrack(newIndex, { forcePlay: true });
+                savePlayerState();
+            }
         }
     });
-    dom.playlistSearchInput.addEventListener('input', filterPlaylist);
 
-    // Context Menu
+    dom.playlistSearchInput.addEventListener('input', filterPlaylist);
     document.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        hideContextMenu();
+        e.preventDefault(); hideContextMenu();
         const { clientX: mouseX, clientY: mouseY } = e;
         const { normalizedX, normalizedY } = normalizePosition(mouseX, mouseY);
-        dom.contextMenu.style.top = `${normalizedY}px`;
-        dom.contextMenu.style.left = `${normalizedX}px`;
+        dom.contextMenu.style.top = `${normalizedY}px`; dom.contextMenu.style.left = `${normalizedX}px`;
         dom.contextMenu.style.display = 'block';
     });
     document.addEventListener('click', (e) => {
-        if (dom.contextMenu.style.display === 'block' && !dom.contextMenu.contains(e.target)) {
-            hideContextMenu();
-        }
+        if (dom.contextMenu.style.display === 'block' && !dom.contextMenu.contains(e.target)) { hideContextMenu(); }
     });
     dom.contextMenu.addEventListener('click', (e) => {
         const target = e.target;
-        if (target.tagName === 'LI' && target.dataset.action) {
-            executeShortcut(target.dataset.action);
-            hideContextMenu();
-        }
+        if (target.tagName === 'LI' && target.dataset.action) { executeShortcut(target.dataset.action); hideContextMenu(); }
     });
-
-    // Global keyboard listener
     window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') hideContextMenu();
         if (state.isRecordingShortcut || ['input', 'textarea'].includes(e.target.tagName.toLowerCase())) return;
         state.pressedShortcutKeys.add(normalizeKey(e.key));
         for (const actionId in state.shortcutSettings) {
             const requiredKeys = new Set(state.shortcutSettings[actionId].keys);
-            if (requiredKeys.size > 0 && requiredKeys.size === state.pressedShortcutKeys.size && [...requiredKeys].every(key => state.pressedShortcutKeys.has(key))) {
-                e.preventDefault();
-                executeShortcut(actionId);
-                break;
-            }
+            if (requiredKeys.size > 0 && requiredKeys.size === state.pressedShortcutKeys.size && [...requiredKeys].every(key => state.pressedShortcutKeys.has(key))) { e.preventDefault(); executeShortcut(actionId); break; }
         }
     });
     window.addEventListener('keyup', (e) => {
@@ -210,52 +148,90 @@ function setupEventListeners() {
         state.pressedShortcutKeys.delete(normalizeKey(e.key));
     });
 
-    // 【新增】监听并处理本地播放列表
+    // --- [核心修改] 接收并处理来自代理的数据 ---
+    const AGENT_BASE_URL = 'http://localhost:9528';
+
+    // 将代理返回的相对路径转换为可播放的完整URL
+    function makeAgentTrackPlayable(track) {
+        const playableTrack = { ...track };
+        if (playableTrack.src && !playableTrack.src.startsWith('http')) {
+            playableTrack.src = `${AGENT_BASE_URL}/${playableTrack.src}`;
+        }
+        if (playableTrack.albumArt && !playableTrack.albumArt.startsWith('http')) {
+            playableTrack.albumArt = `${AGENT_BASE_URL}/${playableTrack.albumArt}`;
+        }
+        if (playableTrack.lyrics && !playableTrack.lyrics.startsWith('http') && !playableTrack.lyrics.startsWith('data:')) {
+            playableTrack.lyrics = `${AGENT_BASE_URL}/${playableTrack.lyrics}`;
+        }
+        return playableTrack;
+    }
+
+    // 监听：当代理连接成功后，加载其保存的播放列表
     document.addEventListener('local-playlist-loaded', (event) => {
-        const localPlaylist = event.detail;
+        const localPlaylist = event.detail.map(makeAgentTrackPlayable);
         console.log('接收到本地播放列表:', localPlaylist);
 
         const existingSrcs = new Set(state.playlist.map(t => t.src));
         const uniqueLocalTracks = localPlaylist.filter(track => !existingSrcs.has(track.src));
 
         if (uniqueLocalTracks.length > 0) {
+            // [修正] 将新内容添加到播放列表最前面
             state.setPlaylist([...uniqueLocalTracks, ...state.playlist]);
-            // 更新当前播放索引，以保持当前曲目不变
+            // 更新当前播放索引，以确保当前歌曲不会改变
             state.setCurrentTrackIndex(state.currentTrackIndex + uniqueLocalTracks.length);
             renderPlaylist();
             updatePlaylistUI();
-            // 【修复】当本地播放列表加载后，同步更新画廊数据
             backgroundGallery.updatePlaylistData(state.playlist);
             showToast(`已加载 ${uniqueLocalTracks.length} 个本地作品！`);
         }
     });
 
-    // 【修改】监听来自下载代理的新曲目事件
+    // 监听：当有新内容下载完成时
     document.addEventListener('new-track-added', (event) => {
-        const newTrack = event.detail;
-        console.log('接收到新曲目:', newTrack);
+        const newTrackFromAgent = event.detail;
+        const trackForPlaylist = makeAgentTrackPlayable(newTrackFromAgent);
 
-        const isDuplicate = state.playlist.some(track => track.src === newTrack.src);
-        if (isDuplicate) {
-            console.log(`曲目 ${newTrack.title} 已存在，跳过添加。`);
-            showToast(`"${newTrack.title}" 已在播放列表中。`);
-            return;
+        const existingTrackIndex = state.playlist.findIndex(track => track.src === trackForPlaylist.src);
+
+        if (existingTrackIndex !== -1) {
+            // 如果已存在（不太可能，但作为保险），则更新信息
+            Object.assign(state.playlist[existingTrackIndex], trackForPlaylist);
+            console.log(`曲目 "${trackForPlaylist.title}" 已存在，更新其信息。`);
+        } else {
+            // [修正] 将新内容添加到播放列表最前面
+            state.setPlaylist([trackForPlaylist, ...state.playlist]);
+            // 更新当前播放索引以保持当前歌曲不变
+            // 如果当前没有播放或播放的是第一首，索引变为1，否则加1
+            state.setCurrentTrackIndex(state.currentTrackIndex + 1);
+            showToast(`已添加 "${trackForPlaylist.title}" 到播放列表！`);
         }
 
-        // 1. 将新曲目添加到播放列表的最前面
-        state.setPlaylist([newTrack, ...state.playlist]);
-
-        // 2. 更新当前播放索引，使其指向原来的曲目
-        state.setCurrentTrackIndex(state.currentTrackIndex + 1);
-
-        // 3. 完全重绘播放列表UI以反映新的顺序和索引
         renderPlaylist();
         updatePlaylistUI();
-        // 【修复】当新曲目被添加后，同步更新画廊数据
         backgroundGallery.updatePlaylistData(state.playlist);
+    });
 
-        // 4. 通知用户
-        showToast(`已添加 "${newTrack.title}" 到播放列表！`);
+
+    document.addEventListener('play-search-result', (event) => {
+        const trackToPlay = event.detail;
+        // 搜索结果总是需要通过代理播放，所以直接转换
+        const playableTrack = makeAgentTrackPlayable(trackToPlay);
+
+        let trackIndex = state.playlist.findIndex(track => track.src === playableTrack.src);
+
+        if (trackIndex === -1) {
+            // [修正] 将新内容添加到播放列表最前面
+            state.setPlaylist([playableTrack, ...state.playlist]);
+            trackIndex = 0; // 新添加的项总是在索引0
+            // 其他项的索引自动向后移动，所以当前播放索引需要+1
+            state.setCurrentTrackIndex(state.currentTrackIndex + 1);
+        }
+
+        loadTrack(trackIndex, { forcePlay: true });
+        // 因为播放的是新列表的第0项，所以更新当前索引
+        state.setCurrentTrackIndex(trackIndex);
+        renderPlaylist();
+        updatePlaylistUI();
     });
 
     setupDownloaderListeners();
@@ -266,7 +242,7 @@ function setupEventListeners() {
 
 
 async function init() {
-    // ... (init 函数的其他部分保持不变) ...
+    // ... init 函数保持不变 ...
     showSkeleton();
     await loadTemplates();
     loadPlayerState();
@@ -308,8 +284,8 @@ async function init() {
 
         if (state.playlist.length > 0) {
             const initialTrack = state.playlist[state.currentTrackIndex];
-            const initialUrl = `#track=${state.currentTrackIndex + 1}`;
-            history.replaceState({ trackIndex: state.currentTrackIndex }, initialTrack.title || '', initialUrl);
+            const newUrl = `#track=${state.currentTrackIndex + 1}`;
+            history.replaceState({ trackIndex: state.currentTrackIndex }, initialTrack.title || '', newUrl);
         }
     } else {
         dom.trackTitleEl.textContent = "播放列表为空";

@@ -4,6 +4,7 @@ import * as state from './state.js';
 import { PLAY_MODES } from './config.js';
 import { getTemplate, formatTime } from './utils.js';
 import { playTrack, pauseTrack } from './player.js';
+import { requestTrackCache } from './features/downloader.js';
 
 let toastTimeout;
 let lastActiveLyricIndex = -1;
@@ -19,6 +20,7 @@ const FAST_DECAY_RATE = 1 / (60 * 0.5); // 0.5秒动画
 
 // --- 面板管理 ---
 const allSidePanels = [dom.playlistPanel, dom.infoPanel, dom.shortcutPanel, dom.downloadPanel];
+let searchResultClickHandler = null; // 【新增】用于结果列表的事件处理器
 
 
 /**
@@ -46,9 +48,7 @@ function manageSidePanel(panelToToggle) {
     }
 }
 
-/**
- * 设置并添加粒子效果的Canvas
- */
+// ... 粒子效果和故障效果函数保持不变 ...
 export function setupParticleCanvas() {
     particleCanvas = document.getElementById('particle-canvas');
     if (!particleCanvas) {
@@ -58,9 +58,6 @@ export function setupParticleCanvas() {
     particleCtx = particleCanvas.getContext('2d', { willReadFrequently: true });
 }
 
-/**
- * 粒子动画主循环
- */
 function animateParticles() {
     if (!particleCanvas || !particleCtx) return;
 
@@ -102,10 +99,6 @@ function animateParticles() {
     }
 }
 
-/**
- * 从HTML元素创建溶解粒子
- * @param {HTMLElement} element - 要溶解的歌词P元素
- */
 function createParticlesFromElement(element) {
     if (!element || !particleCanvas || !particleCtx || element.classList.contains('particlized')) {
         return;
@@ -232,6 +225,7 @@ export function triggerGlitchEffect(duration = 800) {
     glitchAnimationId = requestAnimationFrame(animateGlitch);
 }
 
+
 export function showSkeleton() {
     dom.playerContainer.classList.add('loading');
     dom.skeletonOverlay.classList.add('active');
@@ -322,6 +316,7 @@ export function renderPlaylist() {
     dom.playlistEl.innerHTML = '';
     const fragment = dom.createFragment();
     state.playlist.forEach((track, index) => {
+        // 【修改】确保使用简化的模板
         const itemNode = getTemplate('template-playlist-item');
         const itemEl = itemNode.querySelector('.playlist-item');
         itemEl.dataset.index = index;
@@ -334,6 +329,10 @@ export function renderPlaylist() {
     dom.playlistEl.appendChild(fragment);
 }
 
+
+// 【移除】此函数不再需要，因为主播放列表没有状态按钮
+// export function updatePlaylistItemStatus(...) {}
+
 export function updatePlaylistUI() {
     dom.getAllPlaylistItems().forEach(item => {
         item.classList.toggle('active', parseInt(item.dataset.index) === state.currentTrackIndex);
@@ -345,26 +344,17 @@ export function filterPlaylist() {
     const playlistItems = dom.getAllPlaylistItems();
     let hasVisibleItems = false;
     const noResultsEl = dom.playlistEl.querySelector('#playlist-no-results');
-
     state.playlist.forEach((track, index) => {
         const item = playlistItems[index];
         if (!item) return;
-
         const title = track.title || '';
         const artist = track.artist || '';
         const pinyin = track.pinyin || '';
         const initials = track.initials || '';
-
-        const isMatch = !query ||
-            title.toLowerCase().includes(query) ||
-            artist.toLowerCase().includes(query) ||
-            pinyin.includes(query) ||
-            initials.includes(query);
-
+        const isMatch = !query || title.toLowerCase().includes(query) || artist.toLowerCase().includes(query) || pinyin.includes(query) || initials.includes(query);
         item.classList.toggle('hidden', !isMatch);
         if (isMatch) hasVisibleItems = true;
     });
-
     if (noResultsEl) {
         noResultsEl.style.display = hasVisibleItems ? 'none' : 'block';
     }
@@ -376,13 +366,7 @@ export function toggleInfoPanel() { manageSidePanel(dom.infoPanel); }
 export function toggleShortcutPanel() { manageSidePanel(dom.shortcutPanel); }
 export function toggleDownloadPanel() { manageSidePanel(dom.downloadPanel); }
 
-export function toggleGalleryView() {
-    dom.galleryContainer.classList.toggle('active');
-    if (dom.galleryContainer.classList.contains('active')) {
-        hideContextMenu();
-    }
-}
-
+// ... 其他函数 ...
 export function showToast(message) {
     clearTimeout(toastTimeout);
     dom.toastEl.textContent = message;
@@ -392,6 +376,7 @@ export function showToast(message) {
     }, 3000);
 }
 
+// ... 剩余的UI函数保持不变 ...
 export function updateVolumeBarVisual(volume, isMuted) {
     const volumePercent = isMuted ? 0 : volume * 100;
     dom.volumeBar.value = isMuted ? 0 : volume;
@@ -434,9 +419,7 @@ export function extractAndApplyGradient(sourceElement) {
     }
 }
 
-export function hideContextMenu() {
-    if (dom.contextMenu) dom.contextMenu.style.display = 'none';
-}
+export function hideContextMenu() { if (dom.contextMenu) dom.contextMenu.style.display = 'none'; }
 
 export function renderContextMenu() {
     const menuList = dom.getContextMenuList();
@@ -464,6 +447,66 @@ export function normalizePosition(mouseX, mouseY) {
     if (mouseY + menuHeight > windowHeight) normalizedY = windowHeight - menuHeight - 5;
     return { normalizedX, normalizedY };
 }
+
+
+// --- 【修改】下载/搜索面板 UI 相关函数 ---
+export function clearSearchResults() {
+    if (dom.searchResultsList) {
+        dom.searchResultsList.innerHTML = '';
+        // Note: The click handler is attached once in downloader.js, no need to remove it here.
+    }
+}
+
+function createResultItem(track, index, isCached = false) {
+    // 【修改】使用新的搜索结果模板
+    const itemNode = getTemplate('template-search-result-item');
+    const itemEl = itemNode.querySelector('.playlist-item');
+    itemEl.dataset.index = index;
+    // 使用原始src作为唯一标识，以便在缓存后找到它
+    itemEl.dataset.src = track.originalSrc || track.src;
+    itemEl.querySelector('.playlist-icon').textContent = track.type === 'video' ? '🎬' : '🎵';
+    itemEl.querySelector('.playlist-title').textContent = track.title || '未知标题';
+    itemEl.querySelector('.playlist-artist').textContent = track.artist || '未知艺术家';
+
+    const downloadBtn = itemEl.querySelector('.playlist-download-btn');
+    if (isCached) {
+        downloadBtn.classList.add('cached');
+    } else {
+        downloadBtn.classList.remove('hidden', 'cached');
+    }
+    return itemNode;
+}
+
+export function renderSearchResults(tracks) {
+    clearSearchResults();
+    const fragment = dom.createFragment();
+    tracks.forEach((track, index) => {
+        const isAlreadyInPlaylist = state.playlist.some(pTrack =>
+            pTrack.title === track.title && pTrack.artist === track.artist && !pTrack.src.startsWith('http')
+        );
+        fragment.appendChild(createResultItem(track, index, isAlreadyInPlaylist));
+    });
+    dom.searchResultsList.appendChild(fragment);
+}
+
+export function renderDownloadedItem(track) {
+    // 【修改】使用新的搜索结果模板
+    const itemNode = createResultItem(track, state.playlist.length, true);
+    dom.searchResultsList.appendChild(itemNode);
+}
+
+export function updateSearchResultItemStatus(itemElement, status) {
+    if (!itemElement) return;
+    const downloadBtn = itemElement.querySelector('.playlist-download-btn');
+    if (!downloadBtn) return;
+    downloadBtn.classList.remove('downloading', 'cached');
+    if (status === 'downloading') {
+        downloadBtn.classList.add('downloading');
+    } else if (status === 'cached') {
+        downloadBtn.classList.add('cached');
+    }
+}
+
 
 let wasPlayingBeforeDrag = false;
 let dragStartY = 0;

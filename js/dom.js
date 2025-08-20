@@ -64,18 +64,33 @@ export const feOffsetB = document.querySelector('#glitch-filter-spotify [result=
 export const bgCanvas = document.createElement('canvas');
 export const bgCtx = bgCanvas.getContext('2d', { willReadFrequently: true });
 
-// --- 【新增】下载功能相关元素 ---
+// --- 下载/搜索面板相关元素 ---
 export const downloadPanelBtn = document.getElementById('download-panel-btn');
 export const downloadPanel = document.getElementById('download-panel');
 export const closeDownloadBtn = document.getElementById('close-download-btn');
-export const douyinUrlInput = document.getElementById('douyin-url-input');
+export const urlOrSearchInput = document.getElementById('url-or-search-input'); // 统一输入框
 export const downloadStatusEl = document.getElementById('download-status');
-
-// 【修改】添加新的按钮和容器引用
 export const downloadActionsContainer = document.getElementById('download-actions-container');
+
+// 抖音下载按钮
 export const startDownloadBtn = document.getElementById('start-download-btn');
 export const downloadWorksBtn = document.getElementById('download-works-btn');
 export const downloadLikesBtn = document.getElementById('download-likes-btn');
+
+// 在线音乐搜索按钮
+export const searchNeteaseBtn = document.getElementById('search-netease-btn');
+
+// 引导视图和工作视图
+export const setupView = document.getElementById('setup-view');
+export const downloaderView = document.getElementById('downloader-view');
+export const panelDescription = downloaderView.querySelector('.panel-description');
+export const copyInstallCommandBtn = document.getElementById('copy-command-btn-install');
+export const copyRunCommandBtn = document.getElementById('copy-command-btn-run');
+export const connectionStatusText = document.getElementById('connection-status-text');
+
+// 【新增】搜索/下载结果列表元素
+export const searchResultsContainer = document.getElementById('search-results-container');
+export const searchResultsList = document.getElementById('search-results-list');
 
 
 // DOM Query/Creation Functions

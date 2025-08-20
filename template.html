@@ -8,14 +8,34 @@
     <p class="no-lyrics">暂无歌词</p>
 </template>
 
-<!-- 播放列表项模板 -->
+<!-- 【修改】播放列表项模板 (已简化，移除下载按钮) -->
 <template id="template-playlist-item">
     <li class="playlist-item">
-        <div class="playlist-icon"></div>
-        <div class="playlist-details">
-            <div class="playlist-title"></div>
-            <div class="playlist-artist"></div>
+        <div class="playlist-item-main-content">
+            <div class="playlist-icon"></div>
+            <div class="playlist-details">
+                <div class="playlist-title"></div>
+                <div class="playlist-artist"></div>
+            </div>
         </div>
+    </li>
+</template>
+
+<!-- 【新增】搜索结果项模板 (带下载按钮) -->
+<template id="template-search-result-item">
+    <li class="playlist-item">
+        <div class="playlist-item-main-content">
+            <div class="playlist-icon"></div>
+            <div class="playlist-details">
+                <div class="playlist-title"></div>
+                <div class="playlist-artist"></div>
+            </div>
+        </div>
+        <button class="playlist-download-btn" title="下载到本地">
+            <svg class="download-icon" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path></svg>
+            <svg class="spinner-icon" viewBox="0 0 24 24"><path d="M12,4a8,8,0,0,1,7.89,6.7A1.53,1.53,0,0,0,21.38,12h0a1.5,1.5,0,0,0,1.48-1.75,11,11,0,0,0-21.72,0A1.5,1.5,0,0,0,2.62,12h0a1.53,1.53,0,0,0,1.49-1.3A8,8,0,0,1,12,4Z"></path></svg>
+            <svg class="cached-icon" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg>
+        </button>
     </li>
 </template>
 

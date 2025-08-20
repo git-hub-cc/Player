@@ -188,28 +188,25 @@
             </ul>
         </aside>
 
-        <!-- 下载资源面板 -->
+        <!-- 下载/搜索面板 -->
         <aside id="download-panel" class="download-panel">
             <div class="panel-header">
-                <h2>下载资源</h2>
+                <h2>添加资源</h2>
                 <button id="close-download-btn" class="control-btn" title="关闭">
                     <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
                 </button>
             </div>
             <div id="download-panel-content" class="download-panel-content">
-                <!-- ============================================= -->
-                <!-- 1. 引导状态 (默认显示) -->
-                <!-- ============================================= -->
-                <div id="setup-view" class="setup-view">
+                <!-- 1. 引导状态 (需要时显示) -->
+                <div id="setup-view" class="setup-view" style="display: none;">
                     <div class="setup-header">
-                        <h3>启用本地下载功能</h3>
+                        <h3>启用本地代理功能</h3>
                         <p>首次使用需一次性完成以下配置，后续启动代理即可。</p>
                     </div>
-
                     <div class="setup-disclaimer">
-                        <strong>风险提示：</strong>本功能通过模拟浏览器行为进行数据抓取，存在一定风险，且可能因目标网站更新而失效。请仅将其用于学习和技术演示，切勿用于任何商业用途。
+                        <strong>风险提示：</strong>本功能通过模拟浏览器行为或代理网络请求进行数据抓取，存在一定风险，且可能因目标网站更新而失效。请仅将其用于学习和技术演示，切勿用于任何商业用途。
                     </div>
-
+                    <!-- 引导步骤 -->
                     <div class="setup-step">
                         <div class="step-number">1</div>
                         <div class="step-content">
@@ -221,7 +218,6 @@
                             <small>请遵循标准安装流程，保留默认选项即可。</small>
                         </div>
                     </div>
-
                     <div class="setup-step">
                         <div class="step-number">2</div>
                         <div class="step-content">
@@ -233,12 +229,11 @@
                             <small>将解压后的文件夹放置在您方便访问的位置，例如“我的文档”。</small>
                         </div>
                     </div>
-
                     <div class="setup-step">
                         <div class="step-number">3</div>
                         <div class="step-content">
-                            <h4>安装依赖项</h4>
-                            <p>打开您系统的 **终端** (Windows 上是 Command Prompt 或 PowerShell, macOS 上是 Terminal)。使用 `cd` 命令进入您刚刚解压的项目文件夹，然后运行以下命令：</p>
+                            <h4>安装依赖项与浏览器</h4>
+                            <p>打开您系统的 **终端** (Windows 上是 Command Prompt 或 PowerShell, macOS 上是 Terminal)。使用 `cd` 命令进入您刚刚解压的项目文件夹中的 <b>`download/Player`</b> 目录，然后运行以下命令：</p>
                             <div class="code-block">
                                 <pre><code>npm install</code></pre>
                                 <button id="copy-command-btn-install" class="copy-btn" title="点击复制">
@@ -246,10 +241,9 @@
                                     <svg class="check-icon" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg>
                                 </button>
                             </div>
-                            <small>此命令将下载并安装代理所需的所有依赖库。此过程可能需要几分钟，且Playwright会自动下载一个浏览器内核，体积较大。</small>
+                            <small>此命令会安装所有依赖。<b>注意</b>：Playwright 会自动下载一个浏览器内核（约几百MB），请耐心等待。如果自动下载失败或卡住，请在此命令完成后，手动运行 <code>npx playwright install</code> 来安装浏览器。</small>
                         </div>
                     </div>
-
                     <div class="setup-step">
                         <div class="step-number">4</div>
                         <div class="step-content">
@@ -262,10 +256,9 @@
                                     <svg class="check-icon" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg>
                                 </button>
                             </div>
-                            <small>看到 "listening..." 字样即表示成功。**在使用下载功能期间，请勿关闭此终端窗口。**</small>
+                            <small>看到 "listening..." 字样即表示成功。**在使用功能期间，请勿关闭此终端窗口。**</small>
                         </div>
                     </div>
-
                     <div class="setup-footer">
                         <div class="connection-status-line">
                             <span class="spinner"></span>
@@ -274,33 +267,38 @@
                     </div>
                 </div>
 
-                <!-- ============================================= -->
-                <!-- 2. 工作状态 (连接成功后显示) -->
-                <!-- ============================================= -->
-                <div id="downloader-view" class="downloader-view" style="display: none;">
-                    <p class="panel-description">已连接到本地代理。在此处粘贴抖音分享链接或用户主页链接/ID，然后点击下载。</p>
-                    <textarea id="douyin-url-input" placeholder="单个视频示例: 8.94 EhR:/ ... https://v.douyin.com/iY9aA9N/
-用户主页示例: https://www.douyin.com/user/MS4wLjABAAAA..."></textarea>
-
-                    <!-- 按钮容器 -->
-                    <div id="download-actions-container" class="download-actions-container">
-                        <!-- 默认按钮，用于单个视频 -->
-                        <button id="start-download-btn" class="action-btn">
-                            <span class="btn-text">开始下载</span>
-                            <span class="btn-loader"></span>
-                        </button>
-                        <!-- 用于用户主页的按钮，默认隐藏 -->
-                        <button id="download-works-btn" class="action-btn" style="display: none;">
-                            <span class="btn-text">下载作品</span>
-                            <span class="btn-loader"></span>
-                        </button>
-                        <button id="download-likes-btn" class="action-btn" style="display: none;">
-                            <span class="btn-text">下载喜欢</span>
-                            <span class="btn-loader"></span>
-                        </button>
+                <!-- 2. 主交互视图 (已修改) -->
+                <div id="downloader-view" class="downloader-view">
+                    <div class="downloader-input-area">
+                        <p class="panel-description">输入歌曲名进行在线搜索，或粘贴抖音分享链接进行本地下载。</p>
+                        <textarea id="url-or-search-input" placeholder="粘贴抖音链接 或 输入歌曲/歌手名..."></textarea>
+                        <div id="download-actions-container" class="download-actions-container">
+                            <!-- 抖音下载按钮 -->
+                            <button id="start-download-btn" class="action-btn" style="display: none;">
+                                <span class="btn-text">开始下载</span>
+                                <span class="btn-loader"></span>
+                            </button>
+                            <button id="download-works-btn" class="action-btn" style="display: none;">
+                                <span class="btn-text">下载作品</span>
+                                <span class="btn-loader"></span>
+                            </button>
+                            <button id="download-likes-btn" class="action-btn" style="display: none;">
+                                <span class="btn-text">下载喜欢</span>
+                                <span class="btn-loader"></span>
+                            </button>
+                            <!-- 在线音乐搜索按钮 -->
+                            <button id="search-netease-btn" class="action-btn">
+                                <span class="btn-text">搜索</span>
+                                <span class="btn-loader"></span>
+                            </button>
+                        </div>
+                        <div id="download-status" class="download-status"></div>
                     </div>
-
-                    <div id="download-status" class="download-status"></div>
+                    <div id="search-results-container" class="search-results-container">
+                        <ul id="search-results-list" class="playlist">
+                            <!-- 搜索/下载结果将显示在这里 -->
+                        </ul>
+                    </div>
                 </div>
             </div>
         </aside>
@@ -348,11 +346,9 @@
                     <svg class="mode-icon shuffle-icon" viewBox="0 0 24 24"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"></path></svg>
                 </button>
                 <button id="lyrics-btn" class="control-btn" title="显示/隐藏歌词"><svg viewBox="0 0 24 24"><path d="M6 4h12v2H6V4zm0 4h12v2H6V8zm0 4h8v2H6v-2zm0 4h6v2H6v-2zM4 2h2v20H4V2zm14 0h2v20h-2V2z"/></svg></button>
-
-                <button id="download-panel-btn" class="control-btn" title="下载资源">
+                <button id="download-panel-btn" class="control-btn" title="添加资源">
                     <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path></svg>
                 </button>
-
                 <button id="playlist-btn" class="control-btn" title="播放队列"><svg viewBox="0 0 24 24"><path d="M3 6h14v2H3V6zm0 5h14v2H3v-2zm0 5h10v2H3v-2zM17 10v8l5-4-5-4z"></path></svg></button>
                 <div class="volume-container">
                     <button id="volume-btn" class="control-btn" title="静音">
