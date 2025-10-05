@@ -21,6 +21,83 @@ export function resetBackgroundBeatTimer() {
 }
 
 /**
+ * [新增] 播放一个临时的、不属于下载列表的曲目。
+ * @param {object} track - 要播放的曲目对象。
+ */
+export async function playTemporaryTrack(track) {
+    if (!track) return;
+    showSkeleton();
+
+    // 暂停当前播放，并重置UI，但不更改下载列表的索引
+    pauseTrack();
+    resetBackgroundBeatTimer();
+    state.setCurrentColorPaletteIndex(0);
+
+    dom.trackTitleEl.textContent = track.title || "未知标题";
+    dom.trackArtistEl.textContent = track.artist || "未知艺术家";
+    const artUrl = track.albumArt || DEFAULT_ART;
+    dom.albumArtEl.src = artUrl;
+    dom.controlAlbumArtEl.src = artUrl;
+
+    let playableSrc;
+    try {
+        playableSrc = await resolvePlayableUrl(track);
+    } catch (error) {
+        console.error(`无法获取临时曲目 '${track.title}' 的播放链接:`, error);
+        showToast(`无法播放在线曲目: "${track.title}"`, 'error');
+        hideSkeleton();
+        return;
+    }
+
+    state.setParsedLyrics([]);
+    if (track.lyrics) {
+        try {
+            let lrcText;
+            if (track.lyrics.startsWith('data:text/plain,')) {
+                lrcText = track.lyrics.substring('data:text/plain,'.length);
+            } else {
+                const response = await fetch(track.lyrics);
+                if (!response.ok) throw new Error(`请求歌词失败: ${response.status}`);
+                lrcText = await response.text();
+            }
+            state.setParsedLyrics(parseLRC(lrcText));
+        } catch (error) {
+            console.error(`无法加载临时歌词:`, error);
+        }
+    }
+    renderLyrics();
+
+    const handleError = (e) => {
+        console.error("临时媒体加载错误:", e);
+        hideSkeleton();
+        dom.trackTitleEl.textContent = "错误";
+        dom.trackArtistEl.textContent = "无法播放在线媒体";
+    };
+
+    dom.mediaPlayer.onerror = handleError;
+    dom.mediaPlayer.oncanplay = () => {
+        hideSkeleton();
+        playTrack();
+    };
+    dom.mediaPlayer.onloadedmetadata = updateProgress;
+
+    // 根据类型显示封面或视频
+    if (track.type === 'audio') {
+        dom.albumArtContainer.style.display = 'flex';
+        dom.mediaPlayer.style.display = 'none';
+        dom.albumArtEl.onload = () => extractAndApplyGradient(dom.albumArtEl);
+        if (dom.albumArtEl.complete) extractAndApplyGradient(dom.albumArtEl);
+    } else {
+        dom.albumArtContainer.style.display = 'none';
+        dom.mediaPlayer.style.display = 'block';
+        dom.mediaPlayer.addEventListener('canplay', () => extractAndApplyGradient(dom.mediaPlayer), { once: true });
+    }
+
+    dom.mediaPlayer.src = playableSrc;
+    dom.mediaPlayer.load();
+}
+
+/**
  * [修改] 加载并准备播放指定的轨道。
  * @param {number} trackIndex - 要加载的轨道在播放列表中的索引。
  * @param {object} [options={}] - 加载选项。

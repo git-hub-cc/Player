@@ -2,8 +2,8 @@
 
 import * as dom from '../dom.js';
 import * as state from '../state.js';
-import { showToast, clearSearchResults, renderSearchResults, renderDownloadedItem, updateSearchResultItemStatus, renderPlaylist, closeActivePanels, renderPluginsList } from '../ui.js';
-import { loadTrack } from '../player.js';
+import { showToast, clearSearchResults, renderSearchResults, updateSearchResultItemStatus, closeActivePanels, renderPluginsList } from '../ui.js';
+import { playTemporaryTrack } from '../player.js';
 
 const WEBSOCKET_URL = 'ws://localhost:9527';
 const HTTP_PORT = 9528; // 与 agent.js 中的端口一致
@@ -214,7 +214,7 @@ function handleAgentMessage(type, data) {
             unLoading();
             break;
         case 'new_track':
-            renderDownloadedItem(data);
+            // 注意：此处不再调用 renderDownloadedItem
             document.dispatchEvent(new CustomEvent('new-track-added', { detail: data }));
             const itemInSearchResults = dom.searchResultsList.querySelector(`.playlist-item[data-src="${data.originalSrc || data.src}"]`);
             if (itemInSearchResults) {
@@ -345,8 +345,10 @@ function setupSearchResultsListener() {
                 requestTrackCache(clickedTrack);
             }
         } else {
+            // 【核心修改】直接播放临时曲目，不修改下载列表
             if (clickedTrack) {
-                document.dispatchEvent(new CustomEvent('play-search-result', { detail: clickedTrack }));
+                playTemporaryTrack(clickedTrack);
+                closeActivePanels(); // 播放后关闭面板
             }
         }
     });

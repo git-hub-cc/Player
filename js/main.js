@@ -205,7 +205,7 @@ function setupEventListeners() {
             // 更新当前播放索引以保持当前歌曲不变
             // 如果当前没有播放或播放的是第一首，索引变为1，否则加1
             state.setCurrentTrackIndex(state.currentTrackIndex + 1);
-            showToast(`已添加 "${trackForPlaylist.title}" 到播放列表！`);
+            showToast(`已添加 "${trackForPlaylist.title}" 到下载列表！`);
         }
 
         renderPlaylist();
@@ -213,28 +213,8 @@ function setupEventListeners() {
         backgroundGallery.updatePlaylistData(state.playlist);
     });
 
-
-    document.addEventListener('play-search-result', (event) => {
-        const trackToPlay = event.detail;
-        // 搜索结果总是需要通过代理播放，所以直接转换
-        const playableTrack = makeAgentTrackPlayable(trackToPlay);
-
-        let trackIndex = state.playlist.findIndex(track => track.src === playableTrack.src);
-
-        if (trackIndex === -1) {
-            // [修正] 将新内容添加到播放列表最前面
-            state.setPlaylist([playableTrack, ...state.playlist]);
-            trackIndex = 0; // 新添加的项总是在索引0
-            // 其他项的索引自动向后移动，所以当前播放索引需要+1
-            state.setCurrentTrackIndex(state.currentTrackIndex + 1);
-        }
-
-        loadTrack(trackIndex, { forcePlay: true });
-        // 因为播放的是新列表的第0项，所以更新当前索引
-        state.setCurrentTrackIndex(trackIndex);
-        renderPlaylist();
-        updatePlaylistUI();
-    });
+    // 【核心修改】移除 play-search-result 事件监听器
+    // document.addEventListener('play-search-result', ...); // 此段代码已删除
 
     // [新增] 插件管理相关事件
     dom.addPluginBtn.addEventListener('click', () => dom.pluginFileInput.click());
