@@ -374,6 +374,54 @@ export function showToast(message) {
     }, 3000);
 }
 
+// --- [新增] 显示通用确认模态框 ---
+export function showConfirmationModal(message) {
+    return new Promise((resolve, reject) => {
+        dom.confirmationMessage.textContent = message;
+        dom.confirmationModal.classList.add('visible');
+
+        const cleanupAndResolve = () => {
+            dom.confirmationModal.classList.remove('visible');
+            removeListeners();
+            resolve();
+        };
+
+        const cleanupAndReject = () => {
+            dom.confirmationModal.classList.remove('visible');
+            removeListeners();
+            reject();
+        };
+
+        const onConfirm = () => cleanupAndResolve();
+        const onCancel = () => cleanupAndReject();
+
+        const onOverlayClick = (e) => {
+            if (e.target === dom.confirmationModal) {
+                onCancel();
+            }
+        };
+
+        const onEscKey = (e) => {
+            if (e.key === 'Escape') {
+                onCancel();
+            }
+        };
+
+        const removeListeners = () => {
+            dom.confirmBtn.removeEventListener('click', onConfirm);
+            dom.cancelBtn.removeEventListener('click', onCancel);
+            dom.confirmationModal.removeEventListener('click', onOverlayClick);
+            window.removeEventListener('keydown', onEscKey);
+        };
+
+        dom.confirmBtn.addEventListener('click', onConfirm, { once: true });
+        dom.cancelBtn.addEventListener('click', onCancel, { once: true });
+        dom.confirmationModal.addEventListener('click', onOverlayClick);
+        window.addEventListener('keydown', onEscKey);
+    });
+}
+
+
 // ... 剩余的UI函数保持不变 ...
 export function updateVolumeBarVisual(volume, isMuted) {
     const volumePercent = isMuted ? 0 : volume * 100;
@@ -419,11 +467,22 @@ export function extractAndApplyGradient(sourceElement) {
 
 export function hideContextMenu() { if (dom.contextMenu) dom.contextMenu.style.display = 'none'; }
 
-export function renderContextMenu() {
+export function renderContextMenu(context = {}) {
     const menuList = dom.getContextMenuList();
     if (!menuList) return;
     menuList.innerHTML = '';
     const fragment = dom.createFragment();
+
+    // 根据上下文动态添加菜单项
+    if (context.type === 'playlist-item' && typeof context.index !== 'undefined') {
+        const deleteLi = dom.createListItem();
+        deleteLi.textContent = '删除';
+        deleteLi.dataset.action = 'delete-track';
+        deleteLi.dataset.index = context.index;
+        fragment.appendChild(deleteLi);
+    }
+
+    // 添加默认的全局菜单项
     for (const actionId in state.shortcutSettings) {
         const setting = state.shortcutSettings[actionId];
         const li = dom.createListItem();
@@ -431,6 +490,7 @@ export function renderContextMenu() {
         li.dataset.action = actionId;
         fragment.appendChild(li);
     }
+
     menuList.appendChild(fragment);
 }
 
@@ -501,12 +561,12 @@ export function updateSearchResultItemStatus(itemElement, status) {
     }
 }
 
-// --- [新增] 插件管理 UI 相关函数 ---
-export function renderPluginsList(plugins) {
+// --- [修改] 插件管理 UI 相关函数 ---
+export function renderPluginsList(plugins, activePluginId) {
     if (!dom.pluginListEl) return;
     dom.pluginListEl.innerHTML = '';
     if (!plugins || plugins.length === 0) {
-        dom.pluginListEl.innerHTML = '<li class="no-results-message">未安装任何插件</li>';
+        dom.pluginListEl.innerHTML = '<li class="no-results-message" style="display: block;">未安装任何插件</li>';
         return;
     }
 
@@ -515,6 +575,10 @@ export function renderPluginsList(plugins) {
         const itemNode = getTemplate('template-plugin-item');
         const itemEl = itemNode.querySelector('.plugin-item');
         itemEl.dataset.pluginId = plugin.id;
+
+        if (plugin.id === activePluginId) {
+            itemEl.classList.add('active');
+        }
 
         itemEl.querySelector('.plugin-name').textContent = `${plugin.name} (v${plugin.version})`;
         itemEl.querySelector('.plugin-author').textContent = `作者: ${plugin.author}`;

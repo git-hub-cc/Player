@@ -106,6 +106,9 @@ wss.on('connection', (ws) => {
                 case 'cache_track':
                     await handleCacheRequest(request.data, sendMessage);
                     break;
+                case 'delete_track':
+                    await handleDeleteTrack(request.data, sendMessage);
+                    break;
                 case 'get_local_playlist':
                     try {
                         if (fs.existsSync(CONFIG.PLAYLIST_PATH)) {
@@ -139,7 +142,7 @@ wss.on('connection', (ws) => {
                 case 'select_plugin':
                     try {
                         pluginManager.setActivePlugin(request.data.id);
-                        sendMessage('success', `已切换到插件: ${request.data.id}`);
+                        sendMessage('success', `已切换到插件: ${pluginManager.getPlugin(request.data.id).pluginInfo.name}`);
                         sendMessage('plugins_list', {
                             plugins: pluginManager.getAllPluginsInfo(),
                             activePluginId: pluginManager.activePluginId,
@@ -150,8 +153,9 @@ wss.on('connection', (ws) => {
                     break;
                 case 'unload_plugin':
                     try {
+                        const pluginName = pluginManager.getPlugin(request.data.id).pluginInfo.name;
                         await pluginManager.unloadPlugin(request.data.id);
-                        sendMessage('success', `插件 ${request.data.id} 已卸载。`);
+                        sendMessage('success', `插件 ${pluginName} 已卸载。`);
                         sendMessage('plugins_list', {
                             plugins: pluginManager.getAllPluginsInfo(),
                             activePluginId: pluginManager.activePluginId,
@@ -266,6 +270,61 @@ async function handleCacheRequest(trackData, sendMessage) {
     await updateLocalPlaylist(newTrack, CONFIG.PLAYLIST_PATH);
     sendMessage('new_track', newTrack);
 }
+
+/**
+ * [新增] 处理删除曲目的请求
+ * @param {object} data - 包含要删除曲目 src 的对象
+ * @param {function} sendMessage - WebSocket 发送消息函数
+ */
+async function handleDeleteTrack(data, sendMessage) {
+    const relativeSrc = data.src;
+    if (!relativeSrc) {
+        sendMessage('error', '删除失败：未提供曲目路径。');
+        return;
+    }
+
+    try {
+        let playlist = [];
+        if (fs.existsSync(CONFIG.PLAYLIST_PATH)) {
+            playlist = JSON.parse(fs.readFileSync(CONFIG.PLAYLIST_PATH, 'utf-8'));
+        }
+
+        const trackToDelete = playlist.find(t => t.src === relativeSrc);
+        if (!trackToDelete) {
+            sendMessage('error', '删除失败：在播放列表中未找到该曲目。');
+            return;
+        }
+
+        // 1. 从播放列表数组中移除
+        const updatedPlaylist = playlist.filter(t => t.src !== relativeSrc);
+        fs.writeFileSync(CONFIG.PLAYLIST_PATH, JSON.stringify(updatedPlaylist, null, 2), 'utf-8');
+        console.log(`[Deletion] 已从 playlist.json 中移除: ${trackToDelete.title}`);
+
+        // 2. 从磁盘删除关联文件
+        const filesToDelete = [];
+        if (trackToDelete.src) filesToDelete.push(path.join(AGENT_ROOT_DIR, trackToDelete.src));
+        if (trackToDelete.albumArt) filesToDelete.push(path.join(AGENT_ROOT_DIR, trackToDelete.albumArt));
+        if (trackToDelete.lyrics) filesToDelete.push(path.join(AGENT_ROOT_DIR, trackToDelete.lyrics));
+
+        for (const file of filesToDelete) {
+            if (fs.existsSync(file)) {
+                try {
+                    fs.unlinkSync(file);
+                    console.log(`  -> 已删除文件: ${path.basename(file)}`);
+                } catch (e) {
+                    console.error(`  -> 删除文件失败: ${file}`, e);
+                }
+            }
+        }
+
+        sendMessage('success', `已成功删除 "${trackToDelete.title}"`);
+
+    } catch (error) {
+        console.error(`[Deletion] 删除曲目时发生错误:`, error);
+        sendMessage('error', `删除失败: ${error.message}`);
+    }
+}
+
 
 // ... 省略抖音下载相关函数，保持不变 ...
 async function handleDownloadRequest(requestData, sendMessage) {

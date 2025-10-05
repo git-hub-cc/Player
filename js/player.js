@@ -21,6 +21,26 @@ export function resetBackgroundBeatTimer() {
 }
 
 /**
+ * [新增] 重置播放器UI到初始状态。
+ */
+export function resetPlayerUI() {
+    pauseTrack();
+    dom.mediaPlayer.src = '';
+    dom.trackTitleEl.textContent = '选择媒体';
+    dom.trackArtistEl.textContent = '开始播放';
+    dom.albumArtEl.src = DEFAULT_ART;
+    dom.controlAlbumArtEl.src = DEFAULT_ART;
+    dom.currentTimeEl.textContent = '0:00';
+    dom.durationEl.textContent = '0:00';
+    dom.progressBar.value = 0;
+    dom.progressBar.style.setProperty('--value-percent', '0%');
+    dom.mainView.style.background = '';
+    state.setParsedLyrics([]);
+    renderLyrics();
+}
+
+
+/**
  * [新增] 播放一个临时的、不属于下载列表的曲目。
  * @param {object} track - 要播放的曲目对象。
  */
@@ -115,7 +135,10 @@ export async function loadTrack(trackIndex, options = {}) {
         skeletonTimer = null;
     }
 
-    if (state.playlist.length === 0) return;
+    if (state.playlist.length === 0) {
+        resetPlayerUI();
+        return;
+    };
 
     if (forcePlay) {
         state.setIsPlaying(true);

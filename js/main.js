@@ -4,12 +4,12 @@ import * as dom from './dom.js';
 import * as state from './state.js';
 import { PLAY_MODES, desktopTourSteps, mobileTourSteps } from './config.js';
 import { loadTemplates, normalizeKey, formatTime } from './utils.js';
-import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode, playTrack, resetBackgroundBeatTimer } from './player.js';
-import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, setupParticleCanvas, closeActivePanels, toggleDownloadPanel, showToast, togglePluginPanel } from './ui.js';
+import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode, playTrack, resetBackgroundBeatTimer, resetPlayerUI } from './player.js';
+import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, setupParticleCanvas, closeActivePanels, toggleDownloadPanel, showToast, togglePluginPanel, showConfirmationModal } from './ui.js';
 import { loadShortcuts, executeShortcut, setupShortcutListeners } from './features/shortcuts.js';
 import { FeatureTour } from './features/tour.js';
 import * as backgroundGallery from './features/gallery.js';
-import { setupDownloaderListeners, uploadPlugin } from './features/downloader.js';
+import { setupDownloaderListeners, uploadPlugin, requestTrackDeletion } from './features/downloader.js';
 
 // --- 持久化 ---
 const PLAYER_STATE_KEY = 'player_state';
@@ -42,6 +42,51 @@ function loadPlayerState() {
         }
     }
 }
+
+/**
+ * [新增] 处理从播放列表删除曲目的请求流程
+ * @param {number} index - 要删除的曲目在播放列表中的索引
+ */
+async function handleDeleteTrackRequest(index) {
+    const track = state.playlist[index];
+    if (!track) return;
+
+    try {
+        await showConfirmationModal(`确定要删除 "${track.title}" 吗？\n文件将从磁盘中永久移除。`);
+
+        // 1. 向代理发送删除请求
+        requestTrackDeletion(track);
+
+        const oldTrackIndex = state.currentTrackIndex;
+        const isDeletingCurrent = oldTrackIndex === index;
+        const wasPlaying = state.isPlaying;
+
+        // 2. 更新前端状态
+        state.removeTrack(index);
+
+        // 3. 重新渲染UI
+        renderPlaylist();
+        updatePlaylistUI();
+        backgroundGallery.updatePlaylistData(state.playlist); // 更新背景画廊数据
+
+        // 4. 处理播放器状态
+        if (isDeletingCurrent) {
+            if (state.playlist.length === 0) {
+                resetPlayerUI();
+            } else {
+                // state.currentTrackIndex 已经在 removeTrack 中被正确调整
+                loadTrack(state.currentTrackIndex, { forcePlay: wasPlaying });
+            }
+        }
+
+        showToast(`"${track.title}" 已删除`);
+
+    } catch (err) {
+        // 用户在模态框中点击了取消
+        console.log("删除操作已由用户取消。");
+    }
+}
+
 
 function setupEventListeners() {
     // ... 其他事件监听器 ...
@@ -122,20 +167,56 @@ function setupEventListeners() {
     });
 
     dom.playlistSearchInput.addEventListener('input', filterPlaylist);
+
+    // --- [修改] 右键菜单事件监听器 ---
     document.addEventListener('contextmenu', (e) => {
-        e.preventDefault(); hideContextMenu();
+        hideContextMenu();
+
+        const playlistItem = e.target.closest('#playlist .playlist-item');
+        let context = {};
+
+        if (playlistItem) {
+            e.preventDefault();
+            const index = parseInt(playlistItem.dataset.index, 10);
+            context = { type: 'playlist-item', index };
+        } else {
+            // 默认全局上下文
+            context = { type: 'global' };
+        }
+
         const { clientX: mouseX, clientY: mouseY } = e;
         const { normalizedX, normalizedY } = normalizePosition(mouseX, mouseY);
-        dom.contextMenu.style.top = `${normalizedY}px`; dom.contextMenu.style.left = `${normalizedX}px`;
+        dom.contextMenu.style.top = `${normalizedY}px`;
+        dom.contextMenu.style.left = `${normalizedX}px`;
+
+        renderContextMenu(context);
         dom.contextMenu.style.display = 'block';
     });
+
     document.addEventListener('click', (e) => {
-        if (dom.contextMenu.style.display === 'block' && !dom.contextMenu.contains(e.target)) { hideContextMenu(); }
+        if (dom.contextMenu.style.display === 'block' && !dom.contextMenu.contains(e.target)) {
+            hideContextMenu();
+        }
     });
+
+    // --- [修改] 右键菜单点击处理器 ---
     dom.contextMenu.addEventListener('click', (e) => {
         const target = e.target;
-        if (target.tagName === 'LI' && target.dataset.action) { executeShortcut(target.dataset.action); hideContextMenu(); }
+        if (target.tagName !== 'LI' || !target.dataset.action) return;
+
+        const action = target.dataset.action;
+        hideContextMenu();
+
+        if (action === 'delete-track') {
+            const index = parseInt(target.dataset.index, 10);
+            if (!isNaN(index)) {
+                handleDeleteTrackRequest(index);
+            }
+        } else {
+            executeShortcut(action);
+        }
     });
+
     window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') hideContextMenu();
         if (state.isRecordingShortcut || ['input', 'textarea'].includes(e.target.tagName.toLowerCase())) return;
@@ -290,7 +371,7 @@ async function init() {
     updateModeButton();
     updateProgress();
     loadShortcuts();
-    renderContextMenu();
+    renderContextMenu({ type: 'global' }); // 初始渲染全局菜单
     setupEventListeners();
 
     if (!localStorage.getItem('player_tour_completed')) {

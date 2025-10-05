@@ -1,12 +1,72 @@
 /* components.css */
-/* --- Shortcut Modal --- */
-.shortcut-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 3000; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s ease; }
-.shortcut-modal-overlay.visible { opacity: 1; visibility: visible; }
-.shortcut-modal-content { background-color: var(--panel-bg); padding: 30px 40px; border-radius: 8px; text-align: center; box-shadow: 0 5px 20px rgba(0,0,0,0.4); transform: scale(0.9); transition: transform 0.3s ease; }
-.shortcut-modal-overlay.visible .shortcut-modal-content { transform: scale(1); }
+
+/* --- [修改] 通用模态框样式 --- */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 3000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0s 0.3s;
+}
+.modal-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.3s ease;
+}
+.modal-content {
+    background-color: var(--panel-bg);
+    padding: 30px 40px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.4);
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+    max-width: 90vw;
+}
+.modal-overlay.visible .modal-content {
+    transform: scale(1);
+}
+
+/* --- 快捷键模态框特定样式 --- */
 .shortcut-modal-content p { margin: 0 0 20px; font-size: 18px; color: var(--text-primary); }
 .shortcut-modal-content .shortcut-key-preview { min-height: 40px; display: flex; justify-content: center; align-items: center; gap: 8px; margin-bottom: 20px; }
 .shortcut-modal-content small { color: var(--text-secondary); }
+
+/* --- [新增] 确认模态框特定样式 --- */
+.confirmation-modal-content {
+    padding: 30px;
+    width: 400px;
+}
+.confirmation-modal-content p {
+    font-size: 16px;
+    color: var(--text-primary);
+    line-height: 1.6;
+    margin-bottom: 24px;
+}
+.confirmation-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+.confirmation-actions .action-btn {
+    padding: 10px 24px;
+    font-size: 14px;
+}
+.action-btn.secondary-btn {
+    background-color: var(--slider-track-color);
+    color: var(--text-primary);
+}
+.action-btn.secondary-btn:hover {
+    background-color: #6a6a6a;
+}
 
 /* --- Tour Tooltip --- */
 #tour-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 9998; background-color: rgba(0, 0, 0, 0.5); opacity: 0; transition: opacity 0.3s ease-in-out; pointer-events: none; }

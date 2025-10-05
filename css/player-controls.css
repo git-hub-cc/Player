@@ -130,6 +130,12 @@
     align-items: center;
     gap: 10px;
 }
+
+/* [新增] 默认隐藏插件管理按钮 */
+#plugin-panel-btn {
+    display: none;
+}
+
 .volume-container {
     display: flex;
     align-items: center;
