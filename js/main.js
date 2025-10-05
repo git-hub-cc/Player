@@ -5,11 +5,11 @@ import * as state from './state.js';
 import { PLAY_MODES, desktopTourSteps, mobileTourSteps } from './config.js';
 import { loadTemplates, normalizeKey, formatTime } from './utils.js';
 import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode, playTrack, resetBackgroundBeatTimer } from './player.js';
-import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, setupParticleCanvas, closeActivePanels, toggleDownloadPanel, showToast } from './ui.js';
+import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, setupParticleCanvas, closeActivePanels, toggleDownloadPanel, showToast, togglePluginPanel } from './ui.js';
 import { loadShortcuts, executeShortcut, setupShortcutListeners } from './features/shortcuts.js';
 import { FeatureTour } from './features/tour.js';
 import * as backgroundGallery from './features/gallery.js';
-import { setupDownloaderListeners } from './features/downloader.js';
+import { setupDownloaderListeners, uploadPlugin } from './features/downloader.js';
 
 // --- 持久化 ---
 const PLAYER_STATE_KEY = 'player_state';
@@ -100,11 +100,13 @@ function setupEventListeners() {
     dom.infoBtn.addEventListener('click', toggleInfoPanel);
     dom.shortcutBtn.addEventListener('click', toggleShortcutPanel);
     dom.downloadPanelBtn.addEventListener('click', toggleDownloadPanel);
+    dom.pluginPanelBtn.addEventListener('click', togglePluginPanel); // [新增]
     dom.closePlaylistBtn.addEventListener('click', closeActivePanels);
     dom.closeInfoBtn.addEventListener('click', closeActivePanels);
     dom.closeShortcutBtn.addEventListener('click', closeActivePanels);
     dom.closeDownloadBtn.addEventListener('click', closeActivePanels);
-    [dom.infoPanel, dom.playlistPanel, dom.shortcutPanel, dom.lyricsContainer, dom.downloadPanel].forEach(panel => {
+    dom.closePluginBtn.addEventListener('click', closeActivePanels); // [新增]
+    [dom.infoPanel, dom.playlistPanel, dom.shortcutPanel, dom.lyricsContainer, dom.downloadPanel, dom.pluginPanel].forEach(panel => {
         panel.addEventListener('click', (e) => { if (e.target === panel) panel.classList.remove('active'); });
     });
     dom.mainView.addEventListener('click', closeActivePanels);
@@ -233,6 +235,18 @@ function setupEventListeners() {
         renderPlaylist();
         updatePlaylistUI();
     });
+
+    // [新增] 插件管理相关事件
+    dom.addPluginBtn.addEventListener('click', () => dom.pluginFileInput.click());
+    dom.pluginFileInput.addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            uploadPlugin(file);
+            // 重置 input 以便可以再次选择相同的文件
+            event.target.value = '';
+        }
+    });
+
 
     setupDownloaderListeners();
     setupShortcutListeners();
