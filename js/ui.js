@@ -19,7 +19,7 @@ const NORMAL_DECAY_RATE = 1 / (60 * 2);   // 2秒动画 (基于60fps)
 const FAST_DECAY_RATE = 1 / (60 * 0.5); // 0.5秒动画
 
 // --- 面板管理 ---
-const allSidePanels = [dom.playlistPanel, dom.infoPanel, dom.shortcutPanel, dom.downloadPanel];
+const allSidePanels = [dom.playlistPanel, dom.infoPanel, dom.shortcutPanel, dom.downloadPanel, dom.pluginPanel];
 let searchResultClickHandler = null; // 【新增】用于结果列表的事件处理器
 
 
@@ -330,9 +330,6 @@ export function renderPlaylist() {
 }
 
 
-// 【移除】此函数不再需要，因为主播放列表没有状态按钮
-// export function updatePlaylistItemStatus(...) {}
-
 export function updatePlaylistUI() {
     dom.getAllPlaylistItems().forEach(item => {
         item.classList.toggle('active', parseInt(item.dataset.index) === state.currentTrackIndex);
@@ -365,6 +362,7 @@ export function togglePlaylistPanel() { manageSidePanel(dom.playlistPanel); }
 export function toggleInfoPanel() { manageSidePanel(dom.infoPanel); }
 export function toggleShortcutPanel() { manageSidePanel(dom.shortcutPanel); }
 export function toggleDownloadPanel() { manageSidePanel(dom.downloadPanel); }
+export function togglePluginPanel() { manageSidePanel(dom.pluginPanel); } // [新增]
 
 // ... 其他函数 ...
 export function showToast(message) {
@@ -453,16 +451,13 @@ export function normalizePosition(mouseX, mouseY) {
 export function clearSearchResults() {
     if (dom.searchResultsList) {
         dom.searchResultsList.innerHTML = '';
-        // Note: The click handler is attached once in downloader.js, no need to remove it here.
     }
 }
 
 function createResultItem(track, index, isCached = false) {
-    // 【修改】使用新的搜索结果模板
     const itemNode = getTemplate('template-search-result-item');
     const itemEl = itemNode.querySelector('.playlist-item');
     itemEl.dataset.index = index;
-    // 使用原始src作为唯一标识，以便在缓存后找到它
     itemEl.dataset.src = track.originalSrc || track.src;
     itemEl.querySelector('.playlist-icon').textContent = track.type === 'video' ? '🎬' : '🎵';
     itemEl.querySelector('.playlist-title').textContent = track.title || '未知标题';
@@ -490,7 +485,6 @@ export function renderSearchResults(tracks) {
 }
 
 export function renderDownloadedItem(track) {
-    // 【修改】使用新的搜索结果模板
     const itemNode = createResultItem(track, state.playlist.length, true);
     dom.searchResultsList.appendChild(itemNode);
 }
@@ -505,6 +499,41 @@ export function updateSearchResultItemStatus(itemElement, status) {
     } else if (status === 'cached') {
         downloadBtn.classList.add('cached');
     }
+}
+
+// --- [新增] 插件管理 UI 相关函数 ---
+export function renderPluginsList(plugins) {
+    if (!dom.pluginListEl) return;
+    dom.pluginListEl.innerHTML = '';
+    if (!plugins || plugins.length === 0) {
+        dom.pluginListEl.innerHTML = '<li class="no-results-message">未安装任何插件</li>';
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    plugins.forEach(plugin => {
+        const itemNode = getTemplate('template-plugin-item');
+        const itemEl = itemNode.querySelector('.plugin-item');
+        itemEl.dataset.pluginId = plugin.id;
+
+        itemEl.querySelector('.plugin-name').textContent = `${plugin.name} (v${plugin.version})`;
+        itemEl.querySelector('.plugin-author').textContent = `作者: ${plugin.author}`;
+
+        const sourcesContainer = itemEl.querySelector('.plugin-sources');
+        if (plugin.sources && plugin.sources.length > 0) {
+            plugin.sources.forEach(sourceName => {
+                const tagNode = getTemplate('template-plugin-source-tag');
+                const tagEl = tagNode.querySelector('.plugin-source-tag');
+                tagEl.textContent = sourceName.toUpperCase();
+                sourcesContainer.appendChild(tagNode);
+            });
+        } else {
+            sourcesContainer.innerHTML = '<span class="plugin-source-tag no-source">无音源</span>';
+        }
+
+        fragment.appendChild(itemNode);
+    });
+    dom.pluginListEl.appendChild(fragment);
 }
 
 

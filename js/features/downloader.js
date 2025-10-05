@@ -2,7 +2,7 @@
 
 import * as dom from '../dom.js';
 import * as state from '../state.js';
-import { showToast, clearSearchResults, renderSearchResults, renderDownloadedItem, updateSearchResultItemStatus, renderPlaylist, closeActivePanels } from '../ui.js';
+import { showToast, clearSearchResults, renderSearchResults, renderDownloadedItem, updateSearchResultItemStatus, renderPlaylist, closeActivePanels, renderPluginsList } from '../ui.js';
 import { loadTrack } from '../player.js';
 
 const WEBSOCKET_URL = 'ws://localhost:9527';
@@ -11,7 +11,7 @@ const HTTP_PORT = 9528; // 与 agent.js 中的端口一致
 let socket = null;
 let reconnectInterval = 3000;
 let reconnectTimer = null;
-let currentSearchResults = []; // 【新增】用于暂存搜索结果
+let currentSearchResults = [];
 
 /**
  * 创建指向本地代理的URL
@@ -85,6 +85,8 @@ function connectWebSocket() {
         console.log('成功连接到本地下载代理。');
         switchView('downloader');
         socket.send(JSON.stringify({ type: 'get_local_playlist' }));
+        // [修改] 连接成功后，获取插件列表
+        socket.send(JSON.stringify({ type: 'get_plugins' }));
     };
 
     socket.onmessage = (event) => {
@@ -106,6 +108,92 @@ function connectWebSocket() {
     };
 }
 
+
+// --- [新增] 插件相关通信函数 ---
+export function uploadPlugin(file) {
+    if (!checkConnectionAndShowSetup()) {
+        showToast('上传失败：未连接到本地代理。', 'error');
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const fileContent = e.target.result;
+        socket.send(JSON.stringify({
+            type: 'load_plugin',
+            data: {
+                name: file.name,
+                code: fileContent,
+            }
+        }));
+        showToast(`正在上传插件: ${file.name}`);
+    };
+    reader.onerror = () => {
+        showToast(`读取文件 ${file.name} 失败`, 'error');
+    };
+    reader.readAsText(file);
+}
+
+// [新增] 请求使用/卸载插件
+export function requestPluginAction(action, pluginId) {
+    if (!checkConnectionAndShowSetup()) {
+        showToast('操作失败：未连接到本地代理。', 'error');
+        return;
+    }
+    socket.send(JSON.stringify({ type: action, data: { id: pluginId } }));
+}
+
+// [新增] 请求获取音乐 URL
+export function resolvePlayableUrl(track) {
+    return new Promise((resolve, reject) => {
+        // 如果是本地文件或已缓存的代理文件，直接返回
+        if (track.src && !track.src.startsWith('http')) {
+            return resolve(track.src);
+        }
+        if (track.src && track.src.startsWith(`http://localhost:${HTTP_PORT}`)) {
+            return resolve(track.src);
+        }
+
+        if (!checkConnectionAndShowSetup()) {
+            return reject(new Error('未连接到本地代理'));
+        }
+
+        const requestId = `req_${Date.now()}_${Math.random()}`;
+
+        const messageHandler = (event) => {
+            try {
+                const message = JSON.parse(event.data);
+                if (message.type === 'music_url' && message.data.requestId === requestId) {
+                    socket.removeEventListener('message', messageHandler);
+                    if (message.data.url) {
+                        resolve(message.data.url);
+                    } else {
+                        reject(new Error(message.data.error || '未能获取播放链接'));
+                    }
+                }
+            } catch (e) { /* ignore */ }
+        };
+
+        socket.addEventListener('message', messageHandler);
+
+        // 设置超时
+        setTimeout(() => {
+            socket.removeEventListener('message', messageHandler);
+            reject(new Error('获取播放链接超时'));
+        }, 20000); // 20秒超时
+
+        // 发送请求
+        socket.send(JSON.stringify({
+            type: 'get_music_url',
+            data: {
+                requestId,
+                musicInfo: track,
+                quality: '128k', // 暂时硬编码，后续可从设置中读取
+            }
+        }));
+    });
+}
+
+
 function handleAgentMessage(type, data) {
     const allButtons = [dom.startDownloadBtn, dom.downloadWorksBtn, dom.downloadLikesBtn, dom.searchNeteaseBtn];
     const unLoading = () => allButtons.forEach(btn => {
@@ -125,10 +213,9 @@ function handleAgentMessage(type, data) {
             updateStatus(data, 'success');
             unLoading();
             break;
-        case 'new_track': // 来自抖音下载或音频缓存
+        case 'new_track':
             renderDownloadedItem(data);
             document.dispatchEvent(new CustomEvent('new-track-added', { detail: data }));
-            // 找到搜索结果列表中的对应项并更新其状态为 "cached"
             const itemInSearchResults = dom.searchResultsList.querySelector(`.playlist-item[data-src="${data.originalSrc || data.src}"]`);
             if (itemInSearchResults) {
                 updateSearchResultItemStatus(itemInSearchResults, 'cached');
@@ -143,13 +230,15 @@ function handleAgentMessage(type, data) {
             updateStatus(`搜索成功！已加载 ${data.length} 首歌曲。`, 'success');
             unLoading();
             break;
-        // 【关键修改】移除不再使用的 'track_cached' case
+        // [修改] 处理插件列表消息，并更新激活状态
+        case 'plugins_list':
+            console.log('[Downloader] Received plugins list:', data.plugins);
+            renderPluginsList(data.plugins, data.activePluginId);
+            break;
         default:
             console.warn(`收到未知的代理消息类型: ${type}`);
     }
 }
-
-// ... checkConnectionAndShowSetup, requestTrackCache, performSearch, sendDouyinRequest, updateStatus, setupCopyButton 等函数保持不变 ...
 
 function checkConnectionAndShowSetup() {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -240,9 +329,6 @@ function setupCopyButton(button, textToCopy) {
 }
 
 
-/**
- * 【新增】设置搜索/下载结果列表的事件监听器
- */
 function setupSearchResultsListener() {
     dom.searchResultsList.addEventListener('click', (e) => {
         const item = e.target.closest('.playlist-item');
@@ -253,17 +339,13 @@ function setupSearchResultsListener() {
         const clickedTrack = currentSearchResults[trackIndex];
 
         if (downloadBtn && !downloadBtn.classList.contains('cached')) {
-            // --- 点击了下载按钮 ---
             e.stopPropagation();
             if (clickedTrack) {
                 updateSearchResultItemStatus(item, 'downloading');
-                // 发送包含原始URL的track对象
                 requestTrackCache(clickedTrack);
             }
         } else {
-            // --- 点击了列表项本身（播放） ---
             if (clickedTrack) {
-                // 派发事件，让 main.js 处理播放逻辑
                 document.dispatchEvent(new CustomEvent('play-search-result', { detail: clickedTrack }));
             }
         }
@@ -295,6 +377,6 @@ export function setupDownloaderListeners() {
     dom.downloadWorksBtn.addEventListener('click', (e) => sendDouyinRequest(e.currentTarget, 'works'));
     dom.downloadLikesBtn.addEventListener('click', (e) => sendDouyinRequest(e.currentTarget, 'likes'));
 
-    setupSearchResultsListener(); // 【新增】
+    setupSearchResultsListener();
     connectWebSocket();
 }

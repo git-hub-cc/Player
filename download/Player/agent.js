@@ -1,4 +1,4 @@
-// agent.js - 客户端代理 (v8.4 - 目录独立)
+// agent.js - 客户端代理 (v8.4 - 目录独立 & Stage 3 Plugin Integration)
 import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
@@ -11,24 +11,23 @@ import { pinyin } from 'pinyin-pro';
 import { fileURLToPath } from 'url';
 import { Buffer } from 'buffer';
 
+import pluginManager from './plugins/manager.js';
+
 const stealthPlugin = stealth();
 stealthPlugin.enabledEvasions.delete('iframe.contentWindow');
 stealthPlugin.enabledEvasions.delete('media.codecs');
 playwright.use(stealthPlugin);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// [修正] 将根目录定义为代理脚本所在的当前目录
 const AGENT_ROOT_DIR = path.resolve(__dirname, './');
 
 const CONFIG = {
     HTTP_PORT: 9528,
     WEBSOCKET_PORT: 9527,
-    // [修正] 所有媒体目录现在都基于代理程序的根目录
     VIDEOS_DIR: path.join(AGENT_ROOT_DIR, 'videos'),
     ALBUMART_DIR: path.join(AGENT_ROOT_DIR, 'albumArt'),
     MUSIC_DIR: path.join(AGENT_ROOT_DIR, 'music'),
     STATE_PATH: path.join(AGENT_ROOT_DIR, 'state.json'),
-    // [修正] PLAYLIST_PATH 现在指向代理程序目录下的 playlist.json
     PLAYLIST_PATH: path.join(AGENT_ROOT_DIR, 'playlist.json'),
     HEADLESS_MODE: false,
     USER_WORKS_DELAY_MIN: 2000,
@@ -37,7 +36,6 @@ const CONFIG = {
     ONLINE_SEARCH_API: 'https://www.myfreemp3.com.cn/',
 };
 
-// ... (其他函数保持不变) ...
 function sanitizeFilename(filename) {
     if (!filename) return 'untitled';
     return filename.replace(/[\/\\?%*:|"<>]/g, '-').replace(/\s+/g, ' ').trim();
@@ -46,12 +44,10 @@ function sanitizeFilename(filename) {
 const app = express();
 app.use(cors());
 
-// 创建代理程序自己的媒体目录
 [CONFIG.VIDEOS_DIR, CONFIG.ALBUMART_DIR, CONFIG.MUSIC_DIR].forEach(dir => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
 
-// Express 从代理目录提供媒体文件
 app.use(`/videos`, express.static(CONFIG.VIDEOS_DIR));
 app.use(`/albumArt`, express.static(CONFIG.ALBUMART_DIR));
 app.use(`/music`, express.static(CONFIG.MUSIC_DIR));
@@ -84,8 +80,10 @@ app.get('/proxy', async (req, res) => {
     }
 });
 
-app.listen(CONFIG.HTTP_PORT, () => {
+const server = app.listen(CONFIG.HTTP_PORT, async () => {
     console.log(`[HTTP Server] 媒体及代理服务器已启动，监听 http://localhost:${CONFIG.HTTP_PORT}`);
+
+    await pluginManager.initialize();
 });
 
 const wss = new WebSocketServer({ port: CONFIG.WEBSOCKET_PORT });
@@ -97,18 +95,87 @@ wss.on('connection', (ws) => {
     ws.on('message', async (message) => {
         try {
             const request = JSON.parse(message.toString());
-            if (request.type === 'download') await handleDownloadRequest(request.data, sendMessage);
-            else if (request.type === 'search') await handleSearchRequest(request.data, sendMessage);
-            else if (request.type === 'cache_track') await handleCacheRequest(request.data, sendMessage);
-            else if (request.type === 'get_local_playlist') {
-                try {
-                    // [修正] 读取并发送代理目录下的 playlist.json
-                    if (fs.existsSync(CONFIG.PLAYLIST_PATH)) {
-                        sendMessage('local_playlist_data', JSON.parse(fs.readFileSync(CONFIG.PLAYLIST_PATH, 'utf-8')));
-                    } else {
-                        sendMessage('local_playlist_data', []);
+            // ================== [修改] 扩展消息处理 ==================
+            switch(request.type) {
+                case 'download':
+                    await handleDownloadRequest(request.data, sendMessage);
+                    break;
+                case 'search':
+                    await handleSearchRequest(request.data, sendMessage);
+                    break;
+                case 'cache_track':
+                    await handleCacheRequest(request.data, sendMessage);
+                    break;
+                case 'get_local_playlist':
+                    try {
+                        if (fs.existsSync(CONFIG.PLAYLIST_PATH)) {
+                            sendMessage('local_playlist_data', JSON.parse(fs.readFileSync(CONFIG.PLAYLIST_PATH, 'utf-8')));
+                        } else {
+                            sendMessage('local_playlist_data', []);
+                        }
+                    } catch (e) { console.error(`[Playlist] 读取代理 playlist.json 失败:`, e); }
+                    break;
+
+                // [修改] 插件管理相关消息
+                case 'get_plugins':
+                    sendMessage('plugins_list', {
+                        plugins: pluginManager.getAllPluginsInfo(),
+                        activePluginId: pluginManager.activePluginId,
+                    });
+                    break;
+                case 'load_plugin':
+                    try {
+                        await pluginManager.addPlugin(request.data.code, request.data.name);
+                        sendMessage('success', `插件 ${request.data.name} 添加成功!`);
+                        sendMessage('plugins_list', {
+                            plugins: pluginManager.getAllPluginsInfo(),
+                            activePluginId: pluginManager.activePluginId,
+                        });
+                    } catch (e) {
+                        sendMessage('error', `添加插件失败: ${e.message}`);
                     }
-                } catch (e) { console.error(`[Playlist] 读取代理 playlist.json 失败:`, e); }
+                    break;
+                // [新增] 插件动作消息
+                case 'select_plugin':
+                    try {
+                        pluginManager.setActivePlugin(request.data.id);
+                        sendMessage('success', `已切换到插件: ${request.data.id}`);
+                        sendMessage('plugins_list', {
+                            plugins: pluginManager.getAllPluginsInfo(),
+                            activePluginId: pluginManager.activePluginId,
+                        });
+                    } catch(e) {
+                        sendMessage('error', `切换插件失败: ${e.message}`);
+                    }
+                    break;
+                case 'unload_plugin':
+                    try {
+                        await pluginManager.unloadPlugin(request.data.id);
+                        sendMessage('success', `插件 ${request.data.id} 已卸载。`);
+                        sendMessage('plugins_list', {
+                            plugins: pluginManager.getAllPluginsInfo(),
+                            activePluginId: pluginManager.activePluginId,
+                        });
+                    } catch (e) {
+                        sendMessage('error', `卸载插件失败: ${e.message}`);
+                    }
+                    break;
+                // [新增] 获取音乐URL消息
+                case 'get_music_url':
+                    try {
+                        const activePlugin = pluginManager.getActivePlugin();
+                        if (!activePlugin) {
+                            throw new Error('没有活动的音乐插件');
+                        }
+                        const url = await activePlugin.getMusicUrl(request.data.musicInfo, request.data.quality);
+                        sendMessage('music_url', { requestId: request.data.requestId, url });
+                    } catch (e) {
+                        console.error(`[Agent] Get Music URL Error:`, e);
+                        sendMessage('music_url', { requestId: request.data.requestId, error: e.message });
+                    }
+                    break;
+                default:
+                    console.warn(`[WebSocket] Received unknown message type: ${request.type}`);
             }
         } catch (e) {
             console.error('[WebSocket] 解析消息失败:', e);
@@ -122,8 +189,7 @@ wss.on('connection', (ws) => {
 console.log(`[WebSocket] 代理服务器已启动，监听 ws://localhost:${CONFIG.WEBSOCKET_PORT}`);
 console.log('-------------------------------------------------------------------\n');
 
-// ... handleSearchRequest, handleCacheRequest, 和抖音下载相关函数保持不变 ...
-// 它们现在会自然地使用 CONFIG 中已更新的、指向代理目录的路径。
+
 async function handleSearchRequest(searchData, sendMessage) {
     const { query, sourceType } = searchData;
     try {
@@ -201,6 +267,7 @@ async function handleCacheRequest(trackData, sendMessage) {
     sendMessage('new_track', newTrack);
 }
 
+// ... 省略抖音下载相关函数，保持不变 ...
 async function handleDownloadRequest(requestData, sendMessage) {
     let url, downloadType;
     if (typeof requestData === 'string') {

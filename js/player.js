@@ -5,30 +5,23 @@ import * as state from './state.js';
 import { PLAY_MODES, DEFAULT_ART } from './config.js';
 import { formatTime, parseLRC } from './utils.js';
 import { renderLyrics, syncLyrics, extractAndApplyGradient, showSkeleton, hideSkeleton, updatePlaylistUI, updateModeButton, showToast, triggerGlitchEffect } from './ui.js';
-import { requestTrackCache } from './features/downloader.js';
+import { requestTrackCache, resolvePlayableUrl } from './features/downloader.js'; // [修改] 引入 resolvePlayableUrl
 
 // --- Module-level variables ---
 let animationFrameId = null;
 let skeletonTimer = null;
 
 // --- Background Update Timer ---
-// 使用下一个节拍的时间点来触发，而不是固定的时间间隔
 let nextBackgroundUpdateTime = 0;
-// 如果没有节拍数据，则使用回退的更新间隔
 const FALLBACK_INTERVAL = 1000;
-// 背景节拍乘数，每 N 个节拍更新一次背景 (设置为1表示每个节拍都更新)
 const BACKGROUND_BEAT_MULTIPLIER = 12;
 
-/**
- * 重置背景节拍计时器。
- * 在加载新曲目或用户拖动进度条时调用。
- */
 export function resetBackgroundBeatTimer() {
     nextBackgroundUpdateTime = 0;
 }
 
 /**
- * 加载并准备播放指定的轨道。
+ * [修改] 加载并准备播放指定的轨道。
  * @param {number} trackIndex - 要加载的轨道在播放列表中的索引。
  * @param {object} [options={}] - 加载选项。
  * @param {boolean} [options.fromHistory=false] - 是否由浏览器历史记录导航触发。
@@ -38,7 +31,7 @@ export async function loadTrack(trackIndex, options = {}) {
     const { fromHistory = false, forcePlay = false } = options;
 
     resetBackgroundBeatTimer();
-    state.setCurrentColorPaletteIndex(0); // 加载新音轨时重置颜色索引
+    state.setCurrentColorPaletteIndex(0);
 
     if (skeletonTimer) {
         clearTimeout(skeletonTimer);
@@ -60,7 +53,19 @@ export async function loadTrack(trackIndex, options = {}) {
     dom.albumArtEl.src = artUrl;
     dom.controlAlbumArtEl.src = artUrl;
 
-    // --- ⬇️ 异步加载歌词 ⬇️ ---
+    // --- [核心修改] 使用 resolvePlayableUrl 获取真实播放链接 ---
+    let playableSrc = track.src;
+    try {
+        // 在设置 src 之前，先解析出真实的播放地址
+        playableSrc = await resolvePlayableUrl(track);
+    } catch (error) {
+        console.error(`无法获取 '${track.title}' 的播放链接:`, error);
+        showToast(`无法播放 "${track.title}"`, 'error');
+        // 播放失败后自动播放下一首
+        setTimeout(() => playNextTrack(), 1000);
+        return;
+    }
+    // -----------------------------------------------------------
 
     state.setParsedLyrics([]);
     renderLyrics();
@@ -69,7 +74,6 @@ export async function loadTrack(trackIndex, options = {}) {
         try {
             let lrcText;
             if (track.lyrics.startsWith('data:text/plain,')) {
-                // [修正] data:URL 的内容是原始文本，不需要解码。
                 lrcText = track.lyrics.substring('data:text/plain,'.length);
             } else {
                 const response = await fetch(track.lyrics);
@@ -84,9 +88,6 @@ export async function loadTrack(trackIndex, options = {}) {
         }
     }
     renderLyrics();
-
-    // --- ⬆️ 歌词加载结束 ⬆️ ---
-
 
     updatePlaylistUI();
 
@@ -132,7 +133,8 @@ export async function loadTrack(trackIndex, options = {}) {
         dom.mediaPlayer.addEventListener('canplay', () => extractAndApplyGradient(dom.mediaPlayer), { once: true });
     }
 
-    dom.mediaPlayer.src = track.src;
+    // [修改] 设置解析后的 src
+    dom.mediaPlayer.src = playableSrc;
     dom.mediaPlayer.load();
     dom.mediaPlayer.oncanplay = handleMediaReady;
     dom.mediaPlayer.onloadedmetadata = updateProgress;

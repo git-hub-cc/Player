@@ -92,6 +92,14 @@ export const connectionStatusText = document.getElementById('connection-status-t
 export const searchResultsContainer = document.getElementById('search-results-container');
 export const searchResultsList = document.getElementById('search-results-list');
 
+// --- [新增] 插件管理面板相关元素 ---
+export const pluginPanelBtn = document.getElementById('plugin-panel-btn');
+export const pluginPanel = document.getElementById('plugin-panel');
+export const closePluginBtn = document.getElementById('close-plugin-btn');
+export const addPluginBtn = document.getElementById('add-plugin-btn');
+export const pluginFileInput = document.getElementById('plugin-file-input');
+export const pluginListEl = document.getElementById('plugin-list');
+
 
 // DOM Query/Creation Functions
 export const getTemplateElementById = (id) => document.getElementById(id);
