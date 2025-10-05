@@ -86,7 +86,10 @@ export const downloaderView = document.getElementById('downloader-view');
 export const panelDescription = downloaderView.querySelector('.panel-description');
 export const copyInstallCommandBtn = document.getElementById('copy-command-btn-install');
 export const copyRunCommandBtn = document.getElementById('copy-command-btn-run');
+export const connectionStatusLine = document.getElementById('connection-status-line');
+export const connectionSpinner = document.getElementById('connection-spinner');
 export const connectionStatusText = document.getElementById('connection-status-text');
+export const retryConnectionBtn = document.getElementById('retry-connection-btn'); // [新增]
 
 // 【新增】搜索/下载结果列表元素
 export const searchResultsContainer = document.getElementById('search-results-container');
@@ -99,6 +102,12 @@ export const closePluginBtn = document.getElementById('close-plugin-btn');
 export const addPluginBtn = document.getElementById('add-plugin-btn');
 export const pluginFileInput = document.getElementById('plugin-file-input');
 export const pluginListEl = document.getElementById('plugin-list');
+
+// --- [新增] 通用确认模态框元素 ---
+export const confirmationModal = document.getElementById('confirmation-modal-overlay');
+export const confirmationMessage = document.getElementById('confirmation-message');
+export const confirmBtn = document.getElementById('confirm-btn');
+export const cancelBtn = document.getElementById('cancel-btn');
 
 
 // DOM Query/Creation Functions

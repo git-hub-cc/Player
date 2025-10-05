@@ -68,6 +68,35 @@ export function setPlaylist(newPlaylist) {
     playlist = newPlaylist;
 }
 
+/**
+ * [新增] 从播放列表中移除一个曲目并智能调整当前播放索引。
+ * @param {number} indexToRemove - 要移除的曲目的索引。
+ */
+export function removeTrack(indexToRemove) {
+    if (indexToRemove < 0 || indexToRemove >= playlist.length) {
+        return;
+    }
+
+    playlist.splice(indexToRemove, 1);
+
+    if (playlist.length === 0) {
+        currentTrackIndex = 0;
+        return;
+    }
+
+    // 如果删除的是当前播放曲目之前的曲目，则将当前索引减一
+    if (indexToRemove < currentTrackIndex) {
+        currentTrackIndex--;
+    }
+    // 如果删除的是最后一个曲目，并且它也是当前播放的曲目，则将索引重置为0
+    else if (indexToRemove === currentTrackIndex && currentTrackIndex >= playlist.length) {
+        currentTrackIndex = 0;
+    }
+    // 其他情况（删除当前或之后的曲目），currentTrackIndex 保持不变或已在边界内，无需调整
+    // (例如，删除当前曲目后，下一首会自动成为新的 currentTrackIndex)
+}
+
+
 export function setCurrentTrackIndex(index) {
     // 只有在索引真正改变时才更新，防止不必要的重渲染
     if (currentTrackIndex === index && mediaPlayer.src) return;

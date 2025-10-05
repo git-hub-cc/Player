@@ -2,7 +2,7 @@
 
 import * as dom from '../dom.js';
 import * as state from '../state.js';
-import { showToast, clearSearchResults, renderSearchResults, updateSearchResultItemStatus, closeActivePanels, renderPluginsList } from '../ui.js';
+import { showToast, clearSearchResults, renderSearchResults, updateSearchResultItemStatus, closeActivePanels, renderPluginsList, showConfirmationModal } from '../ui.js';
 import { playTemporaryTrack } from '../player.js';
 
 const WEBSOCKET_URL = 'ws://localhost:9527';
@@ -12,6 +12,7 @@ let socket = null;
 let reconnectInterval = 3000;
 let reconnectTimer = null;
 let currentSearchResults = [];
+let isConnecting = false;
 
 /**
  * 创建指向本地代理的URL
@@ -44,7 +45,6 @@ function transformApiData(apiTrack) {
     };
 }
 
-// ... updateInputMode, switchView, connectWebSocket 等函数保持不变 ...
 function updateInputMode() {
     const inputText = dom.urlOrSearchInput.value.trim();
     const isUrlMode = inputText.toLowerCase().includes('http');
@@ -63,29 +63,60 @@ function updateInputMode() {
     }
 }
 
+// --- [修改] 视图切换和连接状态更新逻辑 ---
 function switchView(view) {
     if (view === 'setup') {
         dom.setupView.style.display = 'flex';
         dom.downloaderView.style.display = 'none';
+        dom.connectionStatusLine.classList.add('error');
+        dom.connectionSpinner.style.display = 'none';
         dom.connectionStatusText.textContent = '连接失败，请检查代理是否已启动。';
-    } else {
+        dom.retryConnectionBtn.style.display = 'flex';
+        dom.retryConnectionBtn.disabled = false;
+    } else { // 'downloader' or initial state
         dom.setupView.style.display = 'none';
         dom.downloaderView.style.display = 'flex';
         updateInputMode();
     }
 }
 
+function updateConnectionStatus(status, message) {
+    dom.connectionStatusLine.classList.remove('error');
+    dom.retryConnectionBtn.style.display = 'none';
+
+    switch(status) {
+        case 'connecting':
+            dom.setupView.style.display = 'flex';
+            dom.downloaderView.style.display = 'none';
+            dom.connectionSpinner.style.display = 'block';
+            dom.connectionStatusText.textContent = message || '正在尝试连接本地代理...';
+            dom.retryConnectionBtn.disabled = true;
+            isConnecting = true;
+            break;
+        case 'connected':
+            switchView('downloader');
+            isConnecting = false;
+            break;
+        case 'failed':
+            switchView('setup');
+            isConnecting = false;
+            break;
+    }
+}
+
 function connectWebSocket() {
     clearTimeout(reconnectTimer);
-    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) || isConnecting) return;
+
+    updateConnectionStatus('connecting');
 
     socket = new WebSocket(WEBSOCKET_URL);
 
     socket.onopen = () => {
         console.log('成功连接到本地下载代理。');
-        switchView('downloader');
+        updateConnectionStatus('connected');
+        dom.pluginPanelBtn.style.display = 'flex'; // [修改] 显示插件按钮
         socket.send(JSON.stringify({ type: 'get_local_playlist' }));
-        // [修改] 连接成功后，获取插件列表
         socket.send(JSON.stringify({ type: 'get_plugins' }));
     };
 
@@ -98,13 +129,22 @@ function connectWebSocket() {
 
     socket.onclose = () => {
         console.log('与本地下载代理的连接已断开。');
+        dom.pluginPanelBtn.style.display = 'none'; // [修改] 隐藏插件按钮
         socket = null;
-        updateInputMode();
+        if (dom.downloadPanel.classList.contains('active')) {
+            updateConnectionStatus('failed');
+        }
+        isConnecting = false;
     };
 
     socket.onerror = () => {
         console.error('WebSocket 连接失败。');
-        socket = null;
+        dom.pluginPanelBtn.style.display = 'none'; // [修改] 隐藏插件按钮
+        socket = null; // 确保在 onclose 前清除
+        if (dom.downloadPanel.classList.contains('active')) {
+            updateConnectionStatus('failed');
+        }
+        isConnecting = false;
     };
 }
 
@@ -141,6 +181,30 @@ export function requestPluginAction(action, pluginId) {
     }
     socket.send(JSON.stringify({ type: action, data: { id: pluginId } }));
 }
+
+/**
+ * [新增] 向代理发送删除曲目的请求
+ * @param {object} track - 要删除的曲目对象
+ */
+export function requestTrackDeletion(track) {
+    if (!checkConnectionAndShowSetup()) {
+        showToast('删除失败：未连接到本地代理。', 'error');
+        return;
+    }
+
+    // 从完整的URL中提取相对路径，这是后端识别文件的关键
+    const AGENT_BASE_URL = `http://localhost:${HTTP_PORT}/`;
+    const relativeSrc = track.src.startsWith(AGENT_BASE_URL)
+        ? track.src.substring(AGENT_BASE_URL.length)
+        : track.src;
+
+    console.log(`[Deletion] 请求删除: ${relativeSrc}`);
+    socket.send(JSON.stringify({
+        type: 'delete_track',
+        data: { src: relativeSrc }
+    }));
+}
+
 
 // [新增] 请求获取音乐 URL
 export function resolvePlayableUrl(track) {
@@ -243,7 +307,7 @@ function handleAgentMessage(type, data) {
 function checkConnectionAndShowSetup() {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
         updateStatus('未连接到本地代理，请先启动代理程序。', 'error');
-        switchView('setup');
+        updateConnectionStatus('failed'); // 切换到引导页
         return false;
     }
     return true;
@@ -354,11 +418,36 @@ function setupSearchResultsListener() {
     });
 }
 
-export function setupDownloaderListeners() {
-    dom.downloadPanelBtn.addEventListener('click', () => {
-        if (!socket) connectWebSocket();
-        switchView('downloader');
+async function setupPluginActionsListener() {
+    dom.pluginListEl.addEventListener('click', async (e) => {
+        const item = e.target.closest('.plugin-item');
+        if (!item) return;
+
+        const pluginId = item.dataset.pluginId;
+        if (!pluginId) return;
+
+        if (e.target.classList.contains('plugin-select-btn')) {
+            requestPluginAction('select_plugin', pluginId);
+        } else if (e.target.classList.contains('plugin-uninstall-btn')) {
+            try {
+                const pluginName = item.querySelector('.plugin-name')?.textContent.split(' (v')[0] || pluginId;
+                await showConfirmationModal(`确定要卸载插件 "${pluginName}" 吗？\n此操作不可恢复。`);
+                requestPluginAction('unload_plugin', pluginId);
+            } catch (err) {
+                // 用户点击了取消，什么也不做
+                console.log('卸载操作已取消。');
+            }
+        }
     });
+}
+
+
+export function setupDownloaderListeners() {
+    // [修改] 打开面板时，总是尝试连接
+    dom.downloadPanelBtn.addEventListener('click', connectWebSocket);
+
+    // [新增] 重试按钮点击事件
+    dom.retryConnectionBtn.addEventListener('click', connectWebSocket);
 
     dom.closeDownloadBtn.addEventListener('click', () => {
         clearTimeout(reconnectTimer);
@@ -380,5 +469,8 @@ export function setupDownloaderListeners() {
     dom.downloadLikesBtn.addEventListener('click', (e) => sendDouyinRequest(e.currentTarget, 'likes'));
 
     setupSearchResultsListener();
+    setupPluginActionsListener();
+
+    // 初始加载时尝试连接一次
     connectWebSocket();
 }

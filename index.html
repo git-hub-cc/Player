@@ -198,7 +198,7 @@
                 </button>
             </div>
             <div id="download-panel-content" class="download-panel-content">
-                <!-- 1. 引导状态 (需要时显示) -->
+                <!-- [修改] 引导状态 (初始隐藏) -->
                 <div id="setup-view" class="setup-view" style="display: none;">
                     <div class="setup-header">
                         <h3>启用本地代理功能</h3>
@@ -260,16 +260,18 @@
                             <small>看到 "listening..." 字样即表示成功。**在使用功能期间，请勿关闭此终端窗口。**</small>
                         </div>
                     </div>
+                    <!-- [修改] 引导页脚，增加重试按钮 -->
                     <div class="setup-footer">
-                        <div class="connection-status-line">
-                            <span class="spinner"></span>
+                        <div id="connection-status-line" class="connection-status-line">
+                            <span id="connection-spinner" class="spinner"></span>
                             <span id="connection-status-text">正在尝试连接本地代理...</span>
                         </div>
+                        <button id="retry-connection-btn" class="action-btn" style="display: none;">重试连接</button>
                     </div>
                 </div>
 
-                <!-- 2. 主交互视图 (已修改) -->
-                <div id="downloader-view" class="downloader-view">
+                <!-- [修改] 主交互视图 (初始隐藏) -->
+                <div id="downloader-view" class="downloader-view" style="display: none;">
                     <div class="downloader-input-area">
                         <p class="panel-description">输入歌曲名进行在线搜索，或粘贴抖音分享链接进行本地下载。</p>
                         <textarea id="url-or-search-input" placeholder="粘贴抖音链接 或 输入歌曲/歌手名..."></textarea>
@@ -398,11 +400,22 @@
     </div>
 
     <!-- 快捷键录制模态框 -->
-    <div class="shortcut-modal-overlay" id="shortcut-modal-overlay">
-        <div class="shortcut-modal-content">
+    <div class="modal-overlay" id="shortcut-modal-overlay">
+        <div class="modal-content shortcut-modal-content">
             <p>请按下您想设置的快捷键组合...</p>
             <div class="shortcut-display shortcut-key-preview" id="shortcut-key-preview"></div>
             <small>按下 Esc 键可取消设置</small>
+        </div>
+    </div>
+
+    <!-- [新增] 通用确认模态框 -->
+    <div class="modal-overlay" id="confirmation-modal-overlay">
+        <div class="modal-content confirmation-modal-content">
+            <p id="confirmation-message"></p>
+            <div class="confirmation-actions">
+                <button id="cancel-btn" class="action-btn secondary-btn">取消</button>
+                <button id="confirm-btn" class="action-btn danger-btn">确认</button>
+            </div>
         </div>
     </div>
 
