@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Player - 媒体播放器</title>
+    <link rel="icon" href="favicon.svg">
 
     <!-- SEO Meta Tags -->
     <meta name="description" content="一个功能强大的HTML5媒体播放器，支持音频和视频播放，具有动态背景、歌词同步、快捷键和功能引导。A powerful HTML5 media player with audio/video, dynamic backgrounds, synced lyrics, shortcuts, and a feature tour.">
@@ -136,10 +137,10 @@
             </svg>
         </main>
 
-        <!-- 播放列表面板 -->
+        <!-- 下载列表面板 (原播放列表) -->
         <aside id="playlist-panel" class="playlist-panel">
             <div class="panel-header">
-                <h2>播放队列</h2>
+                <h2>下载列表</h2>
                 <button id="close-playlist-btn" class="control-btn" title="关闭">
                     <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
                 </button>
@@ -349,7 +350,7 @@
                     <button id="next-btn" class="control-btn" title="下一首">
                         <svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zm-3.5 6l-8.5 6V6z"></path></svg>
                     </button>
-                    <button id="mobile-playlist-btn" class="control-btn mobile-only-btn" title="播放队列">
+                    <button id="mobile-playlist-btn" class="control-btn mobile-only-btn" title="下载列表">
                         <svg viewBox="0 0 24 24"><path d="M3 6h14v2H3V6zm0 5h14v2H3v-2zm0 5h10v2H3v-2zM17 10v8l5-4-5-4z"></path></svg>
                     </button>
                 </div>
@@ -360,9 +361,11 @@
                 </div>
             </div>
             <div class="side-controls">
-                <!-- [新增] 插件管理按钮 -->
+                <!-- [修改] 插件管理按钮图标 -->
                 <button id="plugin-panel-btn" class="control-btn" title="插件管理">
-                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12.65 10A2.5 2.5 0 0 0 10 12.65v0A2.5 2.5 0 0 0 12.65 10ZM10 12.65A2.5 2.5 0 0 0 12.65 15.3v0A2.5 2.5 0 0 0 10 12.65ZM14 2.5A2.5 2.5 0 0 0 11.5 5.15v0A2.5 2.5 0 0 0 14 2.5ZM11.5 5.15A2.5 2.5 0 0 0 9 2.5v0A2.5 2.5 0 0 0 11.5 5.15Z M19.15 11.5a2.5 2.5 0 1 0 2.5 2.5 2.5 2.5 0 0 0-2.5-2.5Z m-7.5-3.35A2.5 2.5 0 0 0 9 10.65v0a2.5 2.5 0 0 0 2.65-2.5Z M9 10.65A2.5 2.5 0 0 0 6.35 8.15v0A2.5 2.5 0 0 0 9 10.65Z M14 21.5a2.5 2.5 0 1 0-2.5-2.5 2.5 2.5 0 0 0 2.5 2.5Z m-2.5-2.5a2.5 2.5 0 1 0-2.5 2.5 2.5 2.5 0 0 0 2.5-2.5Z m-2.5-2.5a2.5 2.5 0 1 0 2.5-2.5 2.5 2.5 0 0 0-2.5 2.5Z m2.5-2.5a2.5 2.5 0 1 0 2.5 2.5 2.5 2.5 0 0 0-2.5-2.5Z M4.85 11.5a2.5 2.5 0 1 0-2.5 2.5 2.5 2.5 0 0 0 2.5-2.5Z"/></svg>
+                    <svg viewBox="0 0 24 24">
+                        <path d="M13 13v8h8v-8h-8zM3 21h8v-8H3v8zM3 3v8h8V3H3zm13.66-1.31L11 7.34 16.66 13l5.66-5.66-5.66-5.65z"></path>
+                    </svg>
                 </button>
                 <button id="shortcut-btn" class="control-btn" title="快捷键设置"><svg viewBox="0 0 24 24"><path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"></path></svg></button>
                 <button id="info-btn" class="control-btn" title="关于"><svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"></path></svg></button>
@@ -375,7 +378,7 @@
                 <button id="download-panel-btn" class="control-btn" title="添加资源">
                     <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path></svg>
                 </button>
-                <button id="playlist-btn" class="control-btn" title="播放队列"><svg viewBox="0 0 24 24"><path d="M3 6h14v2H3V6zm0 5h14v2H3v-2zm0 5h10v2H3v-2zM17 10v8l5-4-5-4z"></path></svg></button>
+                <button id="playlist-btn" class="control-btn" title="下载列表"><svg viewBox="0 0 24 24"><path d="M3 6h14v2H3V6zm0 5h14v2H3v-2zm0 5h10v2H3v-2zM17 10v8l5-4-5-4z"></path></svg></button>
                 <div class="volume-container">
                     <button id="volume-btn" class="control-btn" title="静音">
                         <svg class="volume-icon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"></path></svg>

@@ -432,9 +432,14 @@ async function processAndDownloadItem(awemeDetail, sendMessage) {
 }
 
 async function downloadFile(url, folder, fileName) {
-    const filePath = path.join(folder, fileName);
-    if (fs.existsSync(filePath)) return;
     try {
+        const filePath = path.join(folder, fileName);
+
+        // 确保目录存在
+        fs.mkdirSync(folder, { recursive: true });
+
+        if (fs.existsSync(filePath)) return;
+
         const response = await axios({ method: 'get', url, responseType: 'stream', headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 120000 });
         const writer = fs.createWriteStream(filePath);
         response.data.pipe(writer);
@@ -442,7 +447,10 @@ async function downloadFile(url, folder, fileName) {
             writer.on('finish', resolve);
             writer.on('error', reject);
         });
-    } catch (e) { throw new Error(`下载失败`); }
+    } catch (e) {
+        // 重新抛出原始错误，以便调用者可以处理
+        throw e;
+    }
 }
 
 async function updateLocalPlaylist(newTrack, playlistPath) {
