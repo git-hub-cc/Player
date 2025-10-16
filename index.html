@@ -83,7 +83,6 @@
                     <div class="skeleton-block skeleton-button small"></div>
                     <div class="skeleton-block skeleton-button small"></div>
                     <div class="skeleton-block skeleton-button small"></div>
-                    <div class="skeleton-block skeleton-button small"></div>
                     <div class="volume-container">
                         <div class="skeleton-block skeleton-button small"></div>
                         <div class="skeleton-block skeleton-volume-bar"></div>
@@ -306,28 +305,6 @@
             </div>
         </aside>
 
-        <!-- [新增] 插件管理面板 -->
-        <aside id="plugin-panel" class="plugin-panel">
-            <div class="panel-header">
-                <h2>插件管理</h2>
-                <button id="close-plugin-btn" class="control-btn" title="关闭">
-                    <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
-                </button>
-            </div>
-            <div class="plugin-panel-content">
-                <div class="plugin-actions-header">
-                    <button id="add-plugin-btn" class="action-btn">
-                        <svg viewBox="0 0 24 24" fill="currentColor" width="18px" height="18px" style="margin-right: 8px;"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"></path></svg>
-                        <span>添加插件</span>
-                    </button>
-                    <input type="file" id="plugin-file-input" accept=".js" style="display: none;">
-                </div>
-                <ul id="plugin-list" class="plugin-list">
-                    <!-- 插件列表由 JS 动态生成 -->
-                </ul>
-            </div>
-        </aside>
-
         <!-- 底部播放控制条 -->
         <footer class="player-controls">
             <div class="track-info">
@@ -363,12 +340,6 @@
                 </div>
             </div>
             <div class="side-controls">
-                <!-- [修改] 插件管理按钮图标 -->
-                <button id="plugin-panel-btn" class="control-btn" title="插件管理">
-                    <svg viewBox="0 0 24 24">
-                        <path d="M13 13v8h8v-8h-8zM3 21h8v-8H3v8zM3 3v8h8V3H3zm13.66-1.31L11 7.34 16.66 13l5.66-5.66-5.66-5.65z"></path>
-                    </svg>
-                </button>
                 <button id="shortcut-btn" class="control-btn" title="快捷键设置"><svg viewBox="0 0 24 24"><path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"></path></svg></button>
                 <button id="info-btn" class="control-btn" title="关于"><svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"></path></svg></button>
                 <button id="mode-btn" class="control-btn" title="列表循环">

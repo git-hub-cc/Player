@@ -1,4 +1,3 @@
-// agent.js - 客户端代理 (v8.4 - 目录独立 & Stage 3 Plugin Integration)
 import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
@@ -95,7 +94,6 @@ wss.on('connection', (ws) => {
     ws.on('message', async (message) => {
         try {
             const request = JSON.parse(message.toString());
-            // ================== [修改] 扩展消息处理 ==================
             switch(request.type) {
                 case 'download':
                     await handleDownloadRequest(request.data, sendMessage);
@@ -118,61 +116,24 @@ wss.on('connection', (ws) => {
                         }
                     } catch (e) { console.error(`[Playlist] 读取代理 playlist.json 失败:`, e); }
                     break;
-
-                // [修改] 插件管理相关消息
-                case 'get_plugins':
-                    sendMessage('plugins_list', {
-                        plugins: pluginManager.getAllPluginsInfo(),
-                        activePluginId: pluginManager.activePluginId,
-                    });
-                    break;
-                case 'load_plugin':
-                    try {
-                        await pluginManager.addPlugin(request.data.code, request.data.name);
-                        sendMessage('success', `插件 ${request.data.name} 添加成功!`);
-                        sendMessage('plugins_list', {
-                            plugins: pluginManager.getAllPluginsInfo(),
-                            activePluginId: pluginManager.activePluginId,
-                        });
-                    } catch (e) {
-                        sendMessage('error', `添加插件失败: ${e.message}`);
-                    }
-                    break;
-                // [新增] 插件动作消息
-                case 'select_plugin':
-                    try {
-                        pluginManager.setActivePlugin(request.data.id);
-                        sendMessage('success', `已切换到插件: ${pluginManager.getPlugin(request.data.id).pluginInfo.name}`);
-                        sendMessage('plugins_list', {
-                            plugins: pluginManager.getAllPluginsInfo(),
-                            activePluginId: pluginManager.activePluginId,
-                        });
-                    } catch(e) {
-                        sendMessage('error', `切换插件失败: ${e.message}`);
-                    }
-                    break;
-                case 'unload_plugin':
-                    try {
-                        const pluginName = pluginManager.getPlugin(request.data.id).pluginInfo.name;
-                        await pluginManager.unloadPlugin(request.data.id);
-                        sendMessage('success', `插件 ${pluginName} 已卸载。`);
-                        sendMessage('plugins_list', {
-                            plugins: pluginManager.getAllPluginsInfo(),
-                            activePluginId: pluginManager.activePluginId,
-                        });
-                    } catch (e) {
-                        sendMessage('error', `卸载插件失败: ${e.message}`);
-                    }
-                    break;
-                // [新增] 获取音乐URL消息
                 case 'get_music_url':
+                    const { musicInfo, quality, requestId } = request.data;
+                    console.log(`[Agent] 收到解析URL请求: ${musicInfo.title}`);
+
                     try {
+                        if (musicInfo && musicInfo.url && musicInfo.url.startsWith('http')) {
+                            console.log(`[Agent] 直接使用 musicInfo.url: ${musicInfo.url}`);
+                            sendMessage('music_url', { requestId, url: musicInfo.url });
+                            break;
+                        }
+
                         const activePlugin = pluginManager.getActivePlugin();
                         if (!activePlugin) {
                             throw new Error('没有活动的音乐插件');
                         }
-                        const url = await activePlugin.getMusicUrl(request.data.musicInfo, request.data.quality);
-                        sendMessage('music_url', { requestId: request.data.requestId, url });
+                        console.log(`[Agent] 使用插件 '${activePlugin.pluginInfo.name}' 解析URL...`);
+                        const url = await activePlugin.getMusicUrl(musicInfo, quality);
+                        sendMessage('music_url', { requestId, url });
                     } catch (e) {
                         console.error(`[Agent] Get Music URL Error:`, e);
                         sendMessage('music_url', { requestId: request.data.requestId, error: e.message });
@@ -196,14 +157,17 @@ console.log('-------------------------------------------------------------------
 
 async function handleSearchRequest(searchData, sendMessage) {
     const { query, sourceType } = searchData;
+    console.log(`[Agent] 收到搜索请求: query='${query}', source='${sourceType}'`);
     try {
         const params = new URLSearchParams({ input: query, filter: 'name', page: '1', type: sourceType });
         const response = await axios.post(CONFIG.ONLINE_SEARCH_API, params, {
             headers: { 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
         });
         if (response.data.code !== 200 || !response.data.data?.list) throw new Error(response.data.error || 'API返回数据格式不正确');
+        console.log(`[Agent] 搜索成功，找到 ${response.data.data.list.length} 条结果。`);
         sendMessage('search_results', response.data.data.list);
     } catch (error) {
+        console.error(`[Agent] 搜索失败:`, error);
         sendMessage('error', `搜索失败: ${error.message}`);
     }
 }
@@ -271,11 +235,6 @@ async function handleCacheRequest(trackData, sendMessage) {
     sendMessage('new_track', newTrack);
 }
 
-/**
- * [新增] 处理删除曲目的请求
- * @param {object} data - 包含要删除曲目 src 的对象
- * @param {function} sendMessage - WebSocket 发送消息函数
- */
 async function handleDeleteTrack(data, sendMessage) {
     const relativeSrc = data.src;
     if (!relativeSrc) {
@@ -295,12 +254,10 @@ async function handleDeleteTrack(data, sendMessage) {
             return;
         }
 
-        // 1. 从播放列表数组中移除
         const updatedPlaylist = playlist.filter(t => t.src !== relativeSrc);
         fs.writeFileSync(CONFIG.PLAYLIST_PATH, JSON.stringify(updatedPlaylist, null, 2), 'utf-8');
         console.log(`[Deletion] 已从 playlist.json 中移除: ${trackToDelete.title}`);
 
-        // 2. 从磁盘删除关联文件
         const filesToDelete = [];
         if (trackToDelete.src) filesToDelete.push(path.join(AGENT_ROOT_DIR, trackToDelete.src));
         if (trackToDelete.albumArt) filesToDelete.push(path.join(AGENT_ROOT_DIR, trackToDelete.albumArt));
@@ -325,8 +282,6 @@ async function handleDeleteTrack(data, sendMessage) {
     }
 }
 
-
-// ... 省略抖音下载相关函数，保持不变 ...
 async function handleDownloadRequest(requestData, sendMessage) {
     let url, downloadType;
     if (typeof requestData === 'string') {
@@ -494,7 +449,6 @@ async function downloadFile(url, folder, fileName) {
     try {
         const filePath = path.join(folder, fileName);
 
-        // 确保目录存在
         fs.mkdirSync(folder, { recursive: true });
 
         if (fs.existsSync(filePath)) return;
@@ -507,7 +461,6 @@ async function downloadFile(url, folder, fileName) {
             writer.on('error', reject);
         });
     } catch (e) {
-        // 重新抛出原始错误，以便调用者可以处理
         throw e;
     }
 }

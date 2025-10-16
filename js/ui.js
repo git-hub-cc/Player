@@ -4,7 +4,6 @@ import * as state from './state.js';
 import { PLAY_MODES } from './config.js';
 import { getTemplate, formatTime } from './utils.js';
 import { playTrack, pauseTrack } from './player.js';
-import { requestTrackCache } from './features/downloader.js';
 
 let toastTimeout;
 let lastActiveLyricIndex = -1;
@@ -19,8 +18,7 @@ const NORMAL_DECAY_RATE = 1 / (60 * 2);   // 2秒动画 (基于60fps)
 const FAST_DECAY_RATE = 1 / (60 * 0.5); // 0.5秒动画
 
 // --- 面板管理 ---
-const allSidePanels = [dom.playlistPanel, dom.infoPanel, dom.shortcutPanel, dom.downloadPanel, dom.pluginPanel];
-let searchResultClickHandler = null; // 【新增】用于结果列表的事件处理器
+const allSidePanels = [dom.playlistPanel, dom.infoPanel, dom.shortcutPanel, dom.downloadPanel];
 
 
 /**
@@ -362,7 +360,6 @@ export function togglePlaylistPanel() { manageSidePanel(dom.playlistPanel); }
 export function toggleInfoPanel() { manageSidePanel(dom.infoPanel); }
 export function toggleShortcutPanel() { manageSidePanel(dom.shortcutPanel); }
 export function toggleDownloadPanel() { manageSidePanel(dom.downloadPanel); }
-export function togglePluginPanel() { manageSidePanel(dom.pluginPanel); } // [新增]
 
 // ... 其他函数 ...
 export function showToast(message) {
@@ -560,46 +557,6 @@ export function updateSearchResultItemStatus(itemElement, status) {
         downloadBtn.classList.add('cached');
     }
 }
-
-// --- [修改] 插件管理 UI 相关函数 ---
-export function renderPluginsList(plugins, activePluginId) {
-    if (!dom.pluginListEl) return;
-    dom.pluginListEl.innerHTML = '';
-    if (!plugins || plugins.length === 0) {
-        dom.pluginListEl.innerHTML = '<li class="no-results-message" style="display: block;">未安装任何插件</li>';
-        return;
-    }
-
-    const fragment = document.createDocumentFragment();
-    plugins.forEach(plugin => {
-        const itemNode = getTemplate('template-plugin-item');
-        const itemEl = itemNode.querySelector('.plugin-item');
-        itemEl.dataset.pluginId = plugin.id;
-
-        if (plugin.id === activePluginId) {
-            itemEl.classList.add('active');
-        }
-
-        itemEl.querySelector('.plugin-name').textContent = `${plugin.name} (v${plugin.version})`;
-        itemEl.querySelector('.plugin-author').textContent = `作者: ${plugin.author}`;
-
-        const sourcesContainer = itemEl.querySelector('.plugin-sources');
-        if (plugin.sources && plugin.sources.length > 0) {
-            plugin.sources.forEach(sourceName => {
-                const tagNode = getTemplate('template-plugin-source-tag');
-                const tagEl = tagNode.querySelector('.plugin-source-tag');
-                tagEl.textContent = sourceName.toUpperCase();
-                sourcesContainer.appendChild(tagNode);
-            });
-        } else {
-            sourcesContainer.innerHTML = '<span class="plugin-source-tag no-source">无音源</span>';
-        }
-
-        fragment.appendChild(itemNode);
-    });
-    dom.pluginListEl.appendChild(fragment);
-}
-
 
 let wasPlayingBeforeDrag = false;
 let dragStartY = 0;
