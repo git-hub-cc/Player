@@ -1,11 +1,12 @@
-
 import * as dom from '../dom.js';
 import * as state from '../state.js';
 import { showToast, clearSearchResults, renderSearchResults, updateSearchResultItemStatus, closeActivePanels } from '../ui.js';
 import { playTemporaryTrack } from '../player.js';
 
-const WEBSOCKET_URL = 'ws://localhost:9527';
-const HTTP_PORT = 9528; // 与 agent.js 中的端口一致
+// [修改] WebSocket URL 动态生成
+const WEBSOCKET_URL = `ws://${window.location.hostname}:9527`;
+// [修改] HTTP 代理基础 URL 动态生成
+const AGENT_BASE_URL = `http://${window.location.hostname}:9528`;
 
 let socket = null;
 let reconnectInterval = 3000;
@@ -17,10 +18,11 @@ let isConnecting = false;
  * 创建指向本地代理的URL
  */
 function createProxyUrl(originalUrl) {
-    if (!originalUrl || originalUrl.startsWith(`http://localhost:${HTTP_PORT}`)) {
-    return originalUrl || '';
-}
-return `http://localhost:${HTTP_PORT}/proxy?url=${encodeURIComponent(originalUrl)}`;
+    // [修改] 使用动态 AGENT_BASE_URL
+    if (!originalUrl || originalUrl.startsWith(AGENT_BASE_URL)) {
+        return originalUrl || '';
+    }
+    return `${AGENT_BASE_URL}/proxy?url=${encodeURIComponent(originalUrl)}`;
 }
 
 /**
@@ -154,10 +156,9 @@ export function requestTrackDeletion(track) {
         return;
     }
 
-    // 从完整的URL中提取相对路径，这是后端识别文件的关键
-    const AGENT_BASE_URL = `http://localhost:${HTTP_PORT}/`;
-    const relativeSrc = track.src.startsWith(AGENT_BASE_URL)
-        ? track.src.substring(AGENT_BASE_URL.length)
+    // [修改] 使用动态 AGENT_BASE_URL
+    const relativeSrc = track.src.startsWith(AGENT_BASE_URL + '/')
+        ? track.src.substring(AGENT_BASE_URL.length + 1)
         : track.src;
 
     console.log(`[Deletion] 请求删除: ${relativeSrc}`);
@@ -175,7 +176,7 @@ export function resolvePlayableUrl(track) {
         if (track.src && !track.src.startsWith('http')) {
             return resolve(track.src);
         }
-        if (track.src && track.src.startsWith(`http://localhost:${HTTP_PORT}`)) {
+        if (track.src && track.src.startsWith(AGENT_BASE_URL)) {
             return resolve(track.src);
         }
 

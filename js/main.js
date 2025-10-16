@@ -230,7 +230,7 @@ function setupEventListeners() {
     });
 
     // --- [核心修改] 接收并处理来自代理的数据 ---
-    const AGENT_BASE_URL = 'http://localhost:9528';
+    const AGENT_BASE_URL = `http://${window.location.hostname}:9528`;
 
     // 将代理返回的相对路径转换为可播放的完整URL
     function makeAgentTrackPlayable(track) {
