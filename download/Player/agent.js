@@ -28,7 +28,7 @@ const CONFIG = {
     MUSIC_DIR: path.join(AGENT_ROOT_DIR, 'music'),
     STATE_PATH: path.join(AGENT_ROOT_DIR, 'state.json'),
     PLAYLIST_PATH: path.join(AGENT_ROOT_DIR, 'playlist.json'),
-    HEADLESS_MODE: false,
+    HEADLESS_MODE: true,
     USER_WORKS_DELAY_MIN: 2000,
     USER_WORKS_DELAY_MAX: 5000,
     USER_WORKS_DELAY_JITTER: 300,
