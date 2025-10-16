@@ -19,6 +19,9 @@ playwright.use(stealthPlugin);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const AGENT_ROOT_DIR = path.resolve(__dirname, './');
+// [新增] 定义项目根目录，即 agent.js 所在目录的上两级
+const PROJECT_ROOT_DIR = path.resolve(__dirname, '..', '..');
+
 
 const CONFIG = {
     HTTP_PORT: 9528,
@@ -42,6 +45,10 @@ function sanitizeFilename(filename) {
 
 const app = express();
 app.use(cors());
+
+// [新增] 托管整个前端应用
+app.use(express.static(PROJECT_ROOT_DIR));
+
 
 [CONFIG.VIDEOS_DIR, CONFIG.ALBUMART_DIR, CONFIG.MUSIC_DIR].forEach(dir => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -80,7 +87,8 @@ app.get('/proxy', async (req, res) => {
 });
 
 const server = app.listen(CONFIG.HTTP_PORT, async () => {
-    console.log(`[HTTP Server] 媒体及代理服务器已启动，监听 http://localhost:${CONFIG.HTTP_PORT}`);
+    // [修改] 更新启动日志
+    console.log(`[HTTP Server] Web App & Media Proxy started at http://localhost:${CONFIG.HTTP_PORT}`);
 
     await pluginManager.initialize();
 });
@@ -196,7 +204,8 @@ async function handleCacheRequest(trackData, sendMessage) {
     if (originalLyrics && !fs.existsSync(lyricsPath)) {
         if (originalLyrics.startsWith('data:text/plain,')) {
             try {
-                const lrcContent = Buffer.from(originalLyrics.substring('data:text/plain,'.length), 'base64').toString('utf-8');
+                // [修复] 直接提取 Data URL 中的文本，不再错误地使用 decodeURIComponent
+                const lrcContent = originalLyrics.substring('data:text/plain,'.length);
                 fs.writeFileSync(lyricsPath, lrcContent, 'utf-8');
             } catch (e) { console.error(`[Download] 写入Data URL歌词失败: ${e.message}`); }
         } else if (originalLyrics.startsWith('http')) {
