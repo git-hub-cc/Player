@@ -1,106 +1,111 @@
 // js/dom.js
 
-export const playerContainer = document.querySelector('.player-container');
-export const mainView = document.querySelector('.main-view');
-export const mediaPlayer = document.getElementById('media-player');
-export const playPauseBtn = document.getElementById('play-pause-btn');
-export const prevBtn = document.getElementById('prev-btn');
-export const nextBtn = document.getElementById('next-btn');
-export const progressBar = document.getElementById('progress-bar');
-export const currentTimeEl = document.getElementById('current-time');
-export const durationEl = document.getElementById('duration');
-export const trackTitleEl = document.getElementById('track-title');
-export const trackArtistEl = document.getElementById('track-artist');
-export const albumArtEl = document.getElementById('album-art');
-export const controlAlbumArtEl = document.getElementById('control-album-art');
-export const albumArtContainer = document.getElementById('album-art-container');
-export const lyricsBtn = document.getElementById('lyrics-btn');
-export const lyricsContainer = document.getElementById('lyrics-container');
-export const lyricsList = document.getElementById('lyrics-list');
-export const lyricsListWrapper = document.getElementById('lyrics-list-wrapper');
+export let playerContainer = document.querySelector('.player-container');
+export let mainView = document.querySelector('.main-view');
+// 【修改】将 mediaPlayer 的声明从 const 改为 let，使其可被重新赋值
+export let mediaPlayer = document.getElementById('media-player');
+export let playPauseBtn = document.getElementById('play-pause-btn');
+export let prevBtn = document.getElementById('prev-btn');
+export let nextBtn = document.getElementById('next-btn');
+export let progressBar = document.getElementById('progress-bar');
+export let currentTimeEl = document.getElementById('current-time');
+export let durationEl = document.getElementById('duration');
+export let trackTitleEl = document.getElementById('track-title');
+export let trackArtistEl = document.getElementById('track-artist');
+export let albumArtEl = document.getElementById('album-art');
+export let controlAlbumArtEl = document.getElementById('control-album-art');
+export let albumArtContainer = document.getElementById('album-art-container');
+export let lyricsBtn = document.getElementById('lyrics-btn');
+export let lyricsContainer = document.getElementById('lyrics-container');
+export let lyricsList = document.getElementById('lyrics-list');
+export let lyricsListWrapper = document.getElementById('lyrics-list-wrapper');
 
 // 获取歌词拖拽相关元素
-export const lyricsDragIndicator = document.getElementById('lyrics-drag-indicator');
-export const lyricsDragTime = document.getElementById('lyrics-drag-time');
+export let lyricsDragIndicator = document.getElementById('lyrics-drag-indicator');
+export let lyricsDragTime = document.getElementById('lyrics-drag-time');
 
-export const volumeBtn = document.getElementById('volume-btn');
-export const volumeBar = document.getElementById('volume-bar');
-export const playlistEl = document.getElementById('playlist');
-export const playlistPanel = document.getElementById('playlist-panel');
-export const playlistBtn = document.getElementById('playlist-btn');
-export const closePlaylistBtn = document.getElementById('close-playlist-btn');
-export const infoBtn = document.getElementById('info-btn');
-export const infoPanel = document.getElementById('info-panel');
-export const closeInfoBtn = document.getElementById('close-info-btn');
-export const mobilePlaylistBtn = document.getElementById('mobile-playlist-btn');
-export const mobileLyricsBtn = document.getElementById('mobile-lyrics-btn');
-export const skeletonOverlay = document.getElementById('skeleton-overlay');
-export const shortcutBtn = document.getElementById('shortcut-btn');
-export const shortcutPanel = document.getElementById('shortcut-panel');
-export const closeShortcutBtn = document.getElementById('close-shortcut-btn');
-export const shortcutListEl = document.getElementById('shortcut-list');
-export const shortcutModalOverlayEl = document.getElementById('shortcut-modal-overlay');
-export const shortcutKeyPreviewEl = document.getElementById('shortcut-key-preview');
-export const toastEl = document.getElementById('toast-notification');
-export const modeBtn = document.getElementById('mode-btn');
-export const playlistSearchInput = document.getElementById('playlist-search');
-export const playlistNoResultsEl = document.getElementById('playlist-no-results');
-export const galleryContainer = document.getElementById('gallery-container');
-export const galleryWrapper = document.getElementById('gallery-wrapper');
-export const contextMenu = document.getElementById('custom-context-menu');
-export const templatesContainer = document.getElementById('templates');
-export const docElement = document.documentElement;
+export let volumeBtn = document.getElementById('volume-btn');
+export let volumeBar = document.getElementById('volume-bar');
+export let playlistEl = document.getElementById('playlist');
+export let playlistPanel = document.getElementById('playlist-panel');
+export let playlistBtn = document.getElementById('playlist-btn');
+export let closePlaylistBtn = document.getElementById('close-playlist-btn');
+export let infoBtn = document.getElementById('info-btn');
+export let infoPanel = document.getElementById('info-panel');
+export let closeInfoBtn = document.getElementById('close-info-btn');
+export let mobilePlaylistBtn = document.getElementById('mobile-playlist-btn');
+export let mobileLyricsBtn = document.getElementById('mobile-lyrics-btn');
+export let skeletonOverlay = document.getElementById('skeleton-overlay');
+export let shortcutBtn = document.getElementById('shortcut-btn');
+export let shortcutPanel = document.getElementById('shortcut-panel');
+export let closeShortcutBtn = document.getElementById('close-shortcut-btn');
+export let shortcutListEl = document.getElementById('shortcut-list');
+export let shortcutModalOverlayEl = document.getElementById('shortcut-modal-overlay');
+export let shortcutKeyPreviewEl = document.getElementById('shortcut-key-preview');
+export let toastEl = document.getElementById('toast-notification');
+export let modeBtn = document.getElementById('mode-btn');
+export let playlistSearchInput = document.getElementById('playlist-search');
+export let playlistNoResultsEl = document.getElementById('playlist-no-results');
+export let galleryContainer = document.getElementById('gallery-container');
+export let galleryWrapper = document.getElementById('gallery-wrapper');
+export let contextMenu = document.getElementById('custom-context-menu');
+export let templatesContainer = document.getElementById('templates');
+export let docElement = document.documentElement;
 
 // 故障效果元素
-export const glitchOverlay = document.getElementById('glitch-overlay');
-export const glitchLinesGroup = document.getElementById('glitch-lines');
-export const glitchSpotifyShapesGroup = document.getElementById('glitch-spotify-shapes');
-export const feTurbulence = document.querySelector('#glitch-filter-spotify feTurbulence');
-export const feDisplacementMap = document.querySelector('#glitch-filter-spotify feDisplacementMap');
-export const feOffsetR = document.querySelector('#glitch-filter-spotify [result="red_offset"]');
-export const feOffsetB = document.querySelector('#glitch-filter-spotify [result="blue_offset"]');
+export let glitchOverlay = document.getElementById('glitch-overlay');
+export let glitchLinesGroup = document.getElementById('glitch-lines');
+export let glitchSpotifyShapesGroup = document.getElementById('glitch-spotify-shapes');
+export let feTurbulence = document.querySelector('#glitch-filter-spotify feTurbulence');
+export let feDisplacementMap = document.querySelector('#glitch-filter-spotify feDisplacementMap');
+export let feOffsetR = document.querySelector('#glitch-filter-spotify [result="red_offset"]');
+export let feOffsetB = document.querySelector('#glitch-filter-spotify [result="blue_offset"]');
 
 // Canvas for gradient extraction
-export const bgCanvas = document.createElement('canvas');
-export const bgCtx = bgCanvas.getContext('2d', { willReadFrequently: true });
+export let bgCanvas = document.createElement('canvas');
+export let bgCtx = bgCanvas.getContext('2d', { willReadFrequently: true });
 
 // --- 下载/搜索面板相关元素 ---
-export const downloadPanelBtn = document.getElementById('download-panel-btn');
-export const downloadPanel = document.getElementById('download-panel');
-export const closeDownloadBtn = document.getElementById('close-download-btn');
-export const urlOrSearchInput = document.getElementById('url-or-search-input'); // 统一输入框
-export const downloadStatusEl = document.getElementById('download-status');
-export const downloadActionsContainer = document.getElementById('download-actions-container');
+export let downloadPanelBtn = document.getElementById('download-panel-btn');
+export let downloadPanel = document.getElementById('download-panel');
+export let closeDownloadBtn = document.getElementById('close-download-btn');
+export let urlOrSearchInput = document.getElementById('url-or-search-input'); // 统一输入框
+export let downloadStatusEl = document.getElementById('download-status');
+export let downloadActionsContainer = document.getElementById('download-actions-container');
 
 // 抖音下载按钮
-export const startDownloadBtn = document.getElementById('start-download-btn');
-export const downloadWorksBtn = document.getElementById('download-works-btn');
-export const downloadLikesBtn = document.getElementById('download-likes-btn');
+export let startDownloadBtn = document.getElementById('start-download-btn');
+export let downloadWorksBtn = document.getElementById('download-works-btn');
+export let downloadLikesBtn = document.getElementById('download-likes-btn');
 
 // 在线音乐搜索按钮
-export const searchNeteaseBtn = document.getElementById('search-netease-btn');
+export let searchNeteaseBtn = document.getElementById('search-netease-btn');
 
 // 引导视图和工作视图
-export const setupView = document.getElementById('setup-view');
-export const downloaderView = document.getElementById('downloader-view');
-export const panelDescription = downloaderView.querySelector('.panel-description');
-export const copyInstallCommandBtn = document.getElementById('copy-command-btn-install');
-export const copyRunCommandBtn = document.getElementById('copy-command-btn-run');
-export const connectionStatusLine = document.getElementById('connection-status-line');
-export const connectionSpinner = document.getElementById('connection-spinner');
-export const connectionStatusText = document.getElementById('connection-status-text');
-export const retryConnectionBtn = document.getElementById('retry-connection-btn'); // [新增]
+export let setupView = document.getElementById('setup-view');
+export let downloaderView = document.getElementById('downloader-view');
+export let panelDescription = downloaderView.querySelector('.panel-description');
+export let copyInstallCommandBtn = document.getElementById('copy-command-btn-install');
+export let copyRunCommandBtn = document.getElementById('copy-command-btn-run');
+export let connectionStatusLine = document.getElementById('connection-status-line');
+export let connectionSpinner = document.getElementById('connection-spinner');
+export let connectionStatusText = document.getElementById('connection-status-text');
+export let retryConnectionBtn = document.getElementById('retry-connection-btn'); // [新增]
 
 // 【新增】搜索/下载结果列表元素
-export const searchResultsContainer = document.getElementById('search-results-container');
-export const searchResultsList = document.getElementById('search-results-list');
+export let searchResultsContainer = document.getElementById('search-results-container');
+export let searchResultsList = document.getElementById('search-results-list');
 
 // --- [新增] 通用确认模态框元素 ---
-export const confirmationModal = document.getElementById('confirmation-modal-overlay');
-export const confirmationMessage = document.getElementById('confirmation-message');
-export const confirmBtn = document.getElementById('confirm-btn');
-export const cancelBtn = document.getElementById('cancel-btn');
+export let confirmationModal = document.getElementById('confirmation-modal-overlay');
+export let confirmationMessage = document.getElementById('confirmation-message');
+export let confirmBtn = document.getElementById('confirm-btn');
+export let cancelBtn = document.getElementById('cancel-btn');
 
+// 【新增】提供一个函数来更新 mediaPlayer 的引用
+export function updateMediaPlayerReference(newPlayerElement) {
+    mediaPlayer = newPlayerElement;
+}
 
 // DOM Query/Creation Functions
 export const getTemplateElementById = (id) => document.getElementById(id);

@@ -1,32 +1,13 @@
 import * as dom from '../dom.js';
-import * as state from '../state.js';
 import { showToast, clearSearchResults, renderSearchResults, updateSearchResultItemStatus, closeActivePanels } from '../ui.js';
 import { playTemporaryTrack } from '../player.js';
 
-// [修改] WebSocket URL 动态生成
-const WEBSOCKET_URL = `ws://${window.location.hostname}:9527`;
-// [修改] HTTP 代理基础 URL 动态生成
-const AGENT_BASE_URL = `http://${window.location.hostname}:9528`;
-
-let socket = null;
-let reconnectInterval = 3000;
-let reconnectTimer = null;
 let currentSearchResults = [];
-let isConnecting = false;
 
 /**
- * 创建指向本地代理的URL
- */
-function createProxyUrl(originalUrl) {
-    // [修改] 使用动态 AGENT_BASE_URL
-    if (!originalUrl || originalUrl.startsWith(AGENT_BASE_URL)) {
-        return originalUrl || '';
-    }
-    return `${AGENT_BASE_URL}/proxy?url=${encodeURIComponent(originalUrl)}`;
-}
-
-/**
- * 将API数据转换为内部格式，同时保存原始和代理URL
+ * 将在线搜索 API 返回的数据转换为应用内部使用的标准格式。
+ * @param {object} apiTrack - 从 API 获取的原始曲目数据。
+ * @returns {object} - 转换后的曲目对象。
  */
 function transformApiData(apiTrack) {
     const { pinyin } = window.pinyinPro;
@@ -34,18 +15,26 @@ function transformApiData(apiTrack) {
     return {
         title: title,
         artist: apiTrack.author || '未知艺术家',
-        src: createProxyUrl(apiTrack.url),
-        albumArt: createProxyUrl(apiTrack.pic),
+        // 注意：src, albumArt, lyrics 此时是原始 URL，而不是代理 URL
+        src: apiTrack.url,
+        albumArt: apiTrack.pic,
         lyrics: apiTrack.lrc,
         type: 'audio',
+        // 添加来源字段，以便主进程的插件系统知道如何处理
+        source: apiTrack.source || 'netease',
+        // 保存原始链接用于缓存请求
         originalSrc: apiTrack.url,
         originalAlbumArt: apiTrack.pic,
         originalLyrics: apiTrack.lrc,
+        // 生成拼音用于本地搜索
         pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
         initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '')
     };
 }
 
+/**
+ * 根据输入框内容更新 UI 模式（URL 下载模式 vs. 关键词搜索模式）。
+ */
 function updateInputMode() {
     const inputText = dom.urlOrSearchInput.value.trim();
     const isUrlMode = inputText.toLowerCase().includes('http');
@@ -58,262 +47,115 @@ function updateInputMode() {
     dom.searchNeteaseBtn.style.display = isUrlMode ? 'none' : 'flex';
 
     if (isUrlMode) {
-        dom.panelDescription.textContent = '检测到链接，已切换至抖音下载模式。需要本地代理程序运行。';
+        dom.panelDescription.textContent = '检测到链接，已切换至抖音下载模式。';
     } else {
         dom.panelDescription.textContent = '输入歌曲名进行在线搜索，或粘贴抖音分享链接进行本地下载。';
     }
 }
 
-// --- [修改] 视图切换和连接状态更新逻辑 ---
-function switchView(view) {
-    if (view === 'setup') {
-        dom.setupView.style.display = 'flex';
-        dom.downloaderView.style.display = 'none';
-        dom.connectionStatusLine.classList.add('error');
-        dom.connectionSpinner.style.display = 'none';
-        dom.connectionStatusText.textContent = '连接失败，请检查代理是否已启动。';
-        dom.retryConnectionBtn.style.display = 'flex';
-        dom.retryConnectionBtn.disabled = false;
-    } else { // 'downloader' or initial state
-        dom.setupView.style.display = 'none';
-        dom.downloaderView.style.display = 'flex';
-        updateInputMode();
-    }
+/**
+ * 更新下载面板底部的状态信息。
+ * @param {string} message - 要显示的消息。
+ * @param {'default' | 'success' | 'error'} type - 消息类型。
+ */
+function updateStatus(message, type = 'default') {
+    const statusEl = dom.downloadStatusEl;
+    statusEl.textContent = message;
+    statusEl.className = 'download-status';
+    if (type === 'success') statusEl.classList.add('success');
+    else if (type === 'error') statusEl.classList.add('error');
+    statusEl.style.display = 'block';
 }
-
-function updateConnectionStatus(status, message) {
-    dom.connectionStatusLine.classList.remove('error');
-    dom.retryConnectionBtn.style.display = 'none';
-
-    switch(status) {
-        case 'connecting':
-            dom.setupView.style.display = 'flex';
-            dom.downloaderView.style.display = 'none';
-            dom.connectionSpinner.style.display = 'block';
-            dom.connectionStatusText.textContent = message || '正在尝试连接本地代理...';
-            dom.retryConnectionBtn.disabled = true;
-            isConnecting = true;
-            break;
-        case 'connected':
-            switchView('downloader');
-            isConnecting = false;
-            break;
-        case 'failed':
-            switchView('setup');
-            isConnecting = false;
-            break;
-    }
-}
-
-function connectWebSocket() {
-    clearTimeout(reconnectTimer);
-    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) || isConnecting) return;
-
-    updateConnectionStatus('connecting');
-
-    socket = new WebSocket(WEBSOCKET_URL);
-
-    socket.onopen = () => {
-        console.log('成功连接到本地下载代理。');
-        updateConnectionStatus('connected');
-        socket.send(JSON.stringify({ type: 'get_local_playlist' }));
-    };
-
-    socket.onmessage = (event) => {
-        try {
-            const message = JSON.parse(event.data);
-            handleAgentMessage(message.type, message.data);
-        } catch (e) { console.error('无法解析来自代理的消息:', event.data); }
-    };
-
-    socket.onclose = () => {
-        console.log('与本地下载代理的连接已断开。');
-        socket = null;
-        if (dom.downloadPanel.classList.contains('active')) {
-            updateConnectionStatus('failed');
-        }
-        isConnecting = false;
-    };
-
-    socket.onerror = () => {
-        console.error('WebSocket 连接失败。');
-        socket = null; // 确保在 onclose 前清除
-        if (dom.downloadPanel.classList.contains('active')) {
-            updateConnectionStatus('failed');
-        }
-        isConnecting = false;
-    };
-}
-
 
 /**
- * [新增] 向代理发送删除曲目的请求
- * @param {object} track - 要删除的曲目对象
+ * 向主进程请求删除一个已下载的曲目。
+ * @param {object} track - 要删除的曲目对象。
  */
-export function requestTrackDeletion(track) {
-    if (!checkConnectionAndShowSetup()) {
-        showToast('删除失败：未连接到本地代理。', 'error');
-        return;
-    }
-
-    // [修改] 使用动态 AGENT_BASE_URL
-    const relativeSrc = track.src.startsWith(AGENT_BASE_URL + '/')
-        ? track.src.substring(AGENT_BASE_URL.length + 1)
+export async function requestTrackDeletion(track) {
+    const relativeSrc = track.src.startsWith('media://')
+        ? track.src.substring('media://'.length)
         : track.src;
 
     console.log(`[Deletion] 请求删除: ${relativeSrc}`);
-    socket.send(JSON.stringify({
-        type: 'delete_track',
-        data: { src: relativeSrc }
-    }));
+    const result = await window.electronAPI.deleteTrack({ src: relativeSrc });
+    if (result.success) {
+        showToast(result.message, 'success');
+    } else {
+        showToast(result.error, 'error');
+    }
+    return result.success;
 }
 
+/**
+ * 请求主进程解析一个曲目的可播放 URL，以解决 CORS 问题。
+ * @param {object} track - 曲目信息对象。
+ * @returns {Promise<string>} - 可播放的 URL。
+ * @throws {Error} 如果无法获取 URL。
+ */
+export async function resolvePlayableUrl(track) {
+    if (track.src && track.src.startsWith('media://')) {
+        return track.src;
+    }
 
-// [新增] 请求获取音乐 URL
-export function resolvePlayableUrl(track) {
-    return new Promise((resolve, reject) => {
-        // 如果是本地文件或已缓存的代理文件，直接返回
-        if (track.src && !track.src.startsWith('http')) {
-            return resolve(track.src);
-        }
-        if (track.src && track.src.startsWith(AGENT_BASE_URL)) {
-            return resolve(track.src);
-        }
-
-        if (!checkConnectionAndShowSetup()) {
-            return reject(new Error('未连接到本地代理'));
-        }
-
-        const requestId = `req_${Date.now()}_${Math.random()}`;
-
-        const messageHandler = (event) => {
-            try {
-                const message = JSON.parse(event.data);
-                if (message.type === 'music_url' && message.data.requestId === requestId) {
-                    socket.removeEventListener('message', messageHandler);
-                    if (message.data.url) {
-                        resolve(message.data.url);
-                    } else {
-                        reject(new Error(message.data.error || '未能获取播放链接'));
-                    }
-                }
-            } catch (e) { /* ignore */ }
-        };
-
-        socket.addEventListener('message', messageHandler);
-
-        // 设置超时
-        setTimeout(() => {
-            socket.removeEventListener('message', messageHandler);
-            reject(new Error('获取播放链接超时'));
-        }, 20000); // 20秒超时
-
-        // 发送请求
-        socket.send(JSON.stringify({
-            type: 'get_music_url',
-            data: {
-                requestId,
-                musicInfo: track,
-                quality: '128k', // 暂时硬编码，后续可从设置中读取
-            }
-        }));
-    });
-}
-
-
-function handleAgentMessage(type, data) {
-    const allButtons = [dom.startDownloadBtn, dom.downloadWorksBtn, dom.downloadLikesBtn, dom.searchNeteaseBtn];
-    const unLoading = () => allButtons.forEach(btn => {
-        btn.disabled = false;
-        btn.classList.remove('loading');
-    });
-
-    switch (type) {
-        case 'status':
-            updateStatus(data);
-            break;
-        case 'error':
-            updateStatus(`错误: ${data}`, 'error');
-            unLoading();
-            break;
-        case 'success':
-            updateStatus(data, 'success');
-            unLoading();
-            break;
-        case 'new_track':
-            // 注意：此处不再调用 renderDownloadedItem
-            document.dispatchEvent(new CustomEvent('new-track-added', { detail: data }));
-            const itemInSearchResults = dom.searchResultsList.querySelector(`.playlist-item[data-src="${data.originalSrc || data.src}"]`);
-            if (itemInSearchResults) {
-                updateSearchResultItemStatus(itemInSearchResults, 'cached');
-            }
-            break;
-        case 'local_playlist_data':
-            if (data && data.length > 0) document.dispatchEvent(new CustomEvent('local-playlist-loaded', { detail: data }));
-            break;
-        case 'search_results':
-            currentSearchResults = data.map(transformApiData);
-            renderSearchResults(currentSearchResults);
-            updateStatus(`搜索成功！已加载 ${data.length} 首歌曲。`, 'success');
-            unLoading();
-            break;
-        default:
-            console.warn(`收到未知的代理消息类型: ${type}`);
+    console.log(`[Resolver] 请求主进程解析URL: ${track.title}`);
+    // 【核心修复】直接传递 track 对象，而不是将其包装在另一个对象中
+    const result = await window.electronAPI.getMusicUrl(track);
+    if (result.success && result.url) {
+        console.log(`[Resolver] 成功获取可播放URL: ${result.url.substring(0, 100)}...`);
+        return result.url;
+    } else {
+        console.error(`[Resolver] 主进程解析URL失败:`, result.error);
+        throw new Error(result.error || '未能获取播放链接');
     }
 }
 
-function checkConnectionAndShowSetup() {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-        updateStatus('未连接到本地代理，请先启动代理程序。', 'error');
-        updateConnectionStatus('failed'); // 切换到引导页
-        return false;
-    }
-    return true;
-}
-
-export function requestTrackCache(trackData) {
-    if (!checkConnectionAndShowSetup()) {
-        showToast('缓存失败：未连接到本地代理。');
-        const item = dom.searchResultsList.querySelector(`.playlist-item[data-src="${trackData.originalSrc}"]`);
-        if (item) updateSearchResultItemStatus(item, 'downloadable');
-        return;
-    }
-
+/**
+ * 请求主进程缓存（下载）一个在线曲目。
+ * @param {object} trackData - 包含原始 URL 的曲目数据。
+ */
+function requestTrackCache(trackData) {
     console.log(`[Cache] 发送缓存请求: ${trackData.title}`);
-    socket.send(JSON.stringify({
-        type: 'cache_track',
-        data: trackData
-    }));
+    window.electronAPI.cacheTrack(trackData);
 }
 
-
-function performSearch(searchType) {
-    if (!checkConnectionAndShowSetup()) return;
-
+/**
+ * 执行在线搜索。
+ * @param {'netease'} searchType - 搜索源。
+ */
+async function performSearch(searchType) {
     const query = dom.urlOrSearchInput.value.trim();
     if (!query) {
-        showToast('请输入歌曲名或歌手名！');
+        showToast('请输入歌曲名或歌手名！', 'error');
         return;
     }
 
     clearSearchResults();
 
     const clickedButton = dom.searchNeteaseBtn;
-    const allSearchButtons = [dom.searchNeteaseBtn];
-
-    allSearchButtons.forEach(btn => btn.disabled = true);
+    clickedButton.disabled = true;
     clickedButton.classList.add('loading');
     updateStatus(`正在从 [${searchType}] 源搜索 "${query}"...`);
 
-    socket.send(JSON.stringify({
-        type: 'search',
-        data: { query, sourceType: searchType }
-    }));
+    const result = await window.electronAPI.searchOnline(query);
+
+    clickedButton.disabled = false;
+    clickedButton.classList.remove('loading');
+
+    if (result.success) {
+        currentSearchResults = result.data.map(transformApiData);
+        renderSearchResults(currentSearchResults);
+        updateStatus(`搜索成功！已加载 ${result.data.length} 首歌曲。`, 'success');
+    } else {
+        updateStatus(`搜索失败: ${result.error}`, 'error');
+    }
 }
 
+/**
+ * 向主进程发送抖音下载请求。
+ * @param {HTMLElement} clickedButton - 被点击的按钮元素。
+ * @param {'single' | 'works' | 'likes'} downloadType - 下载类型。
+ */
 function sendDouyinRequest(clickedButton, downloadType = 'single') {
-    if (!checkConnectionAndShowSetup()) return;
-
     const urlText = dom.urlOrSearchInput.value;
     if (!urlText.trim()) {
         updateStatus('错误：请输入有效的分享文本。', 'error');
@@ -325,32 +167,15 @@ function sendDouyinRequest(clickedButton, downloadType = 'single') {
     const allDownloadButtons = [dom.startDownloadBtn, dom.downloadWorksBtn, dom.downloadLikesBtn];
     allDownloadButtons.forEach(btn => btn.disabled = true);
     clickedButton.classList.add('loading');
-    updateStatus('已发送请求到本地代理，请稍候...', 'default');
+    updateStatus('已发送请求到主进程，请稍候...', 'default');
 
     const requestData = (downloadType === 'single') ? urlText : { url: urlText, downloadType };
-    socket.send(JSON.stringify({ type: 'download', data: requestData }));
+    window.electronAPI.startDownload(requestData);
 }
 
-function updateStatus(message, type = 'default') {
-    const statusEl = dom.downloadStatusEl;
-    statusEl.textContent = message;
-    statusEl.className = 'download-status';
-    if (type === 'success') statusEl.classList.add('success');
-    else if (type === 'error') statusEl.classList.add('error');
-    statusEl.style.display = 'block';
-}
-
-function setupCopyButton(button, textToCopy) {
-    if (!button) return;
-    button.addEventListener('click', () => {
-        navigator.clipboard.writeText(textToCopy).then(() => {
-            button.classList.add('copied');
-            setTimeout(() => button.classList.remove('copied'), 2000);
-        }).catch(err => showToast('复制失败: ' + err));
-    });
-}
-
-
+/**
+ * 设置搜索结果列表的事件监听器。
+ */
 function setupSearchResultsListener() {
     dom.searchResultsList.addEventListener('click', (e) => {
         const item = e.target.closest('.playlist-item');
@@ -359,43 +184,24 @@ function setupSearchResultsListener() {
         const downloadBtn = e.target.closest('.playlist-download-btn');
         const trackIndex = parseInt(item.dataset.index, 10);
         const clickedTrack = currentSearchResults[trackIndex];
+        if (!clickedTrack) return;
 
         if (downloadBtn && !downloadBtn.classList.contains('cached')) {
             e.stopPropagation();
-            if (clickedTrack) {
-                updateSearchResultItemStatus(item, 'downloading');
-                requestTrackCache(clickedTrack);
-            }
+            updateSearchResultItemStatus(item, 'downloading');
+            requestTrackCache(clickedTrack);
         } else {
-            // 【核心修改】直接播放临时曲目，不修改下载列表
-            if (clickedTrack) {
-                playTemporaryTrack(clickedTrack);
-                closeActivePanels(); // 播放后关闭面板
-            }
+            playTemporaryTrack(clickedTrack);
+            closeActivePanels();
         }
     });
 }
 
+/**
+ * 初始化所有下载器相关的事件监听器。
+ */
 export function setupDownloaderListeners() {
-    // [修改] 打开面板时，总是尝试连接
-    dom.downloadPanelBtn.addEventListener('click', connectWebSocket);
-
-    // [新增] 重试按钮点击事件
-    dom.retryConnectionBtn.addEventListener('click', connectWebSocket);
-
-    dom.closeDownloadBtn.addEventListener('click', () => {
-        clearTimeout(reconnectTimer);
-        if (socket) {
-            socket.onclose = null;
-            socket.close();
-            socket = null;
-        }
-    });
-
     dom.urlOrSearchInput.addEventListener('input', updateInputMode);
-
-    setupCopyButton(dom.copyInstallCommandBtn, 'npm install');
-    setupCopyButton(dom.copyRunCommandBtn, 'node agent.js');
 
     dom.searchNeteaseBtn.addEventListener('click', () => performSearch('netease'));
     dom.startDownloadBtn.addEventListener('click', (e) => sendDouyinRequest(e.currentTarget, 'single'));
@@ -404,6 +210,21 @@ export function setupDownloaderListeners() {
 
     setupSearchResultsListener();
 
-    // 初始加载时尝试连接一次
-    connectWebSocket();
+    window.electronAPI.onDownloadStatus((status) => {
+        updateStatus(status.message, status.type);
+        if (status.type === 'success' || status.type === 'error') {
+            [dom.startDownloadBtn, dom.downloadWorksBtn, dom.downloadLikesBtn].forEach(btn => {
+                btn.disabled = false;
+                btn.classList.remove('loading');
+            });
+        }
+    });
+
+    window.electronAPI.onNewTrack((newTrack) => {
+        document.dispatchEvent(new CustomEvent('new-track-added', { detail: newTrack }));
+        const itemInSearchResults = dom.searchResultsList.querySelector(`.playlist-item[data-src="${newTrack.originalSrc || newTrack.src}"]`);
+        if (itemInSearchResults) {
+            updateSearchResultItemStatus(itemInSearchResults, 'cached');
+        }
+    });
 }

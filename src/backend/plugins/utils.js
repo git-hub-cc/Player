@@ -1,12 +1,7 @@
 import axios from 'axios';
 import { createHash } from 'crypto';
+import { Buffer } from 'buffer';
 
-/**
- * 模拟 LX Music 的 request 功能.
- * @param {string} url - 请求的 URL.
- * @param {object} options - 请求选项，如 method, headers, body 等.
- * @param {function} callback - 回调函数 (err, resp).
- */
 export function request(url, options, callback) {
     const { method = 'GET', headers = {}, body, form, follow_max = 5 } = options;
 
@@ -40,10 +35,6 @@ export function request(url, options, callback) {
         });
 }
 
-
-/**
- * 模拟 LX Music 的 utils.
- */
 export const utils = {
     buffer: {
         from: (data, encoding) => Buffer.from(data, encoding),
