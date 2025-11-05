@@ -161,68 +161,7 @@
     overflow: hidden; /* 由内部元素控制滚动 */
 }
 
-/* 引导视图（恢复的完整样式）*/
-.setup-view {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    overflow-y: auto;
-    padding-right: 10px; /* 为滚动条留出空间 */
-    /* 【修正】添加统一的滚动条样式 */
-    scrollbar-width: thin;
-    scrollbar-color: var(--slider-track-color) transparent;
-}
-/* 【修正】添加统一的滚动条样式 for Webkit */
-.setup-view::-webkit-scrollbar { width: 8px; }
-.setup-view::-webkit-scrollbar-track { background-color: transparent; }
-.setup-view::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; }
-.setup-view::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
-
-.setup-disclaimer {
-    padding: 12px;
-    border-radius: 6px;
-    font-size: 13px;
-    line-height: 1.6;
-    background-color: rgba(229, 20, 20, 0.1);
-    border: 1px solid rgba(229, 20, 20, 0.3);
-    color: var(--text-secondary);
-}
-.setup-disclaimer strong {
-    color: #e51414;
-}
-.setup-header { text-align: center; padding-bottom: 10px; border-bottom: 1px solid var(--highlight-bg); }
-.setup-header h3 { color: var(--text-primary); margin-bottom: 8px; }
-.setup-header p { font-size: 14px; color: var(--text-secondary); }
-.setup-step { display: flex; gap: 15px; align-items: flex-start; }
-.step-number { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; background-color: var(--highlight-bg); color: var(--text-primary); display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px; }
-.step-content h4 { margin-bottom: 8px; font-size: 15px; color: var(--text-primary); }
-.step-content p { font-size: 13px; line-height: 1.6; color: var(--text-secondary); margin-bottom: 12px; }
-.step-content small { font-size: 12px; color: var(--slider-track-color); }
-.action-link { display: inline-flex; align-items: center; gap: 8px; background-color: var(--primary-color); color: #000; padding: 8px 16px; border-radius: 20px; text-decoration: none; font-weight: bold; font-size: 14px; transition: background-color 0.2s ease; margin-bottom: 8px; }
-.action-link:hover { background-color: #1ed760; }
-.action-link svg { width: 16px; height: 16px; fill: currentColor; }
-.code-block { position: relative; background-color: var(--bg-color); border: 1px solid var(--highlight-bg); border-radius: 6px; padding: 12px 16px; margin-bottom: 8px; }
-.code-block pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
-.code-block code { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace; font-size: 14px; color: var(--text-primary); }
-.copy-btn { position: absolute; top: 8px; right: 8px; background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; transition: color 0.2s, background-color 0.2s; }
-.copy-btn:hover { color: var(--text-primary); background-color: var(--highlight-bg); }
-.copy-btn .check-icon { display: none; }
-.copy-btn.copied .copy-icon { display: none; }
-.copy-btn.copied .check-icon { display: block; color: var(--primary-color); }
-.copy-btn svg { width: 18px; height: 18px; fill: currentColor; }
-
-/* [修改] 引导页脚样式 */
-.setup-footer {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 16px;
-    margin-top: 10px;
-    text-align: center;
-}
-.connection-status-line { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--primary-color); font-size: 14px; }
-.connection-status-line.error { color: #e51414; }
-.spinner { width: 16px; height: 16px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; }
+/* [移除] 不再使用的引导视图 (.setup-view) 相关样式 */
 
 /* 主交互视图（采用新的统一布局） */
 .downloader-view {
@@ -252,7 +191,16 @@
     resize: vertical;
     outline: none;
     transition: border-color 0.2s, box-shadow 0.2s;
+    /* [新增] 添加滚动条样式 */
+    scrollbar-width: thin;
+    scrollbar-color: var(--slider-track-color) transparent;
 }
+/* [新增] Webkit 内核浏览器的滚动条样式 */
+.downloader-view textarea::-webkit-scrollbar { width: 8px; }
+.downloader-view textarea::-webkit-scrollbar-track { background-color: transparent; }
+.downloader-view textarea::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; }
+.downloader-view textarea::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
+
 .downloader-view textarea:focus {
     border-color: var(--primary-color);
     box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.3);

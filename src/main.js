@@ -34,9 +34,9 @@ const createWindow = () => {
     }
 
     // 在开发模式下打开开发者工具 (已被注释，默认关闭)
-    // if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
-    //     mainWindow.webContents.openDevTools();
-    // }
+    if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
+        mainWindow.webContents.openDevTools();
+    }
 };
 
 app.whenReady().then(async () => {

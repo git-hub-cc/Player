@@ -1,6 +1,6 @@
 // js/utils.js
 
-import { playerContainer, templatesContainer, getTemplateElementById } from "./dom.js";
+import { getTemplateElementById } from "./dom.js";
 
 export function getTemplate(id) {
     const template = getTemplateElementById(id);
@@ -47,15 +47,4 @@ export function parseLRC(lrcText) {
 export function normalizeKey(key) {
     const keyMap = { 'Control': 'Ctrl', 'Meta': 'Cmd', ' ': 'Space', 'ArrowUp': '↑', 'ArrowDown': '↓', 'ArrowLeft': '←', 'ArrowRight': '→' };
     return keyMap[key] || key.charAt(0).toUpperCase() + key.slice(1);
-}
-
-export async function loadTemplates() {
-    try {
-        const response = await fetch('template.html');
-        if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-        templatesContainer.innerHTML = await response.text();
-    } catch (error) {
-        console.error("无法加载模板文件 'template.html':", error);
-        playerContainer.innerHTML = '<h1>Error: Could not load app templates.</h1>';
-    }
 }

@@ -1,6 +1,7 @@
 import * as dom from '../dom.js';
 import { showToast, clearSearchResults, renderSearchResults, updateSearchResultItemStatus, closeActivePanels } from '../ui.js';
 import { playTemporaryTrack } from '../player.js';
+import { pinyin } from 'pinyin-pro'; // 【新增】以模块化方式引入
 
 let currentSearchResults = [];
 
@@ -10,7 +11,7 @@ let currentSearchResults = [];
  * @returns {object} - 转换后的曲目对象。
  */
 function transformApiData(apiTrack) {
-    const { pinyin } = window.pinyinPro;
+    // 【修改】直接使用导入的 pinyin 函数
     const title = apiTrack.title || '未知标题';
     return {
         title: title,
@@ -192,7 +193,8 @@ function setupSearchResultsListener() {
             requestTrackCache(clickedTrack);
         } else {
             playTemporaryTrack(clickedTrack);
-            closeActivePanels();
+            // 【核心修改】移除了 closeActivePanels() 调用，以防止面板在播放时关闭。
+            // closeActivePanels();
         }
     });
 }

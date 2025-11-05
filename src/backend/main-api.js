@@ -1,7 +1,6 @@
 import path from 'path';
 import fs from 'fs';
-import { chromium as playwright } from 'playwright-extra';
-import stealth from 'puppeteer-extra-plugin-stealth';
+import { BrowserWindow } from 'electron';
 import axios from 'axios';
 import { pinyin } from 'pinyin-pro';
 import { Buffer } from 'buffer';
@@ -27,16 +26,14 @@ export function initialize(app, webContentsProvider) {
         PLUGINS_DIR: path.join(userDataPath, 'plugins'),
         STATE_PATH: path.join(userDataPath, 'state.json'),
         PLAYLIST_PATH: path.join(userDataPath, 'media', 'playlist.json'),
-        HEADLESS_MODE: true, // 在生产环境中应为 true
+        HEADLESS_MODE: true,
         ONLINE_SEARCH_API: 'https://www.myfreemp3.com.cn/',
     };
 
-    // 确保所有媒体目录存在
     [CONFIG.VIDEOS_DIR, CONFIG.ALBUMART_DIR, CONFIG.MUSIC_DIR, CONFIG.PLUGINS_DIR].forEach(dir => {
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     });
 
-    // 初始化插件管理器，并传入正确的插件目录
     pluginManager.initialize(CONFIG.PLUGINS_DIR);
 
     console.log(`[MainAPI] Initialized. Media stored at: ${CONFIG.MEDIA_ROOT}`);
@@ -51,14 +48,10 @@ function sendMessage(type, data) {
 
 function sanitizeFilename(filename) {
     if (!filename) return 'untitled';
-    // 【修改】增强文件名清理逻辑
-    // 1. 将所有可能引起问题的字符（包括逗号）和连续的空格替换为单个连字符
-    // 2. 将连续的连字符合并为一个
-    // 3. 移除开头和结尾的连字符
     return filename
-        .replace(/[\/\\?%*:|"<>_,\s]+/g, '-') // 替换非法字符、逗号和空格
-        .replace(/-+/g, '-')              // 合并多个连字符
-        .replace(/^-+|-+$/g, '')          // 移除首尾的连字符
+        .replace(/[\/\\?%*:|"<>_,\s]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '')
         .trim();
 }
 
@@ -172,7 +165,6 @@ export async function handleDeleteTrack({ src: relativeSrc }) {
     }
 }
 
-// 【核心修复】函数签名简化，直接接收 trackInfo 对象
 export async function handleGetMusicUrl(trackInfo) {
     if (!trackInfo) {
         return { success: false, error: '获取播放链接失败: 未提供有效的曲目信息。' };
@@ -181,7 +173,6 @@ export async function handleGetMusicUrl(trackInfo) {
     console.log(`[URL Resolver] 请求解析URL: ${trackInfo.title}`);
 
     try {
-        // 1. 优先处理直接的 HTTP 链接 (在线搜索播放路径)
         if (trackInfo.src && trackInfo.src.startsWith('http')) {
             console.log(`[URL Resolver] 代理请求初始URL: ${trackInfo.src}`);
             const response = await axios.head(trackInfo.src, {
@@ -195,7 +186,6 @@ export async function handleGetMusicUrl(trackInfo) {
             return { success: true, url: finalUrl };
         }
 
-        // 2. 尝试使用插件系统
         const source = trackInfo.source;
         if (!source) {
             throw new Error('曲目信息缺少 "source" 字段，无法使用插件解析。');
@@ -211,7 +201,7 @@ export async function handleGetMusicUrl(trackInfo) {
         }
 
         console.log(`[URL Resolver] 使用插件 "${activePlugin.pluginInfo.name}" 解析...`);
-        const url = await activePlugin.getMusicUrl(trackInfo, '128k'); // 默认品质
+        const url = await activePlugin.getMusicUrl(trackInfo, '128k');
 
         const response = await axios.head(url, { maxRedirects: 10, timeout: 15000 });
         const finalUrl = response.request.res.responseUrl;
@@ -222,25 +212,6 @@ export async function handleGetMusicUrl(trackInfo) {
         const errorMessage = e.response ? `HTTP ${e.response.status}` : e.message;
         console.error(`[URL Resolver] 解析失败:`, errorMessage);
         return { success: false, error: `获取播放链接失败: ${errorMessage}` };
-    }
-}
-
-// --- Playwright/Downloader Logic ---
-const stealthPlugin = stealth();
-stealthPlugin.enabledEvasions.delete('iframe.contentWindow');
-stealthPlugin.enabledEvasions.delete('media.codecs');
-playwright.use(stealthPlugin);
-
-async function launchBrowser() {
-    try {
-        return await playwright.launch({ headless: CONFIG.HEADLESS_MODE });
-    } catch (error) {
-        if (error.message.includes("Executable doesn't exist")) {
-            sendMessage('download-status', { message: "启动浏览器失败: 请运行 'npx playwright install' 下载必要的浏览器。", type: 'error' });
-        } else {
-            sendMessage('download-status', { message: `启动浏览器时发生未知错误: ${error.message}`, type: 'error' });
-        }
-        return null;
     }
 }
 
@@ -261,34 +232,91 @@ export async function handleDownloadRequest(requestData) {
     if (startUrl.startsWith('MS4wLjAB')) startUrl = `https://www.douyin.com/user/${startUrl}`;
 
     sendMessage('download-status', { message: `成功提取目标: ${startUrl}` });
-    if (downloadType === 'single') await downloadSingleVideo(startUrl);
-    else await downloadUserContent(startUrl, downloadType);
+    if (downloadType === 'single') {
+        await downloadSingleVideo(startUrl);
+    } else {
+        sendMessage('download-status', { message: `批量下载功能 (${downloadType}) 暂未迁移。`, type: 'error' });
+    }
 }
 
 async function downloadSingleVideo(videoUrl) {
-    let browser = await launchBrowser();
-    if (!browser) return;
+    sendMessage('download-status', { message: '正在后台启动浏览器引擎...' });
+
+    const win = new BrowserWindow({
+        show: false, // 【核心修改】改回 false，实现后台运行
+        webPreferences: {
+            partition: `persist:douyin_session_${Date.now()}`,
+            preload: path.join(__dirname, 'backend', 'douyin-preload.js'),
+            contextIsolation: true,
+            sandbox: true,
+        },
+    });
+
+    // 后台运行时静音，防止视频自动播放产生声音
+    win.webContents.setAudioMuted(true);
 
     try {
-        sendMessage('download-status', { message: '浏览器已启动 (单视频模式)...' });
-        const context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' });
-        const page = await context.newPage();
-        const apiResponsePromise = page.waitForResponse(res => res.url().includes("aweme/v1/web/aweme/detail/") && res.status() === 200, { timeout: 60000 });
+        const apiResponsePromise = new Promise(async (resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(new Error('API响应超时 (60秒)'));
+            }, 60000);
 
-        await page.goto(videoUrl, { waitUntil: 'domcontentloaded', timeout: 90000 });
-        const apiResponse = await apiResponsePromise;
-        const apiResponseJson = await apiResponse.json();
+            let hasAttached = false;
+
+            win.webContents.on('did-finish-load', async () => {
+                if (hasAttached || win.isDestroyed()) return;
+                hasAttached = true;
+
+                try {
+                    const debuggerApi = win.webContents.debugger;
+                    await debuggerApi.attach('1.3');
+                    await debuggerApi.sendCommand('Network.enable');
+                    sendMessage('download-status', { message: '后台页面加载完成，正在监听网络...' });
+
+                    debuggerApi.on('message', async (event, method, params) => {
+                        if (method === 'Network.responseReceived' && params.response.url.includes('aweme/v1/web/aweme/detail/')) {
+                            try {
+                                const responseBody = await debuggerApi.sendCommand('Network.getResponseBody', { requestId: params.requestId });
+                                const jsonData = JSON.parse(responseBody.body);
+                                clearTimeout(timeout);
+                                resolve(jsonData);
+                            } catch (err) {
+                                if (!err.message.includes('No resource with given identifier found')) {
+                                    reject(err);
+                                }
+                            }
+                        }
+                    });
+                } catch(attachError) {
+                    reject(new Error(`附加调试器失败: ${attachError.message}`));
+                }
+            });
+        });
+
+        await win.loadURL(videoUrl, { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' });
+
+        sendMessage('download-status', { message: '后台页面导航中，等待数据响应...' });
+        const apiResponseJson = await apiResponsePromise;
 
         if (!apiResponseJson?.aweme_detail) {
             sendMessage('download-status', { message: '未能拦截到有效的API响应或数据结构错误。', type: 'error' });
             return;
         }
+
         await processAndDownloadItem(apiResponseJson.aweme_detail);
         sendMessage('download-status', { message: '视频下载完成！', type: 'success' });
+
     } catch (error) {
         sendMessage('download-status', { message: `浏览器操作失败: ${error.message}`, type: 'error' });
     } finally {
-        if (browser) await browser.close();
+        if (win && !win.isDestroyed()) {
+            if (win.webContents.debugger.isAttached()) {
+                await win.webContents.debugger.detach();
+            }
+            // 【核心修改】恢复自动关闭窗口，释放资源
+            win.close();
+        }
+        console.log('[Downloader] 隐形浏览器已关闭。');
     }
 }
 
