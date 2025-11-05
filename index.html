@@ -321,13 +321,133 @@
     <!-- 提示消息元素 -->
     <div id="toast-notification" class="toast"></div>
 
-    <!-- Container for HTML templates, loaded from template.html -->
-    <div id="templates"></div>
+    <!-- Container for HTML templates -->
+    <div id="templates" style="display: none;">
+        <!-- 单个歌词行模板 -->
+        <template id="template-lyric-line">
+            <p></p>
+        </template>
+
+        <!-- 无歌词提示模板 -->
+        <template id="template-no-lyrics">
+            <p class="no-lyrics">暂无歌词</p>
+        </template>
+
+        <!-- 【修改】播放列表项模板 (已简化，移除下载按钮) -->
+        <template id="template-playlist-item">
+            <li class="playlist-item">
+                <div class="playlist-item-main-content">
+                    <div class="playlist-icon"></div>
+                    <div class="playlist-details">
+                        <div class="playlist-title"></div>
+                        <div class="playlist-artist"></div>
+                    </div>
+                </div>
+            </li>
+        </template>
+
+        <!-- 【新增】搜索结果项模板 (带下载按钮) -->
+        <template id="template-search-result-item">
+            <li class="playlist-item">
+                <div class="playlist-item-main-content">
+                    <div class="playlist-icon"></div>
+                    <div class="playlist-details">
+                        <div class="playlist-title"></div>
+                        <div class="playlist-artist"></div>
+                    </div>
+                </div>
+                <button class="playlist-download-btn" title="下载到本地">
+                    <svg class="download-icon" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path></svg>
+                    <svg class="spinner-icon" viewBox="0 0 24 24"><path d="M12,4a8,8,0,0,1,7.89,6.7A1.53,1.53,0,0,0,21.38,12h0a1.5,1.5,0,0,0,1.48-1.75,11,11,0,0,0-21.72,0A1.5,1.5,0,0,0,2.62,12h0a1.53,1.53,0,0,0,1.49-1.3A8,8,0,0,1,12,4Z"></path></svg>
+                    <svg class="cached-icon" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg>
+                </button>
+            </li>
+        </template>
+
+        <!-- 播放列表无搜索结果模板 -->
+        <template id="template-playlist-no-results">
+            <li id="playlist-no-results" class="no-results-message">未找到结果</li>
+        </template>
+
+        <!-- 快捷键设置项模板 -->
+        <template id="template-shortcut-item">
+            <li class="shortcut-item">
+                <span class="action-label"></span>
+                <div class="shortcut-display"></div>
+                <div class="actions">
+                    <button class="set-btn">设置</button>
+                    <button class="clear-btn">清除</button>
+                </div>
+            </li>
+        </template>
+
+        <!-- 单个快捷键按键显示模板 -->
+        <template id="template-key-kbd">
+            <kbd></kbd>
+        </template>
+
+        <!-- 未设置快捷键占位符模板 -->
+        <template id="template-key-placeholder">
+            <span class="placeholder">未设置</span>
+        </template>
+
+        <!-- 录制快捷键时等待输入占位符模板 -->
+        <template id="template-recording-placeholder">
+            <span class="placeholder">等待输入...</span>
+        </template>
+
+        <!-- 功能导览工具提示模板 -->
+        <template id="template-tour-tooltip">
+            <div class="tour-tooltip-header">
+                <span class="tour-tooltip-title"></span>
+                <span class="tour-tooltip-step-counter"></span>
+            </div>
+            <div class="tour-tooltip-content"></div>
+            <div class="tour-custom-demo"></div>
+            <div class="tour-tooltip-footer">
+                <button class="tour-skip-button">跳过</button>
+                <div class="tour-nav-buttons">
+                    <button class="tour-prev-button">上一步</button>
+                    <button class="tour-next-button">下一步</button>
+                </div>
+            </div>
+        </template>
+
+        <!-- 功能导览 - 画廊演示动画模板 -->
+        <template id="template-tour-gallery-demo">
+            <div class="tour-gallery-demo-container">
+                <div class="tour-gallery-demo-bg">
+                    <div class="demo-tile"><svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg></div>
+                    <div class="demo-tile"><svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg></div>
+                    <div class="demo-tile"><svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg></div>
+                    <div class="demo-tile"><svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg></div>
+                    <div class="demo-tile"><svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg></div>
+                    <div class="demo-tile"><svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg></div>
+                </div>
+                <div class="tour-gallery-demo-hand">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.93,12.28a1,1,0,0,0-1.15.22l-3.32,4.31,0-9.2a1,1,0,0,0-2,0L13.4,14V4a1,1,0,0,0-2,0V14L11.32,7.74a1,1,0,0,0-1.9-.6l-2.4,5.52L5.41,8.35a1,1,0,0,0-1.82.8l2,6.35,0,0,0,.05,0,.05,0,.08,0,.07,0,.07,0,.05,0,.06a1,1,0,0,0,.29.62L8.85,20.2a1,1,0,0,0,1.59-.22L12.5,16.9l2.29,3.05a1,1,0,0,0,1.6-.23l3.75-5A1,1,0,0,0,19.93,12.28Z"/></svg>
+                </div>
+            </div>
+        </template>
+
+        <template id="template-gallery-item">
+            <div class="gallery-item">
+                <img class="gallery-item-art" alt="" loading="lazy" crossorigin="anonymous">
+                <div class="gallery-item-overlay">
+                    <div class="gallery-item-play-icon">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
+                    </div>
+                    <div class="gallery-item-details">
+                        <h4 class="gallery-item-title"></h4>
+                        <p class="gallery-item-artist"></p>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
 
 </div>
 </body>
-<!-- 引入第三方库 -->
-<script src="lib/jsmediatags.min.js"></script>
-<script src="lib/index.min.js"></script> <!-- pinyin-pro -->
+<!-- 【修改】移除第三方库的 script 标签，它们将通过模块化方式引入 -->
 <script type="module" src="js/main.js"></script>
 </html>

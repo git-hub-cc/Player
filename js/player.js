@@ -12,13 +12,40 @@ let skeletonTimer = null;
 let nextBackgroundUpdateTime = 0;
 const BACKGROUND_BEAT_MULTIPLIER = 12;
 
+/**
+ * [重构] 创建一个新的 media element，替换旧的，并附加所有必要的事件监听器。
+ * 这是为了解决克隆节点时事件监听器丢失的问题，并集中管理核心事件。
+ */
+function _recreateMediaPlayerAndAttachListeners() {
+    const oldMediaPlayer = dom.mediaPlayer;
+    const newMediaPlayer = oldMediaPlayer.cloneNode(true);
+
+    // 附加核心事件监听器
+    newMediaPlayer.addEventListener('loadedmetadata', () => {
+        updateProgress();
+    });
+
+    newMediaPlayer.addEventListener('ended', () => {
+        const currentMode = PLAY_MODES[state.currentModeIndex];
+        if (currentMode === 'single') {
+            newMediaPlayer.currentTime = 0;
+            playTrack();
+        } else {
+            playNextTrack();
+        }
+    });
+
+    oldMediaPlayer.parentNode.replaceChild(newMediaPlayer, oldMediaPlayer);
+    dom.updateMediaPlayerReference(newMediaPlayer); // 更新全局 DOM 引用
+}
+
 export function resetBackgroundBeatTimer() {
     nextBackgroundUpdateTime = 0;
 }
 
 export function resetPlayerUI() {
     pauseTrack();
-    dom.mediaPlayer.src = '';
+    if (dom.mediaPlayer) dom.mediaPlayer.src = '';
     dom.trackTitleEl.textContent = '选择媒体';
     dom.trackArtistEl.textContent = '开始播放';
     dom.albumArtEl.src = DEFAULT_ART;
@@ -44,11 +71,24 @@ export async function playTemporaryTrack(track) {
     resetBackgroundBeatTimer();
     state.setCurrentColorPaletteIndex(0);
 
+    // [重构] 先创建和准备好新的播放器
+    _recreateMediaPlayerAndAttachListeners();
+
     dom.trackTitleEl.textContent = track.title || "未知标题";
     dom.trackArtistEl.textContent = track.artist || "未知艺术家";
     const artUrl = track.albumArt || DEFAULT_ART;
     dom.albumArtEl.src = artUrl;
     dom.controlAlbumArtEl.src = artUrl;
+
+    // [修正] 在设置 src 之前附加错误处理
+    dom.mediaPlayer.onerror = (e) => {
+        console.error("临时媒体加载错误:", e);
+        hideSkeleton();
+        dom.trackTitleEl.textContent = "错误";
+        dom.trackArtistEl.textContent = "无法播放在线媒体";
+        showToast(`播放失败，媒体资源可能已失效`, 'error');
+    };
+    dom.mediaPlayer.oncanplay = () => { hideSkeleton(); playTrack(); };
 
     let playableSrc;
     try {
@@ -71,23 +111,6 @@ export async function playTemporaryTrack(track) {
     }
     renderLyrics();
 
-    // 【修改】正确地克隆、替换并更新 DOM 引用
-    const oldMediaPlayer = dom.mediaPlayer;
-    const newMediaPlayer = oldMediaPlayer.cloneNode(true);
-    oldMediaPlayer.parentNode.replaceChild(newMediaPlayer, oldMediaPlayer);
-    dom.updateMediaPlayerReference(newMediaPlayer); // 使用 setter 更新模块内的引用
-
-    dom.mediaPlayer.onerror = (e) => {
-        console.error("临时媒体加载错误:", e);
-        hideSkeleton();
-        dom.trackTitleEl.textContent = "错误";
-        dom.trackArtistEl.textContent = "无法播放在线媒体";
-        showToast(`播放失败，媒体资源可能已失效`, 'error');
-    };
-    dom.mediaPlayer.oncanplay = () => { hideSkeleton(); playTrack(); };
-    dom.mediaPlayer.onloadedmetadata = updateProgress;
-    dom.mediaPlayer.addEventListener('ended', () => playNextTrack());
-
     dom.albumArtContainer.style.display = 'flex';
     dom.mediaPlayer.style.display = 'none';
     dom.albumArtEl.onload = () => extractAndApplyGradient(dom.albumArtEl);
@@ -102,9 +125,10 @@ export async function playTemporaryTrack(track) {
  * @param {number} trackIndex - 轨道在播放列表中的索引。
  * @param {object} [options={}] - 加载选项。
  * @param {boolean} [options.forcePlay=false] - 加载后是否强制播放。
+ * @param {number} [options.initialTime=0] - 初始播放时间点。
  */
 export async function loadTrack(trackIndex, options = {}) {
-    const { forcePlay = false } = options;
+    const { forcePlay = false, initialTime = 0 } = options;
 
     resetBackgroundBeatTimer();
     state.setCurrentColorPaletteIndex(0);
@@ -114,6 +138,9 @@ export async function loadTrack(trackIndex, options = {}) {
 
     state.setCurrentTrackIndex(trackIndex);
     const track = state.playlist[trackIndex];
+
+    // [重构] 先创建和准备好新的播放器
+    _recreateMediaPlayerAndAttachListeners();
 
     dom.trackTitleEl.textContent = track.title || "未知标题";
     dom.trackArtistEl.textContent = track.artist || "未知艺术家";
@@ -138,15 +165,9 @@ export async function loadTrack(trackIndex, options = {}) {
     updatePlaylistUI();
 
     let loadedOnce = false;
-    const handleMediaReady = () => {
-        if (!loadedOnce) {
-            hideSkeleton();
-            updateProgress();
-            if (state.isPlaying) playTrack();
-            loadedOnce = true;
-        }
-    };
-    const handleError = (e) => {
+
+    // [修正] 在设置 src 之前附加错误处理
+    dom.mediaPlayer.onerror = (e) => {
         console.error("媒体加载错误:", e);
         if (skeletonTimer) clearTimeout(skeletonTimer);
         hideSkeleton();
@@ -155,21 +176,17 @@ export async function loadTrack(trackIndex, options = {}) {
         dom.mainView.style.background = '';
     };
 
-    // 【修改】正确地克隆、替换并更新 DOM 引用
-    const oldMediaPlayer = dom.mediaPlayer;
-    const newMediaPlayer = oldMediaPlayer.cloneNode(true);
-    oldMediaPlayer.parentNode.replaceChild(newMediaPlayer, oldMediaPlayer);
-    dom.updateMediaPlayerReference(newMediaPlayer); // 使用 setter 更新模块内的引用
-
-    dom.mediaPlayer.onerror = handleError;
-    dom.mediaPlayer.oncanplay = handleMediaReady;
-    dom.mediaPlayer.onloadedmetadata = updateProgress;
-    dom.mediaPlayer.addEventListener('ended', () => {
-        const currentMode = PLAY_MODES[state.currentModeIndex];
-        if (currentMode === 'single') { dom.mediaPlayer.currentTime = 0; playTrack(); }
-        else { playNextTrack(); }
-    });
-
+    dom.mediaPlayer.oncanplay = () => {
+        if (!loadedOnce) {
+            hideSkeleton();
+            updateProgress();
+            if (initialTime > 0) {
+                dom.mediaPlayer.currentTime = initialTime;
+            }
+            if (state.isPlaying) playTrack();
+            loadedOnce = true;
+        }
+    };
 
     if (track.type === 'audio') {
         dom.albumArtContainer.style.display = 'flex';
@@ -213,8 +230,7 @@ function runAnimationFrame() {
 }
 
 export function playTrack() {
-    // 【修改】确保即使在 dom.mediaPlayer 为 null 或 undefined 时也不会抛出错误
-    if (!dom.mediaPlayer || !dom.mediaPlayer.src || (state.playlist.length === 0 && !dom.mediaPlayer.src.startsWith('http'))) return;
+    if (!dom.mediaPlayer || !dom.mediaPlayer.src) return;
     const playPromise = dom.mediaPlayer.play();
     if (playPromise !== undefined) {
         playPromise.then(() => {
@@ -244,7 +260,7 @@ function changeTrack(direction) {
     if (state.playlist.length <= 1) return;
     triggerGlitchEffect(3000);
     clearTimeout(skeletonTimer);
-    skeletonTimer = setTimeout(() => showSkeleton(), 3000);
+    skeletonTimer = setTimeout(() => showSkeleton(), 300); // 缩短延迟
 
     setTimeout(() => {
         let newIndex;

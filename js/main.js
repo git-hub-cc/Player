@@ -3,8 +3,10 @@
 import * as dom from './dom.js';
 import * as state from './state.js';
 import { PLAY_MODES, desktopTourSteps, mobileTourSteps } from './config.js';
-import { loadTemplates, normalizeKey, formatTime } from './utils.js';
-import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode, playTrack, resetBackgroundBeatTimer, resetPlayerUI } from './player.js';
+import { normalizeKey, formatTime } from './utils.js';
+import { pinyin } from 'pinyin-pro'; // 【新增】以模块化方式引入
+// [修改] 移除了 playTrack 的导入，因为它现在是 player.js 的内部逻辑
+import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode, resetBackgroundBeatTimer, resetPlayerUI } from './player.js';
 import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, setupParticleCanvas, closeActivePanels, toggleDownloadPanel, showToast, showConfirmationModal } from './ui.js';
 import { loadShortcuts, executeShortcut, setupShortcutListeners } from './features/shortcuts.js';
 import { FeatureTour } from './features/tour.js';
@@ -75,14 +77,17 @@ async function handleDeleteTrackRequest(index) {
             if (state.playlist.length === 0) {
                 resetPlayerUI();
             } else {
+                // 如果删除的是当前曲目，加载新的当前曲目（索引可能已改变）
                 loadTrack(state.currentTrackIndex, { forcePlay: wasPlaying });
             }
         }
         showToast(`"${track.title}" 已删除`);
     } catch (err) {
+        // 用户点击了取消
         console.log("删除操作已由用户取消。");
     }
 }
+
 
 /**
  * 将主进程返回的相对路径转换为可播放的 `media://` 协议 URL
@@ -110,15 +115,8 @@ function setupEventListeners() {
     dom.nextBtn.addEventListener('click', () => { playNextTrack(); savePlayerState(); });
     dom.modeBtn.addEventListener('click', () => { cyclePlayMode(); savePlayerState(); });
 
-    dom.mediaPlayer.addEventListener('ended', () => {
-        const currentMode = PLAY_MODES[state.currentModeIndex];
-        if (currentMode === 'single') { dom.mediaPlayer.currentTime = 0; playTrack(); }
-        else { playNextTrack(); savePlayerState(); }
-    });
-    dom.mediaPlayer.addEventListener('loadedmetadata', () => {
-        updateProgress();
-        if (initialTime > 0) { dom.mediaPlayer.currentTime = initialTime; initialTime = 0; }
-    });
+    // [修正] 移除 'ended' 和 'loadedmetadata' 监听器，它们已在 player.js 中统一处理
+
     dom.progressBar.addEventListener('mousedown', () => state.setIsScrubbing(true));
     dom.progressBar.addEventListener('input', (e) => {
         const value = e.target.value;
@@ -129,10 +127,15 @@ function setupEventListeners() {
         }
     });
     dom.progressBar.addEventListener('change', (e) => {
-        if (!isNaN(dom.mediaPlayer.duration)) { dom.mediaPlayer.currentTime = (e.target.value / 100) * dom.mediaPlayer.duration; }
+        if (!isNaN(dom.mediaPlayer.duration)) {
+            dom.mediaPlayer.currentTime = (e.target.value / 100) * dom.mediaPlayer.duration;
+        }
         resetBackgroundBeatTimer();
         state.setIsScrubbing(false);
-        if (!state.isPlaying) { playTrack(); }
+        // [修改] 如果之前是暂停状态，拖动后不应自动播放，交给用户决定
+        if (state.isPlaying) {
+            dom.mediaPlayer.play();
+        }
     });
     dom.volumeBtn.addEventListener('click', () => {
         dom.mediaPlayer.muted = !dom.mediaPlayer.muted;
@@ -230,8 +233,18 @@ function setupEventListeners() {
         const newTrackFromMain = event.detail;
         const trackForPlaylist = makeTrackPlayable(newTrackFromMain);
 
+        const oldPlaylistLength = state.playlist.length;
+        // 新下载的曲目总是放在列表最前面
         state.setPlaylist([trackForPlaylist, ...state.playlist]);
-        state.setCurrentTrackIndex(state.currentTrackIndex + 1);
+        // 如果之前列表不为空，则当前播放的歌曲索引需要+1
+        if (oldPlaylistLength > 0) {
+            state.setCurrentTrackIndex(state.currentTrackIndex + 1);
+        } else {
+            // 如果之前列表为空，则直接播放新下载的歌曲
+            state.setCurrentTrackIndex(0);
+            loadTrack(0, { forcePlay: true });
+        }
+
         showToast(`已添加 "${trackForPlaylist.title}" 到下载列表！`);
 
         renderPlaylist();
@@ -248,7 +261,6 @@ function setupEventListeners() {
 
 async function init() {
     showSkeleton();
-    await loadTemplates();
     loadPlayerState();
     setupParticleCanvas();
 
@@ -257,7 +269,7 @@ async function init() {
         const response = await fetch('playlist.json');
         if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
         const fetchedPlaylist = await response.json();
-        const { pinyin } = window.pinyinPro;
+        // 【修改】直接使用导入的 pinyin 函数
         const processedPlaylist = fetchedPlaylist.map(track => ({
             ...track,
             pinyin: pinyin(track.title || '', { toneType: 'none' }).replace(/\s/g, ''),
@@ -275,8 +287,15 @@ async function init() {
         const existingSrcs = new Set(state.playlist.map(t => t.src));
         const uniqueLocalTracks = localPlaylist.filter(track => !existingSrcs.has(track.src));
         if (uniqueLocalTracks.length > 0) {
+            const previouslyPlayingSrc = state.playlist[state.currentTrackIndex]?.src;
             state.setPlaylist([...uniqueLocalTracks, ...state.playlist]);
-            state.setCurrentTrackIndex(state.currentTrackIndex + uniqueLocalTracks.length);
+            // 恢复之前播放的曲目索引
+            if (previouslyPlayingSrc) {
+                const newIndex = state.playlist.findIndex(t => t.src === previouslyPlayingSrc);
+                if (newIndex !== -1) {
+                    state.setCurrentTrackIndex(newIndex);
+                }
+            }
         }
     }
 
@@ -289,7 +308,8 @@ async function init() {
     if (state.playlist.length > 0) {
         renderPlaylist();
         updatePlaylistUI();
-        await loadTrack(state.currentTrackIndex);
+        // [修改] 传递 initialTime 给 loadTrack
+        await loadTrack(state.currentTrackIndex, { initialTime });
     } else {
         resetPlayerUI();
         hideSkeleton();
