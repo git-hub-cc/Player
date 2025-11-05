@@ -36,6 +36,18 @@ const state = {
     idleTimer: null,
 };
 
+// 【新增】Debounce (防抖) 辅助函数
+// 用途：防止 resize 事件过于频繁地触发渲染，提高性能。
+function debounce(func, delay) {
+    let timeout;
+    return function(...args) {
+        const context = this;
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(context, args), delay);
+    };
+}
+
+
 // --- 播放器显隐控制 ---
 function showPlayer() {
     clearTimeout(state.idleTimer);
@@ -146,15 +158,9 @@ function animate() {
     state.animationFrame = requestAnimationFrame(animate);
 }
 
-/**
- * 【新增】更新画廊内部的播放列表数据并强制重新渲染。
- * @param {Array} newPlaylist - 最新的播放列表数组。
- */
 export function updatePlaylistData(newPlaylist) {
     if (!state.isInitialized || !newPlaylist) return;
     state.playlistData = newPlaylist;
-
-    // 通过清空已渲染的 DOM 元素和缓存来强制重新渲染
     dom.galleryWrapper.innerHTML = '';
     state.renderedCells.clear();
     updateGallery();
@@ -227,17 +233,26 @@ function onGalleryItemClick(e) {
 
     const trackIndex = parseInt(item.dataset.index, 10);
     if (!isNaN(trackIndex)) {
-        // 【修改】点击画廊项时，强制播放
         loadTrack(trackIndex, { forcePlay: true });
         showPlayer();
     }
 }
+
+// 【新增】创建防抖后的 resize 事件处理器
+const handleResize = debounce(() => {
+    // 确保在窗口大小稳定后，强制重新计算并渲染画廊内容
+    console.log("Window resized, updating gallery...");
+    updateGallery();
+}, 250); // 250ms 的延迟是一个比较合适的值
 
 export function init(data) {
     if (state.isInitialized || !data || data.length === 0) return;
     state.playlistData = data;
     dom.galleryContainer.addEventListener('mousedown', onPointerDown);
     dom.galleryContainer.addEventListener('click', onGalleryItemClick);
+
+    // 【修改】在初始化时添加 resize 事件监听
+    window.addEventListener('resize', handleResize);
 
     const centerOffset = {
         x: (-5 * (ITEM_WIDTH + GAP)) / 2,

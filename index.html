@@ -196,81 +196,9 @@
                     <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
                 </button>
             </div>
+            <!-- [修改] 移除了引导视图，直接显示下载器 -->
             <div id="download-panel-content" class="download-panel-content">
-                <!-- [修改] 引导状态 (初始隐藏) -->
-                <div id="setup-view" class="setup-view" style="display: none;">
-                    <div class="setup-header">
-                        <h3>启用本地代理功能</h3>
-                        <p>首次使用需一次性完成以下配置，后续启动代理即可。</p>
-                    </div>
-                    <div class="setup-disclaimer">
-                        <strong>风险提示：</strong>本功能通过模拟浏览器行为或代理网络请求进行数据抓取，存在一定风险，且可能因目标网站更新而失效。请仅将其用于学习和技术演示，切勿用于任何商业用途。
-                    </div>
-                    <!-- 引导步骤 -->
-                    <div class="setup-step">
-                        <div class="step-number">1</div>
-                        <div class="step-content">
-                            <h4>安装 Node.js 环境</h4>
-                            <p>本地下载代理依赖 Node.js 运行时。如果您的计算机尚未安装，请从官方网站下载并安装 **LTS (长期支持)** 版本。</p>
-                            <a href="https://nodejs.org/zh-cn/download" target="_blank" rel="noopener noreferrer" class="action-link">
-                                前往 Node.js 官网 <svg viewBox="0 0 24 24"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"></path></svg>
-                            </a>
-                            <small>请遵循标准安装流程，保留默认选项即可。</small>
-                        </div>
-                    </div>
-                    <div class="setup-step">
-                        <div class="step-number">2</div>
-                        <div class="step-content">
-                            <h4>下载并解压项目文件</h4>
-                            <p>下载代理程序 (`agent.js`) 包含在本项目中。</p>
-                            <a href="download/Player.zip" target="_blank" rel="noopener noreferrer" class="action-link">
-                                下载项目 ZIP 压缩包
-                            </a>
-                            <small>将解压后的文件夹放置在您方便访问的位置，例如“我的文档”。</small>
-                        </div>
-                    </div>
-                    <div class="setup-step">
-                        <div class="step-number">3</div>
-                        <div class="step-content">
-                            <h4>安装依赖项与浏览器</h4>
-                            <p>打开您系统的 **终端** (Windows 上是 Command Prompt 或 PowerShell, macOS 上是 Terminal)。使用 `cd` 命令进入您刚刚解压的项目文件夹中的 <b>`download/Player`</b> 目录，然后运行以下命令：</p>
-                            <div class="code-block">
-                                <pre><code>npm install</code></pre>
-                                <button id="copy-command-btn-install" class="copy-btn" title="点击复制">
-                                    <svg class="copy-icon" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"></path></svg>
-                                    <svg class="check-icon" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg>
-                                </button>
-                            </div>
-                            <small>此命令会安装所有依赖。<b>注意</b>：Playwright 会自动下载一个浏览器内核（约几百MB），请耐心等待。如果自动下载失败或卡住，请在此命令完成后，手动运行 <code>npx playwright install</code> 来安装浏览器。</small>
-                        </div>
-                    </div>
-                    <div class="setup-step">
-                        <div class="step-number">4</div>
-                        <div class="step-content">
-                            <h4>启动下载代理</h4>
-                            <p>待依赖项安装完成后，在**同一个终端窗口**中运行以下命令以启动代理：</p>
-                            <div class="code-block">
-                                <pre><code>node agent.js</code></pre>
-                                <button id="copy-command-btn-run" class="copy-btn" title="点击复制">
-                                    <svg class="copy-icon" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"></path></svg>
-                                    <svg class="check-icon" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg>
-                                </button>
-                            </div>
-                            <small>看到 "listening..." 字样即表示成功。**在使用功能期间，请勿关闭此终端窗口。**</small>
-                        </div>
-                    </div>
-                    <!-- [修改] 引导页脚，增加重试按钮 -->
-                    <div class="setup-footer">
-                        <div id="connection-status-line" class="connection-status-line">
-                            <span id="connection-spinner" class="spinner"></span>
-                            <span id="connection-status-text">正在尝试连接本地代理...</span>
-                        </div>
-                        <button id="retry-connection-btn" class="action-btn" style="display: none;">重试连接</button>
-                    </div>
-                </div>
-
-                <!-- [修改] 主交互视图 (初始隐藏) -->
-                <div id="downloader-view" class="downloader-view" style="display: none;">
+                <div id="downloader-view" class="downloader-view">
                     <div class="downloader-input-area">
                         <p class="panel-description">输入歌曲名进行在线搜索，或粘贴抖音分享链接进行本地下载。</p>
                         <textarea id="url-or-search-input" placeholder="粘贴抖音链接 或 输入歌曲/歌手名..."></textarea>
@@ -400,6 +328,6 @@
 </body>
 <!-- 引入第三方库 -->
 <script src="lib/jsmediatags.min.js"></script>
-<script src="lib/index.min.js"></script>
+<script src="lib/index.min.js"></script> <!-- pinyin-pro -->
 <script type="module" src="js/main.js"></script>
 </html>
