@@ -1,6 +1,6 @@
 // src/main.js
 
-import { app, BrowserWindow, ipcMain, protocol } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, Menu } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import * as MainApi from './backend/main-api.js';
@@ -24,7 +24,12 @@ const createWindow = () => {
             sandbox: true,
             contextIsolation: true,
         },
-        icon: path.join(__dirname, '../favicon.svg')
+        // =========================================================================
+        // 【修改】修正窗口图标的路径。
+        // 在 Vite 模板中, __dirname 指向 .vite/build 目录。
+        // 我们需要向上回溯两级到项目根目录，然后进入 public 文件夹。
+        icon: path.join(__dirname, '../../public/favicon.ico')
+        // =========================================================================
     });
 
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -33,13 +38,16 @@ const createWindow = () => {
         mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
     }
 
-    // 在开发模式下打开开发者工具 (已被注释，默认关闭)
+    // 在开发模式下打开开发者工具
     if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
         mainWindow.webContents.openDevTools();
     }
 };
 
 app.whenReady().then(async () => {
+    // 移除默认菜单栏
+    Menu.setApplicationMenu(null);
+
     // 初始化后端 API 模块，传入 webContents 用于发送进度更新
     MainApi.initialize(app, () => mainWindow.webContents);
 
@@ -47,7 +55,6 @@ app.whenReady().then(async () => {
     const userDataPath = app.getPath('userData');
     protocol.registerFileProtocol('media', (request, callback) => {
         const url = request.url.substring('media://'.length);
-        // 【核心修复】解码 URL 路径以正确处理非 ASCII 字符（如中文）
         const decodedUrl = decodeURIComponent(url);
         const filePath = path.join(userDataPath, 'media', decodedUrl);
         callback({ path: path.normalize(filePath) });
@@ -58,11 +65,7 @@ app.whenReady().then(async () => {
     ipcMain.handle('search-online', (event, query) => MainApi.handleSearchRequest(query));
     ipcMain.handle('delete-track', (event, trackData) => MainApi.handleDeleteTrack(trackData));
     ipcMain.handle('get-music-url', (event, trackInfo) => MainApi.handleGetMusicUrl(trackInfo));
-    // =========================================================================
-    // 【新增】注册用于读取歌词内容的 IPC 通道
-    // =========================================================================
     ipcMain.handle('get-lrc-content', (event, relativePath) => MainApi.handleGetLrcContent(relativePath));
-    // =========================================================================
 
     ipcMain.on('download-douyin', (event, data) => MainApi.handleDownloadRequest(data));
     ipcMain.on('cache-track', (event, trackData) => MainApi.handleCacheRequest(trackData));

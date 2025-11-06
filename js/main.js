@@ -4,8 +4,7 @@ import * as dom from './dom.js';
 import * as state from './state.js';
 import { PLAY_MODES, desktopTourSteps, mobileTourSteps } from './config.js';
 import { normalizeKey, formatTime } from './utils.js';
-import { pinyin } from 'pinyin-pro'; // 【新增】以模块化方式引入
-// [修改] 移除了 playTrack 的导入，因为它现在是 player.js 的内部逻辑
+import { pinyin } from 'pinyin-pro';
 import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode, resetBackgroundBeatTimer, resetPlayerUI } from './player.js';
 import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, setupParticleCanvas, closeActivePanels, toggleDownloadPanel, showToast, showConfirmationModal } from './ui.js';
 import { loadShortcuts, executeShortcut, setupShortcutListeners } from './features/shortcuts.js';
@@ -90,7 +89,7 @@ async function handleDeleteTrackRequest(index) {
 
 
 /**
- * 将主进程返回的相对路径转换为可播放的 `media://` 协议 URL
+ * 将主进程返回的、相对于 userData/media 的路径，转换为可播放的 `media://` 协议 URL
  * @param {object} track - 从主进程获取的曲目对象
  * @returns {object} - 包含可播放 URL 的新曲目对象
  */
@@ -115,8 +114,6 @@ function setupEventListeners() {
     dom.nextBtn.addEventListener('click', () => { playNextTrack(); savePlayerState(); });
     dom.modeBtn.addEventListener('click', () => { cyclePlayMode(); savePlayerState(); });
 
-    // [修正] 移除 'ended' 和 'loadedmetadata' 监听器，它们已在 player.js 中统一处理
-
     dom.progressBar.addEventListener('mousedown', () => state.setIsScrubbing(true));
     dom.progressBar.addEventListener('input', (e) => {
         const value = e.target.value;
@@ -132,7 +129,6 @@ function setupEventListeners() {
         }
         resetBackgroundBeatTimer();
         state.setIsScrubbing(false);
-        // [修改] 如果之前是暂停状态，拖动后不应自动播放，交给用户决定
         if (state.isPlaying) {
             dom.mediaPlayer.play();
         }
@@ -228,19 +224,15 @@ function setupEventListeners() {
         state.pressedShortcutKeys.delete(normalizeKey(e.key));
     });
 
-    // 监听：当有新内容下载完成时
     document.addEventListener('new-track-added', (event) => {
         const newTrackFromMain = event.detail;
         const trackForPlaylist = makeTrackPlayable(newTrackFromMain);
 
         const oldPlaylistLength = state.playlist.length;
-        // 新下载的曲目总是放在列表最前面
         state.setPlaylist([trackForPlaylist, ...state.playlist]);
-        // 如果之前列表不为空，则当前播放的歌曲索引需要+1
         if (oldPlaylistLength > 0) {
             state.setCurrentTrackIndex(state.currentTrackIndex + 1);
         } else {
-            // 如果之前列表为空，则直接播放新下载的歌曲
             state.setCurrentTrackIndex(0);
             loadTrack(0, { forcePlay: true });
         }
@@ -269,13 +261,47 @@ async function init() {
         const response = await fetch('playlist.json');
         if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
         const fetchedPlaylist = await response.json();
-        // 【修改】直接使用导入的 pinyin 函数
-        const processedPlaylist = fetchedPlaylist.map(track => ({
+
+        // =========================================================================
+        // 【核心修复】预加载默认播放列表中的相对路径歌词，并将其转换为 data URI。
+        // 这样，player.js 中的歌词加载逻辑无需修改即可处理它们。
+        // =========================================================================
+        const playlistWithEmbeddedLyrics = await Promise.all(
+            fetchedPlaylist.map(async track => {
+                // 仅处理非 http、非 data URI 的歌词路径（即相对路径）
+                if (track.lyrics && !track.lyrics.startsWith('http') && !track.lyrics.startsWith('data:')) {
+                    try {
+                        const lrcResponse = await fetch(track.lyrics);
+                        if (lrcResponse.ok) {
+                            const lrcText = await lrcResponse.text();
+                            // 将获取到的歌词文本编码为 data URI，并替换原有路径
+                            return { ...track, lyrics: `data:text/plain,${encodeURIComponent(lrcText)}` };
+                        } else {
+                            console.warn(`获取歌词失败: ${track.lyrics}, status: ${lrcResponse.status}`);
+                            // 获取失败则清空歌词字段，避免后续加载出错
+                            return { ...track, lyrics: '' };
+                        }
+                    } catch (e) {
+                        console.error(`预加载歌词 '${track.lyrics}' 时出错:`, e);
+                        return { ...track, lyrics: '' };
+                    }
+                }
+                // 如果歌词路径已经是 data URI, http, 或者为空，则直接返回原轨道
+                return track;
+            })
+        );
+
+        // 【修改】使用已处理歌词的播放列表进行后续操作
+        const processedPlaylist = playlistWithEmbeddedLyrics.map(track => ({
             ...track,
             pinyin: pinyin(track.title || '', { toneType: 'none' }).replace(/\s/g, ''),
             initials: pinyin(track.title || '', { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '')
         }));
+
+        // 此处设置的是应用的初始播放列表，它们的媒体文件路径是相对于 index.html 的，
+        // 将由浏览器正常解析。歌词已被转换为 data URI。
         state.setPlaylist(processedPlaylist);
+
     } catch (error) {
         console.error("无法加载默认播放列表:", error);
     }
@@ -283,6 +309,7 @@ async function init() {
     // 2. 请求并合并用户数据目录中的播放列表
     const localResult = await window.electronAPI.getLocalPlaylist();
     if (localResult.success && localResult.data.length > 0) {
+        // 这些是从 userData 目录加载的，需要转换为 media:// 协议
         const localPlaylist = localResult.data.map(makeTrackPlayable);
         const existingSrcs = new Set(state.playlist.map(t => t.src));
         const uniqueLocalTracks = localPlaylist.filter(track => !existingSrcs.has(track.src));
@@ -308,7 +335,6 @@ async function init() {
     if (state.playlist.length > 0) {
         renderPlaylist();
         updatePlaylistUI();
-        // [修改] 传递 initialTime 给 loadTrack
         await loadTrack(state.currentTrackIndex, { initialTime });
     } else {
         resetPlayerUI();
