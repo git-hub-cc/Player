@@ -58,6 +58,11 @@ app.whenReady().then(async () => {
     ipcMain.handle('search-online', (event, query) => MainApi.handleSearchRequest(query));
     ipcMain.handle('delete-track', (event, trackData) => MainApi.handleDeleteTrack(trackData));
     ipcMain.handle('get-music-url', (event, trackInfo) => MainApi.handleGetMusicUrl(trackInfo));
+    // =========================================================================
+    // 【新增】注册用于读取歌词内容的 IPC 通道
+    // =========================================================================
+    ipcMain.handle('get-lrc-content', (event, relativePath) => MainApi.handleGetLrcContent(relativePath));
+    // =========================================================================
 
     ipcMain.on('download-douyin', (event, data) => MainApi.handleDownloadRequest(data));
     ipcMain.on('cache-track', (event, trackData) => MainApi.handleCacheRequest(trackData));

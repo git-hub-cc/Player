@@ -239,11 +239,37 @@ export async function handleDownloadRequest(requestData) {
     }
 }
 
+// =========================================================================
+// 【新增函数】处理渲染进程的歌词文件读取请求
+// =========================================================================
+export async function handleGetLrcContent(relativePath) {
+    if (!relativePath) {
+        return { success: false, error: '未提供歌词文件路径。' };
+    }
+    // 解码路径以处理中文等特殊字符
+    const decodedPath = decodeURIComponent(relativePath);
+    const fullPath = path.join(CONFIG.MEDIA_ROOT, decodedPath);
+
+    try {
+        // 使用 existsSync 检查文件是否存在，以提供更明确的错误信息
+        if (!fs.existsSync(fullPath)) {
+            throw new Error(`文件不存在: ${fullPath}`);
+        }
+        // 使用 fs.promises.readFile 异步读取文件内容
+        const content = await fs.promises.readFile(fullPath, 'utf-8');
+        return { success: true, data: content };
+    } catch (e) {
+        console.error(`[LRC Reader] 读取歌词文件失败: ${fullPath}`, e);
+        return { success: false, error: `读取歌词失败: ${e.message}` };
+    }
+}
+// =========================================================================
+
 async function downloadSingleVideo(videoUrl) {
     sendMessage('download-status', { message: '正在后台启动浏览器引擎...' });
 
     const win = new BrowserWindow({
-        show: false, // 【核心修改】改回 false，实现后台运行
+        show: false,
         webPreferences: {
             partition: `persist:douyin_session_${Date.now()}`,
             preload: path.join(__dirname, 'backend', 'douyin-preload.js'),
@@ -252,7 +278,6 @@ async function downloadSingleVideo(videoUrl) {
         },
     });
 
-    // 后台运行时静音，防止视频自动播放产生声音
     win.webContents.setAudioMuted(true);
 
     try {
@@ -313,7 +338,6 @@ async function downloadSingleVideo(videoUrl) {
             if (win.webContents.debugger.isAttached()) {
                 await win.webContents.debugger.detach();
             }
-            // 【核心修改】恢复自动关闭窗口，释放资源
             win.close();
         }
         console.log('[Downloader] 隐形浏览器已关闭。');

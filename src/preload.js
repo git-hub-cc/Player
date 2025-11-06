@@ -5,8 +5,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getLocalPlaylist: () => ipcRenderer.invoke('get-local-playlist'),
     searchOnline: (query) => ipcRenderer.invoke('search-online', query),
     deleteTrack: (trackData) => ipcRenderer.invoke('delete-track', trackData),
-    // 【核心修复】修改此处的函数签名，不再包装参数
     getMusicUrl: (trackInfo) => ipcRenderer.invoke('get-music-url', trackInfo),
+    // =========================================================================
+    // 【新增】将读取歌词文件的方法暴露给渲染进程
+    // =========================================================================
+    getLrcContent: (relativePath) => ipcRenderer.invoke('get-lrc-content', relativePath),
+    // =========================================================================
 
     // --- 单向调用 (仅发送) ---
     startDownload: (requestData) => ipcRenderer.send('download-douyin', requestData),
