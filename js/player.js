@@ -153,14 +153,48 @@ export async function loadTrack(trackIndex, options = {}) {
     state.setParsedLyrics([]);
     renderLyrics();
 
+    // =========================================================================
+    // 【核心修复】重构歌词加载逻辑，使用 IPC 读取本地歌词文件
+    // =========================================================================
     if (track.lyrics) {
         try {
-            const lrcText = track.lyrics.startsWith('data:text/plain,')
-                ? decodeURIComponent(track.lyrics.substring('data:text/plain,'.length))
-                : await (await fetch(track.lyrics)).text();
-            state.setParsedLyrics(parseLRC(lrcText));
-        } catch (error) { console.error(`无法从路径加载歌词 '${track.lyrics}':`, error); }
+            let lrcText = '';
+            // 1. 处理内联 data URL 格式的歌词
+            if (track.lyrics.startsWith('data:text/plain,')) {
+                lrcText = decodeURIComponent(track.lyrics.substring('data:text/plain,'.length));
+            }
+            // 2. 处理通过自定义协议 'media://' 引用的本地歌词文件
+            else if (track.lyrics.startsWith('media://')) {
+                // 提取相对路径
+                const relativePath = track.lyrics.substring('media://'.length);
+                // 通过 preload 暴露的 API 请求主进程读取文件内容
+                const result = await window.electronAPI.getLrcContent(relativePath);
+                if (result.success) {
+                    lrcText = result.data;
+                } else {
+                    // 如果主进程读取失败，则抛出错误
+                    throw new Error(result.error);
+                }
+            }
+            // 3. 处理在线 http/https URL
+            else if (track.lyrics.startsWith('http')) {
+                const response = await fetch(track.lyrics);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                lrcText = await response.text();
+            }
+
+            // 只有在成功获取到歌词文本后才进行解析
+            if (lrcText) {
+                state.setParsedLyrics(parseLRC(lrcText));
+            }
+        } catch (error) {
+            console.error(`无法从路径加载歌词 '${track.lyrics}':`, error);
+        }
     }
+    // =========================================================================
+
     renderLyrics();
     updatePlaylistUI();
 
