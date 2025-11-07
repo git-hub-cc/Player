@@ -23,13 +23,7 @@ const createWindow = () => {
             // 安全起见，保持沙箱和上下文隔离启用
             sandbox: true,
             contextIsolation: true,
-        },
-        // =========================================================================
-        // 【修改】修正窗口图标的路径。
-        // 在 Vite 模板中, __dirname 指向 .vite/build 目录。
-        // 我们需要向上回溯两级到项目根目录，然后进入 public 文件夹。
-        icon: path.join(__dirname, './src/assets/app.ico')
-        // =========================================================================
+        }
     });
 
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
