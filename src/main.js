@@ -13,7 +13,7 @@ if (started) {
 let mainWindow;
 
 const createWindow = () => {
-    mainWindow = new BrowserWindow({
+        mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
         minWidth: 940,
@@ -28,7 +28,7 @@ const createWindow = () => {
         // 【修改】修正窗口图标的路径。
         // 在 Vite 模板中, __dirname 指向 .vite/build 目录。
         // 我们需要向上回溯两级到项目根目录，然后进入 public 文件夹。
-        icon: path.join(__dirname, '../../public/favicon.ico')
+        icon: path.join(__dirname, './src/assets/app.ico')
         // =========================================================================
     });
 
