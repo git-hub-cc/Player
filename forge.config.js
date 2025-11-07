@@ -10,14 +10,16 @@ module.exports = {
         // 注意：强烈建议为 Windows 提供 .ico 文件，为 macOS 提供 .icns 文件。
         // 例如: icon: 'public/icons/icon' (不带扩展名，Forge 会自动选择 .ico 或 .icns)
         // 这里我们暂时使用您提供的 SVG 文件。
-        icon: 'public/favicon.ico'
+        icon: './src/assets/app.ico',
         // =========================================================================
     },
     rebuildConfig: {},
     makers: [
         {
             name: '@electron-forge/maker-squirrel',
-            config: {},
+            config: {
+                name: 'app',
+            },
         },
         {
             name: '@electron-forge/maker-zip',
