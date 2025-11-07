@@ -1,9 +1,14 @@
 import * as dom from '../dom.js';
-import { showToast, clearSearchResults, renderSearchResults, updateSearchResultItemStatus, closeActivePanels } from '../ui.js';
+import { showToast, clearSearchResults, renderSearchResults, updateSearchResultItemStatus, renderPaginationControls } from '../ui.js';
 import { playTemporaryTrack } from '../player.js';
-import { pinyin } from 'pinyin-pro'; // 【新增】以模块化方式引入
+import { pinyin } from 'pinyin-pro';
 
 let currentSearchResults = [];
+// --- [新增] 分页状态变量 ---
+let currentSearchQuery = '';
+let currentPage = 1;
+let totalPages = 1;
+const ITEMS_PER_PAGE = 10; // API每页返回10个项目
 
 /**
  * 将在线搜索 API 返回的数据转换为应用内部使用的标准格式。
@@ -11,23 +16,18 @@ let currentSearchResults = [];
  * @returns {object} - 转换后的曲目对象。
  */
 function transformApiData(apiTrack) {
-    // 【修改】直接使用导入的 pinyin 函数
     const title = apiTrack.title || '未知标题';
     return {
         title: title,
         artist: apiTrack.author || '未知艺术家',
-        // 注意：src, albumArt, lyrics 此时是原始 URL，而不是代理 URL
         src: apiTrack.url,
         albumArt: apiTrack.pic,
         lyrics: apiTrack.lrc,
         type: 'audio',
-        // 添加来源字段，以便主进程的插件系统知道如何处理
         source: apiTrack.source || 'netease',
-        // 保存原始链接用于缓存请求
         originalSrc: apiTrack.url,
         originalAlbumArt: apiTrack.pic,
         originalLyrics: apiTrack.lrc,
-        // 生成拼音用于本地搜索
         pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
         initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '')
     };
@@ -99,7 +99,6 @@ export async function resolvePlayableUrl(track) {
     }
 
     console.log(`[Resolver] 请求主进程解析URL: ${track.title}`);
-    // 【核心修复】直接传递 track 对象，而不是将其包装在另一个对象中
     const result = await window.electronAPI.getMusicUrl(track);
     if (result.success && result.url) {
         console.log(`[Resolver] 成功获取可播放URL: ${result.url.substring(0, 100)}...`);
@@ -119,37 +118,55 @@ function requestTrackCache(trackData) {
     window.electronAPI.cacheTrack(trackData);
 }
 
+
+// =========================================================================
+// 【修改】重构搜索函数以支持分页
+// =========================================================================
 /**
  * 执行在线搜索。
- * @param {'netease'} searchType - 搜索源。
+ * @param {string} query - 搜索关键词。
+ * @param {number} page - 要搜索的页码。
  */
-async function performSearch(searchType) {
-    const query = dom.urlOrSearchInput.value.trim();
+async function performSearch(query, page = 1) {
     if (!query) {
         showToast('请输入歌曲名或歌手名！', 'error');
         return;
     }
 
-    clearSearchResults();
+    // 如果是新搜索，清空结果；如果是翻页，不清空
+    if (page === 1) {
+        clearSearchResults();
+    }
 
     const clickedButton = dom.searchNeteaseBtn;
     clickedButton.disabled = true;
     clickedButton.classList.add('loading');
-    updateStatus(`正在从 [${searchType}] 源搜索 "${query}"...`);
+    updateStatus(`正在搜索 "${query}" (第 ${page} 页)...`);
 
-    const result = await window.electronAPI.searchOnline(query);
+    const result = await window.electronAPI.searchOnline(query, page);
 
     clickedButton.disabled = false;
     clickedButton.classList.remove('loading');
 
     if (result.success) {
-        currentSearchResults = result.data.map(transformApiData);
+        const { results, total } = result.data;
+        currentSearchResults = results.map(transformApiData);
         renderSearchResults(currentSearchResults);
-        updateStatus(`搜索成功！已加载 ${result.data.length} 首歌曲。`, 'success');
+
+        currentSearchQuery = query;
+        currentPage = page;
+        // API 返回的总数是歌曲数量，需要计算总页数
+        totalPages = Math.ceil(total / ITEMS_PER_PAGE);
+
+        renderPaginationControls(currentPage, totalPages);
+        updateStatus(`搜索成功！显示第 ${page} / ${totalPages} 页，共约 ${total} 首歌曲。`, 'success');
     } else {
         updateStatus(`搜索失败: ${result.error}`, 'error');
+        renderPaginationControls(0, 0); // 失败时隐藏分页
     }
 }
+// =========================================================================
+
 
 /**
  * 向主进程发送抖音下载请求。
@@ -164,6 +181,7 @@ function sendDouyinRequest(clickedButton, downloadType = 'single') {
     }
 
     clearSearchResults();
+    renderPaginationControls(0, 0); // 清空分页
 
     const allDownloadButtons = [dom.startDownloadBtn, dom.downloadWorksBtn, dom.downloadLikesBtn];
     allDownloadButtons.forEach(btn => btn.disabled = true);
@@ -193,11 +211,26 @@ function setupSearchResultsListener() {
             requestTrackCache(clickedTrack);
         } else {
             playTemporaryTrack(clickedTrack);
-            // 【核心修改】移除了 closeActivePanels() 调用，以防止面板在播放时关闭。
-            // closeActivePanels();
         }
     });
 }
+
+// =========================================================================
+// 【新增】设置分页控件的事件监听器
+// =========================================================================
+function setupPaginationListener() {
+    dom.paginationControls.addEventListener('click', (e) => {
+        const target = e.target.closest('button');
+        if (!target || target.disabled) return;
+
+        if (target.id === 'prev-page-btn' && currentPage > 1) {
+            performSearch(currentSearchQuery, currentPage - 1);
+        } else if (target.id === 'next-page-btn' && currentPage < totalPages) {
+            performSearch(currentSearchQuery, currentPage + 1);
+        }
+    });
+}
+// =========================================================================
 
 /**
  * 初始化所有下载器相关的事件监听器。
@@ -205,12 +238,17 @@ function setupSearchResultsListener() {
 export function setupDownloaderListeners() {
     dom.urlOrSearchInput.addEventListener('input', updateInputMode);
 
-    dom.searchNeteaseBtn.addEventListener('click', () => performSearch('netease'));
+    dom.searchNeteaseBtn.addEventListener('click', () => {
+        const query = dom.urlOrSearchInput.value.trim();
+        performSearch(query, 1); // 按钮点击总是开始新的第一页搜索
+    });
+
     dom.startDownloadBtn.addEventListener('click', (e) => sendDouyinRequest(e.currentTarget, 'single'));
     dom.downloadWorksBtn.addEventListener('click', (e) => sendDouyinRequest(e.currentTarget, 'works'));
     dom.downloadLikesBtn.addEventListener('click', (e) => sendDouyinRequest(e.currentTarget, 'likes'));
 
     setupSearchResultsListener();
+    setupPaginationListener(); // 【新增】初始化分页监听
 
     window.electronAPI.onDownloadStatus((status) => {
         updateStatus(status.message, status.type);

@@ -13,7 +13,7 @@ if (started) {
 let mainWindow;
 
 const createWindow = () => {
-        mainWindow = new BrowserWindow({
+    mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
         minWidth: 940,
@@ -56,7 +56,11 @@ app.whenReady().then(async () => {
 
     // 设置 IPC 监听器
     ipcMain.handle('get-local-playlist', () => MainApi.getLocalPlaylist());
-    ipcMain.handle('search-online', (event, query) => MainApi.handleSearchRequest(query));
+    // =========================================================================
+    // 【修改】IPC 处理器现在接收一个对象，包含 query 和 page
+    // =========================================================================
+    ipcMain.handle('search-online', (event, { query, page }) => MainApi.handleSearchRequest({ query, page }));
+    // =========================================================================
     ipcMain.handle('delete-track', (event, trackData) => MainApi.handleDeleteTrack(trackData));
     ipcMain.handle('get-music-url', (event, trackInfo) => MainApi.handleGetMusicUrl(trackInfo));
     ipcMain.handle('get-lrc-content', (event, relativePath) => MainApi.handleGetLrcContent(relativePath));
