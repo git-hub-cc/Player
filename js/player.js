@@ -13,17 +13,14 @@ let nextBackgroundUpdateTime = 0;
 const BACKGROUND_BEAT_MULTIPLIER = 12;
 
 /**
- * [重构] 创建一个新的 media element，替换旧的，并附加所有必要的事件监听器。
+ * 创建一个新的 media element，替换旧的，并附加所有必要的事件监听器。
  * 这是为了解决克隆节点时事件监听器丢失的问题，并集中管理核心事件。
  */
 function _recreateMediaPlayerAndAttachListeners() {
     const oldMediaPlayer = dom.mediaPlayer;
     const newMediaPlayer = oldMediaPlayer.cloneNode(true);
 
-    // 附加核心事件监听器
-    newMediaPlayer.addEventListener('loadedmetadata', () => {
-        updateProgress();
-    });
+    newMediaPlayer.addEventListener('loadedmetadata', updateProgress);
 
     newMediaPlayer.addEventListener('ended', () => {
         const currentMode = PLAY_MODES[state.currentModeIndex];
@@ -58,6 +55,9 @@ export function resetPlayerUI() {
     state.setParsedLyrics([]);
     renderLyrics();
     hideSkeleton();
+    // 清除播放信息并更新UI以移除高亮
+    state.clearPlayingTrackInfo();
+    updatePlaylistUI();
 }
 
 /**
@@ -71,7 +71,11 @@ export async function playTemporaryTrack(track) {
     resetBackgroundBeatTimer();
     state.setCurrentColorPaletteIndex(0);
 
-    // [重构] 先创建和准备好新的播放器
+    // 设置新的播放状态并更新UI
+    state.setTemporaryPlayingTrack(track);
+    updatePlaylistUI();
+
+    // 先创建和准备好新的播放器
     _recreateMediaPlayerAndAttachListeners();
 
     dom.trackTitleEl.textContent = track.title || "未知标题";
@@ -80,13 +84,15 @@ export async function playTemporaryTrack(track) {
     dom.albumArtEl.src = artUrl;
     dom.controlAlbumArtEl.src = artUrl;
 
-    // [修正] 在设置 src 之前附加错误处理
+    // 在设置 src 之前附加错误处理
     dom.mediaPlayer.onerror = (e) => {
         console.error("临时媒体加载错误:", e);
         hideSkeleton();
         dom.trackTitleEl.textContent = "错误";
         dom.trackArtistEl.textContent = "无法播放在线媒体";
         showToast(`播放失败，媒体资源可能已失效`, 'error');
+        state.clearPlayingTrackInfo();
+        updatePlaylistUI();
     };
     dom.mediaPlayer.oncanplay = () => { hideSkeleton(); playTrack(); };
 
@@ -97,6 +103,8 @@ export async function playTemporaryTrack(track) {
         console.error(`无法获取临时曲目 '${track.title}' 的播放链接:`, error);
         showToast(`无法播放在线曲目: "${track.title}"`, 'error');
         hideSkeleton();
+        state.clearPlayingTrackInfo();
+        updatePlaylistUI();
         return;
     }
 
@@ -139,7 +147,7 @@ export async function loadTrack(trackIndex, options = {}) {
     state.setCurrentTrackIndex(trackIndex);
     const track = state.playlist[trackIndex];
 
-    // [重构] 先创建和准备好新的播放器
+    // 先创建和准备好新的播放器
     _recreateMediaPlayerAndAttachListeners();
 
     dom.trackTitleEl.textContent = track.title || "未知标题";
@@ -153,54 +161,36 @@ export async function loadTrack(trackIndex, options = {}) {
     state.setParsedLyrics([]);
     renderLyrics();
 
-    // =========================================================================
-    // 【核心修复】重构歌词加载逻辑，使用 IPC 读取本地歌词文件
-    // =========================================================================
     if (track.lyrics) {
         try {
             let lrcText = '';
-            // 1. 处理内联 data URL 格式的歌词
             if (track.lyrics.startsWith('data:text/plain,')) {
                 lrcText = decodeURIComponent(track.lyrics.substring('data:text/plain,'.length));
-            }
-            // 2. 处理通过自定义协议 'media://' 引用的本地歌词文件
-            else if (track.lyrics.startsWith('media://')) {
-                // 提取相对路径
+            } else if (track.lyrics.startsWith('media://')) {
                 const relativePath = track.lyrics.substring('media://'.length);
-                // 通过 preload 暴露的 API 请求主进程读取文件内容
                 const result = await window.electronAPI.getLrcContent(relativePath);
                 if (result.success) {
                     lrcText = result.data;
                 } else {
-                    // 如果主进程读取失败，则抛出错误
                     throw new Error(result.error);
                 }
-            }
-            // 3. 处理在线 http/https URL
-            else if (track.lyrics.startsWith('http')) {
+            } else if (track.lyrics.startsWith('http')) {
                 const response = await fetch(track.lyrics);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 lrcText = await response.text();
             }
 
-            // 只有在成功获取到歌词文本后才进行解析
-            if (lrcText) {
-                state.setParsedLyrics(parseLRC(lrcText));
-            }
+            if (lrcText) state.setParsedLyrics(parseLRC(lrcText));
         } catch (error) {
             console.error(`无法从路径加载歌词 '${track.lyrics}':`, error);
         }
     }
-    // =========================================================================
 
     renderLyrics();
     updatePlaylistUI();
 
     let loadedOnce = false;
 
-    // [修正] 在设置 src 之前附加错误处理
     dom.mediaPlayer.onerror = (e) => {
         console.error("媒体加载错误:", e);
         if (skeletonTimer) clearTimeout(skeletonTimer);
@@ -214,9 +204,7 @@ export async function loadTrack(trackIndex, options = {}) {
         if (!loadedOnce) {
             hideSkeleton();
             updateProgress();
-            if (initialTime > 0) {
-                dom.mediaPlayer.currentTime = initialTime;
-            }
+            if (initialTime > 0) dom.mediaPlayer.currentTime = initialTime;
             if (state.isPlaying) playTrack();
             loadedOnce = true;
         }
@@ -294,7 +282,7 @@ function changeTrack(direction) {
     if (state.playlist.length <= 1) return;
     triggerGlitchEffect(3000);
     clearTimeout(skeletonTimer);
-    skeletonTimer = setTimeout(() => showSkeleton(), 300); // 缩短延迟
+    skeletonTimer = setTimeout(() => showSkeleton(), 300);
 
     setTimeout(() => {
         let newIndex;

@@ -14,39 +14,27 @@ let particleCanvas;
 let particleCtx;
 let particles = [];
 let particleAnimationId;
-const NORMAL_DECAY_RATE = 1 / (60 * 2);   // 2秒动画 (基于60fps)
-const FAST_DECAY_RATE = 1 / (60 * 0.5); // 0.5秒动画
+const NORMAL_DECAY_RATE = 1 / (60 * 2);
+const FAST_DECAY_RATE = 1 / (60 * 0.5);
 
 // --- 面板管理 ---
 const allSidePanels = [dom.playlistPanel, dom.infoPanel, dom.shortcutPanel, dom.downloadPanel];
 
-
-/**
- * 【优化】关闭所有已打开的侧边面板。
- * 这是所有面板关闭按钮的通用处理函数。
- */
 export function closeActivePanels() {
     allSidePanels.forEach(panel => {
         if (panel) panel.classList.remove('active');
     });
 }
 
-/**
- * 统一管理侧边面板的开关，确保只有一个可见。
- * @param {HTMLElement} panelToToggle
- */
 function manageSidePanel(panelToToggle) {
     if (!panelToToggle) return;
     const isCurrentlyActive = panelToToggle.classList.contains('active');
-    // 先关闭所有侧边面板
     closeActivePanels();
-    // 如果目标面板之前不是激活状态，则将其激活
     if (!isCurrentlyActive) {
         panelToToggle.classList.add('active');
     }
 }
 
-// ... 粒子效果和故障效果函数保持不变 ...
 export function setupParticleCanvas() {
     particleCanvas = document.getElementById('particle-canvas');
     if (!particleCanvas) {
@@ -59,7 +47,6 @@ export function setupParticleCanvas() {
 function animateParticles() {
     if (!particleCanvas || !particleCtx) return;
 
-    // 确保Canvas尺寸与容器一致
     if (particleCanvas.width !== dom.mainView.offsetWidth || particleCanvas.height !== dom.mainView.offsetHeight) {
         particleCanvas.width = dom.mainView.offsetWidth;
         particleCanvas.height = dom.mainView.offsetHeight;
@@ -69,20 +56,18 @@ function animateParticles() {
 
     for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
-        p.alpha -= p.decay; // 根据衰变率降低alpha
+        p.alpha -= p.decay;
 
         if (p.alpha <= 0) {
             particles.splice(i, 1);
             continue;
         }
 
-        // 应用物理效果
-        p.vx *= 0.98; // 摩擦力
-        p.vy += 0.05; // 重力
+        p.vx *= 0.98;
+        p.vy += 0.05;
         p.x += p.vx;
         p.y += p.vy;
 
-        // 在粒子变得非常透明时开始缩小，增强消失感
         const scale = p.alpha > 0.5 ? 1 : p.alpha * 2;
         const size = p.size * scale;
 
@@ -93,7 +78,7 @@ function animateParticles() {
     if (particles.length > 0) {
         particleAnimationId = requestAnimationFrame(animateParticles);
     } else {
-        particleAnimationId = null; // 无粒子时停止动画循环
+        particleAnimationId = null;
     }
 }
 
@@ -101,10 +86,8 @@ function createParticlesFromElement(element) {
     if (!element || !particleCanvas || !particleCtx || element.classList.contains('particlized')) {
         return;
     }
-    // 隐藏原始DOM元素，由Canvas接管其视觉呈现
     element.classList.add('particlized');
 
-    // 加速任何已存在的、正在慢速溶解的粒子
     particles.forEach(p => {
         if (p.decay === NORMAL_DECAY_RATE) {
             p.decay = FAST_DECAY_RATE;
@@ -113,8 +96,6 @@ function createParticlesFromElement(element) {
 
     const mainViewRect = dom.mainView.getBoundingClientRect();
     const elemRect = element.getBoundingClientRect();
-
-    // 准备一个临时的、屏幕外的Canvas来渲染文本并提取像素
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d');
     const computedStyle = window.getComputedStyle(element);
@@ -131,20 +112,20 @@ function createParticlesFromElement(element) {
     tempCtx.fillText(text, tempCanvas.width / 2, tempCanvas.height / 2);
 
     const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height).data;
-    const density = 2; // 像素采样密度，值越大粒子越少
+    const density = 2;
 
     for (let y = 0; y < tempCanvas.height; y += density) {
         for (let x = 0; x < tempCanvas.width; x += density) {
             const alphaIndex = (y * tempCanvas.width + x) * 4 + 3;
-            if (imageData[alphaIndex] > 128) { // 只为不透明像素创建粒子
+            if (imageData[alphaIndex] > 128) {
                 const colorIndex = alphaIndex - 3;
                 particles.push({
                     x: elemRect.left - mainViewRect.left + x,
                     y: elemRect.top - mainViewRect.top + y,
                     vx: (Math.random() - 0.5) * 1.5,
-                    vy: (Math.random() - 0.5) * 1.5 - 0.5, // 初始轻微向上
+                    vy: (Math.random() - 0.5) * 1.5 - 0.5,
                     alpha: 1.0,
-                    decay: NORMAL_DECAY_RATE, // 默认2秒衰变
+                    decay: NORMAL_DECAY_RATE,
                     size: Math.random() * 1.5 + 1,
                     color: { r: imageData[colorIndex], g: imageData[colorIndex + 1], b: imageData[colorIndex + 2] }
                 });
@@ -152,7 +133,6 @@ function createParticlesFromElement(element) {
         }
     }
 
-    // 如果动画循环未运行，则启动它
     if (!particleAnimationId) {
         animateParticles();
     }
@@ -190,14 +170,10 @@ export function triggerGlitchEffect(duration = 800) {
             const numBars = Math.floor(Math.random() * 15) + 5;
             for (let i = 0; i < numBars; i++) {
                 const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                const barWidth = (Math.random() * 2 + 1) + '%';
-                const barHeight = (Math.random() * 40 + 5) + '%';
-                const barX = (i / numBars) * 100 + (Math.random() - 0.5) * 5 + '%';
-                const barY = (100 - parseFloat(barHeight)) / 2 + '%';
-                bar.setAttribute('x', barX);
-                bar.setAttribute('y', barY);
-                bar.setAttribute('width', barWidth);
-                bar.setAttribute('height', barHeight);
+                bar.setAttribute('x', (i / numBars) * 100 + (Math.random() - 0.5) * 5 + '%');
+                bar.setAttribute('y', (100 - (Math.random() * 40 + 5)) / 2 + '%');
+                bar.setAttribute('width', (Math.random() * 2 + 1) + '%');
+                bar.setAttribute('height', (Math.random() * 40 + 5) + '%');
                 bar.setAttribute('fill', primaryColor);
                 bar.setAttribute('opacity', (Math.random() * 0.5 + 0.3) * (1 - progress));
                 dom.glitchSpotifyShapesGroup.appendChild(bar);
@@ -223,7 +199,6 @@ export function triggerGlitchEffect(duration = 800) {
     glitchAnimationId = requestAnimationFrame(animateGlitch);
 }
 
-
 export function showSkeleton() {
     dom.playerContainer.classList.add('loading');
     dom.skeletonOverlay.classList.add('active');
@@ -236,13 +211,11 @@ export function hideSkeleton() {
 export function renderLyrics() {
     dom.lyricsList.innerHTML = '';
     dom.lyricsList.style.transform = 'translateY(0)';
-    particles = []; // 清空上一首歌的粒子
-
+    particles = [];
     if (state.parsedLyrics.length === 0) {
         dom.lyricsList.appendChild(getTemplate('template-no-lyrics'));
         return;
     }
-
     const fragment = dom.createFragment();
     state.parsedLyrics.forEach(line => {
         const lineNode = getTemplate('template-lyric-line');
@@ -255,17 +228,13 @@ export function renderLyrics() {
 }
 
 export function syncLyrics(currentTime) {
-    if (state.isDraggingLyrics) return;
-    if (state.parsedLyrics.length === 0) return;
-
+    if (state.isDraggingLyrics || state.parsedLyrics.length === 0) return;
     const allLyricLines = dom.getLyricLines();
     const listWrapper = dom.lyricsListWrapper;
-
     const activeIndex = state.parsedLyrics.findIndex((line, i) => {
         const nextLine = state.parsedLyrics[i + 1];
         return currentTime >= line.time && (!nextLine || currentTime < nextLine.time);
     });
-
     if (activeIndex !== -1) {
         if (activeIndex !== lastActiveLyricIndex) {
             if (lastActiveLyricIndex !== -1 && allLyricLines[lastActiveLyricIndex]) {
@@ -278,7 +247,6 @@ export function syncLyrics(currentTime) {
             }
             lastActiveLyricIndex = activeIndex;
         }
-
         const activeLineElement = allLyricLines[activeIndex];
         if (activeLineElement) {
             const listHeight = listWrapper.clientHeight;
@@ -288,22 +256,15 @@ export function syncLyrics(currentTime) {
             dom.lyricsList.style.transform = `translateY(${translateY}px)`;
         }
     }
-
     if (dom.lyricsContainer.classList.contains('active')) {
         const wrapperRect = listWrapper.getBoundingClientRect();
         const dissolveBoundary = wrapperRect.top + wrapperRect.height * 0.15;
-
         allLyricLines.forEach((line) => {
             if (line.classList.contains('active')) return;
-
             const lineRect = line.getBoundingClientRect();
-
-            // 当歌词进入顶部遮罩区域时触发粒子化
             if (lineRect.top < dissolveBoundary && !line.classList.contains('particlized')) {
                 createParticlesFromElement(line);
-            }
-            // 当歌词滚回可视区域时恢复其可见性
-            else if (lineRect.top >= dissolveBoundary && line.classList.contains('particlized')) {
+            } else if (lineRect.top >= dissolveBoundary && line.classList.contains('particlized')) {
                 line.classList.remove('particlized');
             }
         });
@@ -314,7 +275,6 @@ export function renderPlaylist() {
     dom.playlistEl.innerHTML = '';
     const fragment = dom.createFragment();
     state.playlist.forEach((track, index) => {
-        // 【修改】确保使用简化的模板
         const itemNode = getTemplate('template-playlist-item');
         const itemEl = itemNode.querySelector('.playlist-item');
         itemEl.dataset.index = index;
@@ -327,12 +287,36 @@ export function renderPlaylist() {
     dom.playlistEl.appendChild(fragment);
 }
 
-
+/**
+ * [重构] 更新所有播放列表的UI，以高亮当前播放的曲目。
+ * 无论是下载列表中的曲目还是在线搜索结果中的临时曲目。
+ */
 export function updatePlaylistUI() {
-    dom.getAllPlaylistItems().forEach(item => {
-        item.classList.toggle('active', parseInt(item.dataset.index) === state.currentTrackIndex);
-    });
+    // 1. 先清除所有列表中的高亮
+    dom.playlistEl.querySelectorAll('.playlist-item.active').forEach(item => item.classList.remove('active'));
+    if (dom.searchResultsList) {
+        dom.searchResultsList.querySelectorAll('.playlist-item.active').forEach(item => item.classList.remove('active'));
+    }
+
+    // 2. 根据状态高亮正确的项
+    if (state.temporaryPlayingTrack) {
+        // 正在播放在线曲目
+        const srcToFind = state.temporaryPlayingTrack.originalSrc || state.temporaryPlayingTrack.src;
+        if (srcToFind && dom.searchResultsList) {
+            const activeItem = dom.searchResultsList.querySelector(`.playlist-item[data-src="${srcToFind}"]`);
+            if (activeItem) {
+                activeItem.classList.add('active');
+            }
+        }
+    } else if (state.currentTrackIndex > -1) {
+        // 正在播放下载列表中的曲目
+        const activeItem = dom.playlistEl.querySelector(`.playlist-item[data-index="${state.currentTrackIndex}"]`);
+        if (activeItem) {
+            activeItem.classList.add('active');
+        }
+    }
 }
+
 
 export function filterPlaylist() {
     const query = dom.playlistSearchInput.value.toLowerCase().replace(/\s/g, '');
@@ -342,11 +326,11 @@ export function filterPlaylist() {
     state.playlist.forEach((track, index) => {
         const item = playlistItems[index];
         if (!item) return;
-        const title = track.title || '';
-        const artist = track.artist || '';
-        const pinyin = track.pinyin || '';
-        const initials = track.initials || '';
-        const isMatch = !query || title.toLowerCase().includes(query) || artist.toLowerCase().includes(query) || pinyin.includes(query) || initials.includes(query);
+        const isMatch = !query ||
+            (track.title || '').toLowerCase().includes(query) ||
+            (track.artist || '').toLowerCase().includes(query) ||
+            (track.pinyin || '').includes(query) ||
+            (track.initials || '').includes(query);
         item.classList.toggle('hidden', !isMatch);
         if (isMatch) hasVisibleItems = true;
     });
@@ -361,56 +345,41 @@ export function toggleInfoPanel() { manageSidePanel(dom.infoPanel); }
 export function toggleShortcutPanel() { manageSidePanel(dom.shortcutPanel); }
 export function toggleDownloadPanel() { manageSidePanel(dom.downloadPanel); }
 
-// ... 其他函数 ...
-export function showToast(message) {
+export function showToast(message, type = 'info') {
     clearTimeout(toastTimeout);
     dom.toastEl.textContent = message;
-    dom.toastEl.classList.add('show');
+    dom.toastEl.className = 'toast show';
+    if (type === 'error') dom.toastEl.classList.add('error');
+    else if (type === 'success') dom.toastEl.classList.add('success');
     toastTimeout = setTimeout(() => {
         dom.toastEl.classList.remove('show');
     }, 3000);
 }
 
-// --- [新增] 显示通用确认模态框 ---
 export function showConfirmationModal(message) {
     return new Promise((resolve, reject) => {
         dom.confirmationMessage.textContent = message;
         dom.confirmationModal.classList.add('visible');
-
         const cleanupAndResolve = () => {
             dom.confirmationModal.classList.remove('visible');
             removeListeners();
             resolve();
         };
-
         const cleanupAndReject = () => {
             dom.confirmationModal.classList.remove('visible');
             removeListeners();
             reject();
         };
-
         const onConfirm = () => cleanupAndResolve();
         const onCancel = () => cleanupAndReject();
-
-        const onOverlayClick = (e) => {
-            if (e.target === dom.confirmationModal) {
-                onCancel();
-            }
-        };
-
-        const onEscKey = (e) => {
-            if (e.key === 'Escape') {
-                onCancel();
-            }
-        };
-
+        const onOverlayClick = (e) => { if (e.target === dom.confirmationModal) onCancel(); };
+        const onEscKey = (e) => { if (e.key === 'Escape') onCancel(); };
         const removeListeners = () => {
             dom.confirmBtn.removeEventListener('click', onConfirm);
             dom.cancelBtn.removeEventListener('click', onCancel);
             dom.confirmationModal.removeEventListener('click', onOverlayClick);
             window.removeEventListener('keydown', onEscKey);
         };
-
         dom.confirmBtn.addEventListener('click', onConfirm, { once: true });
         dom.cancelBtn.addEventListener('click', onCancel, { once: true });
         dom.confirmationModal.addEventListener('click', onOverlayClick);
@@ -418,8 +387,6 @@ export function showConfirmationModal(message) {
     });
 }
 
-
-// ... 剩余的UI函数保持不变 ...
 export function updateVolumeBarVisual(volume, isMuted) {
     const volumePercent = isMuted ? 0 : volume * 100;
     dom.volumeBar.value = isMuted ? 0 : volume;
@@ -431,11 +398,8 @@ export function updateModeButton() {
     const currentMode = PLAY_MODES[state.currentModeIndex];
     dom.modeBtn.className = 'control-btn';
     dom.modeBtn.classList.add(`mode-${currentMode}`);
-    let title = '';
-    if (currentMode === 'list') title = '列表循环';
-    else if (currentMode === 'single') title = '单曲循环';
-    else if (currentMode === 'shuffle') title = '随机播放';
-    dom.modeBtn.title = title;
+    const titles = { 'list': '列表循环', 'single': '单曲循环', 'shuffle': '随机播放' };
+    dom.modeBtn.title = titles[currentMode];
 }
 
 export function extractAndApplyGradient(sourceElement) {
@@ -451,11 +415,7 @@ export function extractAndApplyGradient(sourceElement) {
         const p2 = dom.bgCtx.getImageData(w - 2, 1, 1, 1).data;
         const p3 = dom.bgCtx.getImageData(1, h - 2, 1, 1).data;
         const p4 = dom.bgCtx.getImageData(w - 2, h - 2, 1, 1).data;
-        const color1 = `rgba(${p1[0]}, ${p1[1]}, ${p1[2]}, 0.8)`;
-        const color2 = `rgba(${p2[0]}, ${p2[1]}, ${p2[2]}, 0.7)`;
-        const color3 = `rgba(${p3[0]}, ${p3[1]}, ${p3[2]}, 0.7)`;
-        const color4 = `rgba(${p4[0]}, ${p4[1]}, ${p4[2]}, 0.8)`;
-        dom.mainView.style.background = `linear-gradient(145deg, ${color1}, ${color2} 45%, ${color3} 55%, ${color4}), #121212`;
+        dom.mainView.style.background = `linear-gradient(145deg, rgba(${p1[0]}, ${p1[1]}, ${p1[2]}, 0.8), rgba(${p2[0]}, ${p2[1]}, ${p2[2]}, 0.7) 45%, rgba(${p3[0]}, ${p3[1]}, ${p3[2]}, 0.7) 55%, rgba(${p4[0]}, ${p4[1]}, ${p4[2]}, 0.8)), #121212`;
     } catch (e) {
         console.error("Error extracting colors:", e);
         dom.mainView.style.background = '';
@@ -469,8 +429,6 @@ export function renderContextMenu(context = {}) {
     if (!menuList) return;
     menuList.innerHTML = '';
     const fragment = dom.createFragment();
-
-    // 根据上下文动态添加菜单项
     if (context.type === 'playlist-item' && typeof context.index !== 'undefined') {
         const deleteLi = dom.createListItem();
         deleteLi.textContent = '删除';
@@ -478,8 +436,6 @@ export function renderContextMenu(context = {}) {
         deleteLi.dataset.index = context.index;
         fragment.appendChild(deleteLi);
     }
-
-    // 添加默认的全局菜单项
     for (const actionId in state.shortcutSettings) {
         const setting = state.shortcutSettings[actionId];
         const li = dom.createListItem();
@@ -487,7 +443,6 @@ export function renderContextMenu(context = {}) {
         li.dataset.action = actionId;
         fragment.appendChild(li);
     }
-
     menuList.appendChild(fragment);
 }
 
@@ -503,8 +458,6 @@ export function normalizePosition(mouseX, mouseY) {
     return { normalizedX, normalizedY };
 }
 
-
-// --- 【修改】下载/搜索面板 UI 相关函数 ---
 export function clearSearchResults() {
     if (dom.searchResultsList) {
         dom.searchResultsList.innerHTML = '';
@@ -519,13 +472,8 @@ function createResultItem(track, index, isCached = false) {
     itemEl.querySelector('.playlist-icon').textContent = track.type === 'video' ? '🎬' : '🎵';
     itemEl.querySelector('.playlist-title').textContent = track.title || '未知标题';
     itemEl.querySelector('.playlist-artist').textContent = track.artist || '未知艺术家';
-
     const downloadBtn = itemEl.querySelector('.playlist-download-btn');
-    if (isCached) {
-        downloadBtn.classList.add('cached');
-    } else {
-        downloadBtn.classList.remove('hidden', 'cached');
-    }
+    downloadBtn.classList.toggle('cached', isCached);
     return itemNode;
 }
 
@@ -541,11 +489,6 @@ export function renderSearchResults(tracks) {
     dom.searchResultsList.appendChild(fragment);
 }
 
-export function renderDownloadedItem(track) {
-    const itemNode = createResultItem(track, state.playlist.length, true);
-    dom.searchResultsList.appendChild(itemNode);
-}
-
 export function updateSearchResultItemStatus(itemElement, status) {
     if (!itemElement) return;
     const downloadBtn = itemElement.querySelector('.playlist-download-btn');
@@ -558,30 +501,56 @@ export function updateSearchResultItemStatus(itemElement, status) {
     }
 }
 
+export function renderPaginationControls(currentPage, totalPages) {
+    const container = dom.paginationControls;
+    container.innerHTML = '';
+
+    if (totalPages <= 1) {
+        container.style.display = 'none';
+        return;
+    }
+
+    container.style.display = 'flex';
+
+    const prevBtn = document.createElement('button');
+    prevBtn.id = 'prev-page-btn';
+    prevBtn.className = 'pagination-btn';
+    prevBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"></path></svg>';
+    prevBtn.title = '上一页';
+    prevBtn.disabled = currentPage <= 1;
+
+    const pageInfo = document.createElement('span');
+    pageInfo.className = 'page-info';
+    pageInfo.textContent = `${currentPage} / ${totalPages}`;
+
+    const nextBtn = document.createElement('button');
+    nextBtn.id = 'next-page-btn';
+    nextBtn.className = 'pagination-btn';
+    nextBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"></path></svg>';
+    nextBtn.title = '下一页';
+    nextBtn.disabled = currentPage >= totalPages;
+
+    container.appendChild(prevBtn);
+    container.appendChild(pageInfo);
+    container.appendChild(nextBtn);
+}
+
 let wasPlayingBeforeDrag = false;
 let dragStartY = 0;
 let initialTranslateY = 0;
 let targetTimeOnDragEnd = 0;
 
 function onLyricsDragStart(e) {
-    if (state.parsedLyrics.length === 0) return;
-    if (e.button !== 0) return;
-
+    if (state.parsedLyrics.length === 0 || e.button !== 0) return;
     e.preventDefault();
     state.setIsDraggingLyrics(true);
-
     wasPlayingBeforeDrag = state.isPlaying;
-    if (wasPlayingBeforeDrag) {
-        pauseTrack();
-    }
-
+    if (wasPlayingBeforeDrag) pauseTrack();
     dom.lyricsList.classList.add('dragging');
     dom.lyricsDragIndicator.classList.add('active');
-
     dragStartY = e.clientY;
     const currentTransform = dom.lyricsList.style.transform;
     initialTranslateY = currentTransform ? parseFloat(currentTransform.match(/-?[\d.]+/)[0]) : 0;
-
     window.addEventListener('mousemove', onLyricsDragMove);
     window.addEventListener('mouseup', onLyricsDragEnd);
 }
@@ -589,28 +558,20 @@ function onLyricsDragStart(e) {
 function onLyricsDragMove(e) {
     if (!state.isDraggingLyrics) return;
     e.preventDefault();
-
-    const deltaY = e.clientY - dragStartY;
-    const newTranslateY = initialTranslateY + deltaY;
+    const newTranslateY = initialTranslateY + (e.clientY - dragStartY);
     dom.lyricsList.style.transform = `translateY(${newTranslateY}px)`;
-
     const wrapperRect = dom.lyricsListWrapper.getBoundingClientRect();
     const centerLineY = wrapperRect.top + wrapperRect.height / 2;
-
     let closestLineIndex = -1;
     let minDistance = Infinity;
-
     dom.getLyricLines().forEach((line, index) => {
         const lineRect = line.getBoundingClientRect();
-        const lineCenterY = lineRect.top + lineRect.height / 2;
-        const distance = Math.abs(centerLineY - lineCenterY);
-
+        const distance = Math.abs((lineRect.top + lineRect.height / 2) - centerLineY);
         if (distance < minDistance) {
             minDistance = distance;
             closestLineIndex = index;
         }
     });
-
     if (closestLineIndex !== -1 && state.parsedLyrics[closestLineIndex]) {
         targetTimeOnDragEnd = state.parsedLyrics[closestLineIndex].time;
         dom.lyricsDragTime.textContent = formatTime(targetTimeOnDragEnd);
@@ -620,21 +581,15 @@ function onLyricsDragMove(e) {
 function onLyricsDragEnd(e) {
     if (!state.isDraggingLyrics) return;
     e.preventDefault();
-
     state.setIsDraggingLyrics(false);
     dom.lyricsList.classList.remove('dragging');
     dom.lyricsDragIndicator.classList.remove('active');
-
     window.removeEventListener('mousemove', onLyricsDragMove);
     window.removeEventListener('mouseup', onLyricsDragEnd);
-
     if (targetTimeOnDragEnd >= 0) {
         dom.mediaPlayer.currentTime = targetTimeOnDragEnd;
     }
-
-    if (wasPlayingBeforeDrag) {
-        playTrack();
-    }
+    if (wasPlayingBeforeDrag) playTrack();
     syncLyrics(dom.mediaPlayer.currentTime);
 }
 

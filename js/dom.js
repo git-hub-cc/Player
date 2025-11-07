@@ -2,7 +2,6 @@
 
 export let playerContainer = document.querySelector('.player-container');
 export let mainView = document.querySelector('.main-view');
-// 【修改】将 mediaPlayer 的声明从 const 改为 let，使其可被重新赋值
 export let mediaPlayer = document.getElementById('media-player');
 export let playPauseBtn = document.getElementById('play-pause-btn');
 export let prevBtn = document.getElementById('prev-btn');
@@ -19,11 +18,8 @@ export let lyricsBtn = document.getElementById('lyrics-btn');
 export let lyricsContainer = document.getElementById('lyrics-container');
 export let lyricsList = document.getElementById('lyrics-list');
 export let lyricsListWrapper = document.getElementById('lyrics-list-wrapper');
-
-// 获取歌词拖拽相关元素
 export let lyricsDragIndicator = document.getElementById('lyrics-drag-indicator');
 export let lyricsDragTime = document.getElementById('lyrics-drag-time');
-
 export let volumeBtn = document.getElementById('volume-btn');
 export let volumeBar = document.getElementById('volume-bar');
 export let playlistEl = document.getElementById('playlist');
@@ -69,40 +65,29 @@ export let bgCtx = bgCanvas.getContext('2d', { willReadFrequently: true });
 export let downloadPanelBtn = document.getElementById('download-panel-btn');
 export let downloadPanel = document.getElementById('download-panel');
 export let closeDownloadBtn = document.getElementById('close-download-btn');
-export let urlOrSearchInput = document.getElementById('url-or-search-input'); // 统一输入框
+export let urlOrSearchInput = document.getElementById('url-or-search-input');
 export let downloadStatusEl = document.getElementById('download-status');
 export let downloadActionsContainer = document.getElementById('download-actions-container');
-
-// 抖音下载按钮
 export let startDownloadBtn = document.getElementById('start-download-btn');
 export let downloadWorksBtn = document.getElementById('download-works-btn');
 export let downloadLikesBtn = document.getElementById('download-likes-btn');
-
-// 在线音乐搜索按钮
 export let searchNeteaseBtn = document.getElementById('search-netease-btn');
-
-// 引导视图和工作视图
-export let setupView = document.getElementById('setup-view');
 export let downloaderView = document.getElementById('downloader-view');
 export let panelDescription = downloaderView.querySelector('.panel-description');
-export let copyInstallCommandBtn = document.getElementById('copy-command-btn-install');
-export let copyRunCommandBtn = document.getElementById('copy-command-btn-run');
-export let connectionStatusLine = document.getElementById('connection-status-line');
-export let connectionSpinner = document.getElementById('connection-spinner');
-export let connectionStatusText = document.getElementById('connection-status-text');
-export let retryConnectionBtn = document.getElementById('retry-connection-btn'); // [新增]
-
-// 【新增】搜索/下载结果列表元素
 export let searchResultsContainer = document.getElementById('search-results-container');
 export let searchResultsList = document.getElementById('search-results-list');
+// =========================================================================
+// 【新增】分页控件容器的 DOM 引用
+// =========================================================================
+export let paginationControls = document.getElementById('pagination-controls');
+// =========================================================================
 
-// --- [新增] 通用确认模态框元素 ---
+// --- 通用确认模态框元素 ---
 export let confirmationModal = document.getElementById('confirmation-modal-overlay');
 export let confirmationMessage = document.getElementById('confirmation-message');
 export let confirmBtn = document.getElementById('confirm-btn');
 export let cancelBtn = document.getElementById('cancel-btn');
 
-// 【新增】提供一个函数来更新 mediaPlayer 的引用
 export function updateMediaPlayerReference(newPlayerElement) {
     mediaPlayer = newPlayerElement;
 }
@@ -114,7 +99,5 @@ export const createListItem = () => document.createElement('li');
 export const getLyricLines = () => lyricsList.querySelectorAll('p');
 export const getAllPlaylistItems = () => playlistEl.querySelectorAll('.playlist-item');
 export const getContextMenuList = () => contextMenu.querySelector('ul');
-
-// Fullscreen API wrappers
 export const getFullscreenElement = () => document.fullscreenElement;
 export const exitFullscreen = () => document.exitFullscreen();

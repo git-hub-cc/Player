@@ -71,29 +71,43 @@ export async function getLocalPlaylist() {
     }
 }
 
-export async function handleSearchRequest(query) {
-    console.log(`[Search] 收到搜索请求: query='${query}'`);
+// =========================================================================
+// 【修改】handleSearchRequest 函数现在接受一个包含 query 和 page 的对象
+// =========================================================================
+export async function handleSearchRequest({ query, page = 1 }) {
+    console.log(`[Search] 收到搜索请求: query='${query}', page=${page}`);
     try {
-        const params = new URLSearchParams({ input: query, filter: 'name', page: '1', type: 'netease' });
+        const params = new URLSearchParams({
+            input: query,
+            filter: 'name',
+            page: page.toString(),
+            type: 'netease'
+        });
         const response = await axios.post(CONFIG.ONLINE_SEARCH_API, params, {
             headers: { 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
         });
-        if (response.data.code !== 200 || !response.data.data?.list) {
+
+        if (response.data.code !== 200 || !response.data.data) {
             throw new Error(response.data.error || 'API返回数据格式不正确');
         }
 
-        const searchResults = response.data.data.list.map(track => ({
+        const searchResults = response.data.data.list ? response.data.data.list.map(track => ({
             ...track,
             source: 'netease',
-        }));
+        })) : [];
 
-        console.log(`[Search] 成功，找到 ${searchResults.length} 条结果。`);
-        return { success: true, data: searchResults };
+        const totalResults = response.data.data.total || 0;
+
+        console.log(`[Search] 成功，找到 ${searchResults.length} 条结果。总数: ${totalResults}`);
+        // 返回包含结果列表和总数的对象
+        return { success: true, data: { results: searchResults, total: totalResults } };
     } catch (error) {
         console.error(`[Search] 失败:`, error);
         return { success: false, error: error.message };
     }
 }
+// =========================================================================
+
 
 export async function handleCacheRequest(trackData) {
     const { originalSrc, originalAlbumArt, originalLyrics, title, artist, pinyin: pinyinStr, initials } = trackData;
@@ -111,7 +125,7 @@ export async function handleCacheRequest(trackData) {
     const lyricsPath = path.join(CONFIG.MUSIC_DIR, `${safeFilename}.lrc`);
     if (originalLyrics) {
         if (originalLyrics.startsWith('data:text/plain,')) {
-            fs.writeFileSync(lyricsPath, originalLyrics.substring('data:text/plain,'.length), 'utf-8');
+            fs.writeFileSync(lyricsPath, decodeURIComponent(originalLyrics.substring('data:text/plain,'.length)), 'utf-8');
         } else if (originalLyrics.startsWith('http')) {
             downloadPromises.push(downloadFile(originalLyrics, CONFIG.MUSIC_DIR, `${safeFilename}.lrc`));
         }
@@ -239,23 +253,17 @@ export async function handleDownloadRequest(requestData) {
     }
 }
 
-// =========================================================================
-// 【新增函数】处理渲染进程的歌词文件读取请求
-// =========================================================================
 export async function handleGetLrcContent(relativePath) {
     if (!relativePath) {
         return { success: false, error: '未提供歌词文件路径。' };
     }
-    // 解码路径以处理中文等特殊字符
     const decodedPath = decodeURIComponent(relativePath);
     const fullPath = path.join(CONFIG.MEDIA_ROOT, decodedPath);
 
     try {
-        // 使用 existsSync 检查文件是否存在，以提供更明确的错误信息
         if (!fs.existsSync(fullPath)) {
             throw new Error(`文件不存在: ${fullPath}`);
         }
-        // 使用 fs.promises.readFile 异步读取文件内容
         const content = await fs.promises.readFile(fullPath, 'utf-8');
         return { success: true, data: content };
     } catch (e) {
@@ -263,7 +271,6 @@ export async function handleGetLrcContent(relativePath) {
         return { success: false, error: `读取歌词失败: ${e.message}` };
     }
 }
-// =========================================================================
 
 async function downloadSingleVideo(videoUrl) {
     sendMessage('download-status', { message: '正在后台启动浏览器引擎...' });

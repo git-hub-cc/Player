@@ -3,14 +3,14 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
     // --- 异步调用 (请求 -> 响应) ---
     getLocalPlaylist: () => ipcRenderer.invoke('get-local-playlist'),
-    searchOnline: (query) => ipcRenderer.invoke('search-online', query),
+    // =========================================================================
+    // 【修改】searchOnline 现在接受 query 和 page 两个参数
+    // =========================================================================
+    searchOnline: (query, page) => ipcRenderer.invoke('search-online', { query, page }),
+    // =========================================================================
     deleteTrack: (trackData) => ipcRenderer.invoke('delete-track', trackData),
     getMusicUrl: (trackInfo) => ipcRenderer.invoke('get-music-url', trackInfo),
-    // =========================================================================
-    // 【新增】将读取歌词文件的方法暴露给渲染进程
-    // =========================================================================
     getLrcContent: (relativePath) => ipcRenderer.invoke('get-lrc-content', relativePath),
-    // =========================================================================
 
     // --- 单向调用 (仅发送) ---
     startDownload: (requestData) => ipcRenderer.send('download-douyin', requestData),
