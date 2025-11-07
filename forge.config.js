@@ -9,8 +9,7 @@ module.exports = {
         // Electron Forge 会在打包时使用这个文件为不同平台创建图标。
         // 注意：强烈建议为 Windows 提供 .ico 文件，为 macOS 提供 .icns 文件。
         // 例如: icon: 'public/icons/icon' (不带扩展名，Forge 会自动选择 .ico 或 .icns)
-        // 这里我们暂时使用您提供的 SVG 文件。
-        icon: './src/assets/app.ico',
+        icon: './public/assets/app',
         // =========================================================================
     },
     rebuildConfig: {},
@@ -18,8 +17,10 @@ module.exports = {
         {
             name: '@electron-forge/maker-squirrel',
             config: {
-                name: 'app',
-            },
+                name: 'Player',
+                setupIcon: './public/assets/app.ico',
+                iconUrl: 'https://github-production-user-asset-6210df.s3.amazonaws.com/96827876/511516278-b000fda9-25e9-40f4-b299-6e0404f0bb19.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20251107%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251107T210545Z&X-Amz-Expires=300&X-Amz-Signature=df9a5a6d6c7a94243c590795458572875b9887832f4ab20dcd89b81f8dd5b73a&X-Amz-SignedHeaders=host',
+            }
         },
         {
             name: '@electron-forge/maker-zip',
