@@ -14,6 +14,11 @@ export let trackArtistEl = document.getElementById('track-artist');
 export let albumArtEl = document.getElementById('album-art');
 export let controlAlbumArtEl = document.getElementById('control-album-art');
 export let albumArtContainer = document.getElementById('album-art-container');
+// =========================================================================
+// 【新增】音频可视化画布的 DOM 引用
+// =========================================================================
+export let audioVisualizer = document.getElementById('audio-visualizer');
+// =========================================================================
 export let lyricsBtn = document.getElementById('lyrics-btn');
 export let lyricsContainer = document.getElementById('lyrics-container');
 export let lyricsList = document.getElementById('lyrics-list');

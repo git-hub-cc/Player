@@ -2,7 +2,7 @@
 import * as dom from './dom.js';
 import * as state from './state.js';
 import { PLAY_MODES } from './config.js';
-import { getTemplate, formatTime } from './utils.js';
+import { getTemplate, formatTime, rgbToHsl, hslToRgb } from './utils.js';
 import { playTrack, pauseTrack } from './player.js';
 
 let toastTimeout;
@@ -19,6 +19,9 @@ const FAST_DECAY_RATE = 1 / (60 * 0.5);
 
 // --- 面板管理 ---
 const allSidePanels = [dom.playlistPanel, dom.infoPanel, dom.shortcutPanel, dom.downloadPanel];
+
+let visualizerDataArray = null;
+let visualizerBufferLength = 0;
 
 export function closeActivePanels() {
     allSidePanels.forEach(panel => {
@@ -43,6 +46,120 @@ export function setupParticleCanvas() {
     }
     particleCtx = particleCanvas.getContext('2d', { willReadFrequently: true });
 }
+
+// =========================================================================
+// 【核心修改】重写音频可视化绘制函数，实现沿专辑封面发散的动态色彩效果
+// =========================================================================
+export function drawVisualizer() {
+    if (!state.analyser || !dom.audioVisualizer || !dom.albumArtContainer) return;
+
+    // 首次调用时初始化数据数组
+    if (!visualizerDataArray) {
+        visualizerBufferLength = state.analyser.frequencyBinCount;
+        visualizerDataArray = new Uint8Array(visualizerBufferLength);
+    }
+
+    state.analyser.getByteFrequencyData(visualizerDataArray);
+
+    const canvas = dom.audioVisualizer;
+    const ctx = canvas.getContext('2d');
+
+    if (canvas.width !== canvas.offsetWidth || canvas.height !== canvas.offsetHeight) {
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+    }
+
+    const { width: canvasWidth, height: canvasHeight } = canvas;
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+    const albumArtSize = dom.albumArtContainer.offsetWidth;
+    if (albumArtSize === 0) return;
+
+    const centerX = canvasWidth / 2;
+    const centerY = canvasHeight / 2;
+    const halfSize = albumArtSize / 2;
+
+    const barWidth = 3;
+    const maxBarHeight = 100;
+    const numBars = 64;
+
+    // --- 【新增】实时动态色彩计算 ---
+    let startColor, endColor;
+    if (state.currentGradientColors && state.currentGradientColors.length > 0) {
+        // 使用背景中较亮的颜色作为基色
+        const baseRgb = state.currentGradientColors[1];
+        const baseHsl = rgbToHsl(baseRgb[0], baseRgb[1], baseRgb[2]);
+
+        // 策略C: 计算一个和谐且更亮的类比色
+        const newHue = (baseHsl.h + 30) % 360;
+        const newSat = Math.min(baseHsl.s + 0.15, 1.0); // 增加饱和度
+        const newLight = Math.min(baseHsl.l + 0.2, 0.85); // 增加亮度，但不至于过曝
+
+        const newRgb = hslToRgb(newHue, newSat, newLight);
+
+        startColor = `rgba(${newRgb[0]}, ${newRgb[1]}, ${newRgb[2]}, 0.3)`;
+        endColor = `rgba(${newRgb[0]}, ${newRgb[1]}, ${newRgb[2]}, 0.8)`;
+    } else {
+        // 备用颜色
+        startColor = 'rgba(29, 185, 84, 0.2)';
+        endColor = 'rgba(29, 185, 84, 0.8)';
+    }
+    // --- 动态色彩计算结束 ---
+
+    ctx.lineWidth = barWidth;
+    ctx.lineCap = 'round';
+
+    const halfPerimeter = albumArtSize * 2;
+    const step = halfPerimeter / numBars;
+
+    for (let i = 0; i < numBars; i++) {
+        // 反转数据索引，使高能量柱（低频）显示在顶部
+        const dataIndex = Math.floor((numBars - 1 - i) * (visualizerBufferLength * 0.75) / numBars);
+        const barHeight = Math.pow(visualizerDataArray[dataIndex] / 255, 2.5) * maxBarHeight;
+
+        if (barHeight < 1) continue;
+
+        const p = i * step;
+        let x, y, dx, dy;
+
+        if (p < halfSize) { // 底部边缘 (右半)
+            x = centerX + p; y = centerY + halfSize; dx = 0; dy = 1;
+        } else if (p < halfSize + albumArtSize) { // 右侧边缘
+            x = centerX + halfSize; y = centerY + halfSize - (p - halfSize); dx = 1; dy = 0;
+        } else { // 顶部边缘 (右半)
+            x = centerX + halfSize - (p - (halfSize + albumArtSize)); y = centerY - halfSize; dx = 0; dy = -1;
+        }
+
+        const startX = x, startY = y;
+        const endX = x + dx * barHeight, endY = y + dy * barHeight;
+
+        let gradient = ctx.createLinearGradient(startX, startY, endX, endY);
+        gradient.addColorStop(0, startColor);
+        gradient.addColorStop(1, endColor);
+        ctx.strokeStyle = gradient;
+
+        // 绘制右侧
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+
+        // 绘制左侧镜像
+        const mStartX = 2 * centerX - x, mStartY = y;
+        const mEndX = 2 * centerX - endX, mEndY = endY;
+
+        gradient = ctx.createLinearGradient(mStartX, mStartY, mEndX, mEndY);
+        gradient.addColorStop(0, startColor);
+        gradient.addColorStop(1, endColor);
+        ctx.strokeStyle = gradient;
+
+        ctx.beginPath();
+        ctx.moveTo(mStartX, mStartY);
+        ctx.lineTo(mEndX, mEndY);
+        ctx.stroke();
+    }
+}
+// =========================================================================
 
 function animateParticles() {
     if (!particleCanvas || !particleCtx) return;
@@ -287,20 +404,13 @@ export function renderPlaylist() {
     dom.playlistEl.appendChild(fragment);
 }
 
-/**
- * [重构] 更新所有播放列表的UI，以高亮当前播放的曲目。
- * 无论是下载列表中的曲目还是在线搜索结果中的临时曲目。
- */
 export function updatePlaylistUI() {
-    // 1. 先清除所有列表中的高亮
     dom.playlistEl.querySelectorAll('.playlist-item.active').forEach(item => item.classList.remove('active'));
     if (dom.searchResultsList) {
         dom.searchResultsList.querySelectorAll('.playlist-item.active').forEach(item => item.classList.remove('active'));
     }
 
-    // 2. 根据状态高亮正确的项
     if (state.temporaryPlayingTrack) {
-        // 正在播放在线曲目
         const srcToFind = state.temporaryPlayingTrack.originalSrc || state.temporaryPlayingTrack.src;
         if (srcToFind && dom.searchResultsList) {
             const activeItem = dom.searchResultsList.querySelector(`.playlist-item[data-src="${srcToFind}"]`);
@@ -309,7 +419,6 @@ export function updatePlaylistUI() {
             }
         }
     } else if (state.currentTrackIndex > -1) {
-        // 正在播放下载列表中的曲目
         const activeItem = dom.playlistEl.querySelector(`.playlist-item[data-index="${state.currentTrackIndex}"]`);
         if (activeItem) {
             activeItem.classList.add('active');
@@ -405,6 +514,7 @@ export function updateModeButton() {
 export function extractAndApplyGradient(sourceElement) {
     if (!sourceElement || (sourceElement.tagName === 'IMG' && (!sourceElement.complete || sourceElement.naturalWidth === 0)) || (sourceElement.tagName === 'VIDEO' && sourceElement.readyState < 2)) {
         dom.mainView.style.background = '';
+        state.setCurrentGradientColors(null); // 【修改】重置颜色状态
         return;
     }
     try {
@@ -416,9 +526,13 @@ export function extractAndApplyGradient(sourceElement) {
         const p3 = dom.bgCtx.getImageData(1, h - 2, 1, 1).data;
         const p4 = dom.bgCtx.getImageData(w - 2, h - 2, 1, 1).data;
         dom.mainView.style.background = `linear-gradient(145deg, rgba(${p1[0]}, ${p1[1]}, ${p1[2]}, 0.8), rgba(${p2[0]}, ${p2[1]}, ${p2[2]}, 0.7) 45%, rgba(${p3[0]}, ${p3[1]}, ${p3[2]}, 0.7) 55%, rgba(${p4[0]}, ${p4[1]}, ${p4[2]}, 0.8)), #121212`;
+
+        // 【修改】保存提取的颜色以供可视化使用
+        state.setCurrentGradientColors([[p1[0], p1[1], p1[2]], [p4[0], p4[1], p4[2]]]);
     } catch (e) {
         console.error("Error extracting colors:", e);
         dom.mainView.style.background = '';
+        state.setCurrentGradientColors(null); // 【修改】重置颜色状态
     }
 }
 

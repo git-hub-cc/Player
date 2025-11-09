@@ -65,16 +65,37 @@ export let isScrubbing = false;
  */
 export let currentColorPaletteIndex = 0;
 
+/**
+ * @type {AudioContext|null} Web Audio API 的音频上下文。
+ */
+export let audioContext = null;
+
+/**
+ * @type {MediaElementAudioSourceNode|null} 连接到媒体元素的音频源节点。
+ */
+export let audioSource = null;
+
+/**
+ * @type {AnalyserNode|null} 用于音频可视化的分析器节点。
+ */
+export let analyser = null;
+
+// =========================================================================
+// 【新增】存储当前背景渐变的主要颜色，供可视化效果使用
+// =========================================================================
+/**
+ * @type {Array<Array<number>>|null} 存储当前背景的基色 [[r,g,b], [r,g,b]]
+ */
+export let currentGradientColors = null;
+// =========================================================================
+
+
 // --- State Modifying Functions ---
 
 export function setPlaylist(newPlaylist) {
     playlist = newPlaylist;
 }
 
-/**
- * 从播放列表中移除一个曲目并智能调整当前播放索引。
- * @param {number} indexToRemove - 要移除的曲目的索引。
- */
 export function removeTrack(indexToRemove) {
     if (indexToRemove < 0 || indexToRemove >= playlist.length) {
         return;
@@ -87,45 +108,28 @@ export function removeTrack(indexToRemove) {
         return;
     }
 
-    // 如果删除的是当前播放曲目之前的曲目，则将当前索引减一
     if (indexToRemove < currentTrackIndex) {
         currentTrackIndex--;
     }
-    // 如果删除的是最后一个曲目，并且它也是当前播放的曲目，则将索引重置为0
     else if (indexToRemove === currentTrackIndex && currentTrackIndex >= playlist.length) {
         currentTrackIndex = 0;
     }
 }
 
-
-/**
- * 设置当前播放的曲目为播放列表中的指定索引。
- * 这会清除任何正在播放的临时曲目状态。
- * @param {number} index - 播放列表中的曲目索引。
- */
 export function setCurrentTrackIndex(index) {
     if (currentTrackIndex === index && !temporaryPlayingTrack) {
-        // 如果索引未变且当前没有临时曲目在播放，则无需操作
         return;
     }
     currentTrackIndex = index;
-    temporaryPlayingTrack = null; // 互斥状态：播放列表曲目时，清除临时曲目状态
+    temporaryPlayingTrack = null;
 }
 
-/**
- * 设置当前正在播放的临时曲目。
- * 这会使播放列表的当前索引失效。
- * @param {object} track - 临时播放的曲目对象。
- */
 export function setTemporaryPlayingTrack(track) {
     if (temporaryPlayingTrack === track) return;
     temporaryPlayingTrack = track;
-    currentTrackIndex = -1; // 互斥状态：播放临时曲目时，使播放列表索引失效
+    currentTrackIndex = -1;
 }
 
-/**
- * 清除所有关于当前播放曲目的信息，用于重置播放器。
- */
 export function clearPlayingTrackInfo() {
     temporaryPlayingTrack = null;
     currentTrackIndex = -1;
@@ -165,3 +169,21 @@ export function setIsScrubbing(scrubbing) {
 export function setCurrentColorPaletteIndex(index) {
     currentColorPaletteIndex = index;
 }
+
+export function setAudioContext(context) {
+    audioContext = context;
+}
+export function setAudioSource(source) {
+    audioSource = source;
+}
+export function setAnalyser(analyserNode) {
+    analyser = analyserNode;
+}
+
+// =========================================================================
+// 【新增】设置当前背景颜色的函数
+// =========================================================================
+export function setCurrentGradientColors(colors) {
+    currentGradientColors = colors;
+}
+// =========================================================================
