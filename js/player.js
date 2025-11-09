@@ -4,13 +4,55 @@ import * as dom from './dom.js';
 import * as state from './state.js';
 import { PLAY_MODES, DEFAULT_ART } from './config.js';
 import { formatTime, parseLRC } from './utils.js';
-import { renderLyrics, syncLyrics, extractAndApplyGradient, showSkeleton, hideSkeleton, updatePlaylistUI, updateModeButton, showToast, triggerGlitchEffect } from './ui.js';
+import { renderLyrics, syncLyrics, extractAndApplyGradient, showSkeleton, hideSkeleton, updatePlaylistUI, updateModeButton, showToast, drawVisualizer } from './ui.js';
 import { resolvePlayableUrl } from './features/downloader.js';
 
 let animationFrameId = null;
 let skeletonTimer = null;
 let nextBackgroundUpdateTime = 0;
 const BACKGROUND_BEAT_MULTIPLIER = 12;
+
+/**
+ * [新增] 初始化 Web Audio API 上下文。
+ * 只需要执行一次，通常在用户首次交互时触发。
+ */
+function setupAudioContext() {
+    if (state.audioContext) return;
+
+    try {
+        const context = new (window.AudioContext || window.webkitAudioContext)();
+        const analyserNode = context.createAnalyser();
+        analyserNode.fftSize = 256; // 频域数据点的数量 (必须是2的幂)
+
+        state.setAudioContext(context);
+        state.setAnalyser(analyserNode);
+
+        // 尝试连接媒体元素
+        connectAudioSource();
+    } catch (e) {
+        console.error("Web Audio API is not supported in this browser.", e);
+    }
+}
+
+/**
+ * [新增] 将媒体元素连接到音频分析器。
+ */
+function connectAudioSource() {
+    if (!state.audioContext || !dom.mediaPlayer || dom.mediaPlayer.src === '') return;
+    try {
+        // 如果已存在一个源，先断开它
+        if (state.audioSource) {
+            state.audioSource.disconnect();
+        }
+        const source = state.audioContext.createMediaElementSource(dom.mediaPlayer);
+        source.connect(state.analyser);
+        state.analyser.connect(state.audioContext.destination);
+        state.setAudioSource(source);
+    } catch (e) {
+        // 当媒体元素没有 src 或在不同域时，可能会抛出错误
+        console.warn("Could not connect audio source:", e.message);
+    }
+}
 
 /**
  * 创建一个新的 media element，替换旧的，并附加所有必要的事件监听器。
@@ -230,6 +272,12 @@ export async function loadTrack(trackIndex, options = {}) {
 
 function runAnimationFrame() {
     updateProgress();
+
+    // 【新增】调用音频可视化绘制函数
+    if (state.isPlaying && state.analyser && state.playlist[state.currentTrackIndex]?.type === 'audio') {
+        drawVisualizer();
+    }
+
     const now = performance.now();
     const currentTrack = state.playlist[state.currentTrackIndex];
     if (state.isPlaying && currentTrack && dom.mediaPlayer.readyState > 1 && currentTrack.beatInterval > 0) {
@@ -253,6 +301,20 @@ function runAnimationFrame() {
 
 export function playTrack() {
     if (!dom.mediaPlayer || !dom.mediaPlayer.src) return;
+
+    // 【新增】在首次播放时初始化并激活 AudioContext
+    if (!state.audioContext) {
+        setupAudioContext();
+    }
+    // 确保 AudioContext 在用户交互后处于 running 状态
+    if (state.audioContext && state.audioContext.state === 'suspended') {
+        state.audioContext.resume();
+    }
+    // 确保音频源已连接
+    if (state.audioContext && (!state.audioSource || state.audioSource.mediaElement !== dom.mediaPlayer)) {
+        connectAudioSource();
+    }
+
     const playPromise = dom.mediaPlayer.play();
     if (playPromise !== undefined) {
         playPromise.then(() => {
@@ -280,7 +342,10 @@ export const togglePlayPause = () => state.isPlaying ? pauseTrack() : playTrack(
 
 function changeTrack(direction) {
     if (state.playlist.length <= 1) return;
-    triggerGlitchEffect(3000);
+
+    // 【移除】切歌特效
+    // triggerGlitchEffect(3000);
+
     clearTimeout(skeletonTimer);
     skeletonTimer = setTimeout(() => showSkeleton(), 300);
 

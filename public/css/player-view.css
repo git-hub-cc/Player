@@ -23,6 +23,20 @@
     box-shadow: 0 4px 16px rgba(0,0,0,0.2);
 }
 
+/* ========================================================================= */
+/* 【新增】音频可视化画布样式                                                   */
+/* ========================================================================= */
+#audio-visualizer {
+    position: absolute;
+    width: 600px; /* 大于封面尺寸 */
+    height: 600px; /* 大于封面尺寸 */
+    max-width: 90vw;
+    max-height: 90vw;
+    pointer-events: none; /* 允许点击穿透到下面的元素 */
+    z-index: 1; /* 确保在封面容器之下，但在背景之上 */
+}
+/* ========================================================================= */
+
 .album-art-container {
     display: none;
     width: 100%;
@@ -33,7 +47,11 @@
     background-color: #000;
     border-radius: 8px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    /* 【修改】确保封面在可视化之上 */
+    z-index: 2;
+    position: relative; /* 确保 z-index 生效 */
 }
+
 
 #album-art {
     width: 100%;

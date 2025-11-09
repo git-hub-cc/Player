@@ -11,6 +11,7 @@ module.exports = {
         // 例如: icon: 'public/icons/icon' (不带扩展名，Forge 会自动选择 .ico 或 .icns)
         icon: './public/assets/app',
         // =========================================================================
+        // https://github.com/user-attachments/assets/b000fda9-25e9-40f4-b299-6e0404f0bb19
     },
     rebuildConfig: {},
     makers: [
