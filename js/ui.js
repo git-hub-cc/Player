@@ -9,14 +9,6 @@ let toastTimeout;
 let lastActiveLyricIndex = -1;
 let glitchAnimationId;
 
-// --- 粒子系统变量 ---
-let particleCanvas;
-let particleCtx;
-let particles = [];
-let particleAnimationId;
-const NORMAL_DECAY_RATE = 1 / (60 * 2);
-const FAST_DECAY_RATE = 1 / (60 * 0.5);
-
 // --- 面板管理 ---
 const allSidePanels = [dom.playlistPanel, dom.infoPanel, dom.shortcutPanel, dom.downloadPanel];
 
@@ -36,15 +28,6 @@ function manageSidePanel(panelToToggle) {
     if (!isCurrentlyActive) {
         panelToToggle.classList.add('active');
     }
-}
-
-export function setupParticleCanvas() {
-    particleCanvas = document.getElementById('particle-canvas');
-    if (!particleCanvas) {
-        console.error("Particle canvas element not found.");
-        return;
-    }
-    particleCtx = particleCanvas.getContext('2d', { willReadFrequently: true });
 }
 
 // =========================================================================
@@ -161,100 +144,6 @@ export function drawVisualizer() {
 }
 // =========================================================================
 
-function animateParticles() {
-    if (!particleCanvas || !particleCtx) return;
-
-    if (particleCanvas.width !== dom.mainView.offsetWidth || particleCanvas.height !== dom.mainView.offsetHeight) {
-        particleCanvas.width = dom.mainView.offsetWidth;
-        particleCanvas.height = dom.mainView.offsetHeight;
-    }
-
-    particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
-
-    for (let i = particles.length - 1; i >= 0; i--) {
-        const p = particles[i];
-        p.alpha -= p.decay;
-
-        if (p.alpha <= 0) {
-            particles.splice(i, 1);
-            continue;
-        }
-
-        p.vx *= 0.98;
-        p.vy += 0.05;
-        p.x += p.vx;
-        p.y += p.vy;
-
-        const scale = p.alpha > 0.5 ? 1 : p.alpha * 2;
-        const size = p.size * scale;
-
-        particleCtx.fillStyle = `rgba(${p.color.r}, ${p.color.g}, ${p.color.b}, ${p.alpha})`;
-        particleCtx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
-    }
-
-    if (particles.length > 0) {
-        particleAnimationId = requestAnimationFrame(animateParticles);
-    } else {
-        particleAnimationId = null;
-    }
-}
-
-function createParticlesFromElement(element) {
-    if (!element || !particleCanvas || !particleCtx || element.classList.contains('particlized')) {
-        return;
-    }
-    element.classList.add('particlized');
-
-    particles.forEach(p => {
-        if (p.decay === NORMAL_DECAY_RATE) {
-            p.decay = FAST_DECAY_RATE;
-        }
-    });
-
-    const mainViewRect = dom.mainView.getBoundingClientRect();
-    const elemRect = element.getBoundingClientRect();
-    const tempCanvas = document.createElement('canvas');
-    const tempCtx = tempCanvas.getContext('2d');
-    const computedStyle = window.getComputedStyle(element);
-    const font = `${computedStyle.fontWeight} ${computedStyle.fontSize} ${computedStyle.fontFamily}`;
-    const color = computedStyle.color;
-    const text = element.textContent;
-
-    tempCanvas.width = elemRect.width;
-    tempCanvas.height = elemRect.height;
-    tempCtx.font = font;
-    tempCtx.fillStyle = color;
-    tempCtx.textBaseline = 'middle';
-    tempCtx.textAlign = 'center';
-    tempCtx.fillText(text, tempCanvas.width / 2, tempCanvas.height / 2);
-
-    const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height).data;
-    const density = 2;
-
-    for (let y = 0; y < tempCanvas.height; y += density) {
-        for (let x = 0; x < tempCanvas.width; x += density) {
-            const alphaIndex = (y * tempCanvas.width + x) * 4 + 3;
-            if (imageData[alphaIndex] > 128) {
-                const colorIndex = alphaIndex - 3;
-                particles.push({
-                    x: elemRect.left - mainViewRect.left + x,
-                    y: elemRect.top - mainViewRect.top + y,
-                    vx: (Math.random() - 0.5) * 1.5,
-                    vy: (Math.random() - 0.5) * 1.5 - 0.5,
-                    alpha: 1.0,
-                    decay: NORMAL_DECAY_RATE,
-                    size: Math.random() * 1.5 + 1,
-                    color: { r: imageData[colorIndex], g: imageData[colorIndex + 1], b: imageData[colorIndex + 2] }
-                });
-            }
-        }
-    }
-
-    if (!particleAnimationId) {
-        animateParticles();
-    }
-}
-
 export function triggerGlitchEffect(duration = 800) {
     if (!dom.mainView || !dom.glitchOverlay || !dom.feTurbulence) return;
     cancelAnimationFrame(glitchAnimationId);
@@ -328,7 +217,6 @@ export function hideSkeleton() {
 export function renderLyrics() {
     dom.lyricsList.innerHTML = '';
     dom.lyricsList.style.transform = 'translateY(0)';
-    particles = [];
     if (state.parsedLyrics.length === 0) {
         dom.lyricsList.appendChild(getTemplate('template-no-lyrics'));
         return;
@@ -372,19 +260,6 @@ export function syncLyrics(currentTime) {
             const translateY = listHeight / 2 - lineTop - lineHeight / 2;
             dom.lyricsList.style.transform = `translateY(${translateY}px)`;
         }
-    }
-    if (dom.lyricsContainer.classList.contains('active')) {
-        const wrapperRect = listWrapper.getBoundingClientRect();
-        const dissolveBoundary = wrapperRect.top + wrapperRect.height * 0.15;
-        allLyricLines.forEach((line) => {
-            if (line.classList.contains('active')) return;
-            const lineRect = line.getBoundingClientRect();
-            if (lineRect.top < dissolveBoundary && !line.classList.contains('particlized')) {
-                createParticlesFromElement(line);
-            } else if (lineRect.top >= dissolveBoundary && line.classList.contains('particlized')) {
-                line.classList.remove('particlized');
-            }
-        });
     }
 }
 

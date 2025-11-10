@@ -93,9 +93,7 @@ export let confirmationMessage = document.getElementById('confirmation-message')
 export let confirmBtn = document.getElementById('confirm-btn');
 export let cancelBtn = document.getElementById('cancel-btn');
 
-export function updateMediaPlayerReference(newPlayerElement) {
-    mediaPlayer = newPlayerElement;
-}
+// 【移除】updateMediaPlayerReference 函数不再需要
 
 // DOM Query/Creation Functions
 export const getTemplateElementById = (id) => document.getElementById(id);
