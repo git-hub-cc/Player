@@ -1,6 +1,6 @@
 // src/main.js
 
-import { app, BrowserWindow, ipcMain, protocol, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, Menu, dialog } from 'electron'; // [修改] 引入 dialog
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import * as MainApi from './backend/main-api.js';
@@ -56,17 +56,20 @@ app.whenReady().then(async () => {
 
     // 设置 IPC 监听器
     ipcMain.handle('get-local-playlist', () => MainApi.getLocalPlaylist());
-    // =========================================================================
-    // 【修改】IPC 处理器现在接收一个对象，包含 query 和 page
-    // =========================================================================
     ipcMain.handle('search-online', (event, { query, page }) => MainApi.handleSearchRequest({ query, page }));
-    // =========================================================================
     ipcMain.handle('delete-track', (event, trackData) => MainApi.handleDeleteTrack(trackData));
     ipcMain.handle('get-music-url', (event, trackInfo) => MainApi.handleGetMusicUrl(trackInfo));
     ipcMain.handle('get-lrc-content', (event, relativePath) => MainApi.handleGetLrcContent(relativePath));
 
     ipcMain.on('download-douyin', (event, data) => MainApi.handleDownloadRequest(data));
     ipcMain.on('cache-track', (event, trackData) => MainApi.handleCacheRequest(trackData));
+
+    // =========================================================================
+    // 【新增】注册用于本地导入的 IPC 处理器
+    // =========================================================================
+    ipcMain.handle('select-import-directory', () => MainApi.handleSelectDirectory());
+    ipcMain.handle('start-local-import', (event, dirPath) => MainApi.handleLocalImport(dirPath));
+    // =========================================================================
 
     createWindow();
 
