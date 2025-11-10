@@ -3,14 +3,16 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
     // --- 异步调用 (请求 -> 响应) ---
     getLocalPlaylist: () => ipcRenderer.invoke('get-local-playlist'),
-    // =========================================================================
-    // 【修改】searchOnline 现在接受 query 和 page 两个参数
-    // =========================================================================
     searchOnline: (query, page) => ipcRenderer.invoke('search-online', { query, page }),
-    // =========================================================================
     deleteTrack: (trackData) => ipcRenderer.invoke('delete-track', trackData),
     getMusicUrl: (trackInfo) => ipcRenderer.invoke('get-music-url', trackInfo),
     getLrcContent: (relativePath) => ipcRenderer.invoke('get-lrc-content', relativePath),
+    // =========================================================================
+    // 【新增】暴露本地导入相关 API
+    // =========================================================================
+    selectImportDirectory: () => ipcRenderer.invoke('select-import-directory'),
+    startLocalImport: (dirPath) => ipcRenderer.invoke('start-local-import', dirPath),
+    // =========================================================================
 
     // --- 单向调用 (仅发送) ---
     startDownload: (requestData) => ipcRenderer.send('download-douyin', requestData),
@@ -26,4 +28,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('new-track-added', (event, ...args) => callback(...args));
         return () => ipcRenderer.removeAllListeners('new-track-added');
     },
+    // =========================================================================
+    // 【新增】监听本地导入进度的回调
+    // =========================================================================
+    onImportStatus: (callback) => {
+        ipcRenderer.on('import-status', (event, ...args) => callback(...args));
+        return () => ipcRenderer.removeAllListeners('import-status');
+    },
+    // =========================================================================
 });

@@ -2,7 +2,7 @@
 
 import path from 'path';
 import fs from 'fs';
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, dialog } from 'electron'; // [修改] 引入 dialog
 import axios from 'axios';
 import { pinyin } from 'pinyin-pro';
 import { Buffer } from 'buffer';
@@ -167,6 +167,144 @@ async function buildCacheForQuery(query) {
     }
 }
 
+// --- [新增] 本地导入相关函数 ---
+
+/**
+ * 弹出系统对话框让用户选择一个目录。
+ * @returns {Promise<Electron.OpenDialogReturnValue>}
+ */
+export async function handleSelectDirectory() {
+    const mainWindow = BrowserWindow.getAllWindows()[0];
+    return dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory']
+    });
+}
+
+/**
+ * 递归扫描目录，智能分组音频、歌词和封面文件。
+ * @param {string} dirPath - 要扫描的目录路径。
+ * @returns {Promise<Map<string, {audio: string|null, lrc: string|null, art: string|null}>>}
+ */
+async function scanDirectoryRecursive(dirPath) {
+    const fileGroups = new Map();
+    const audioExt = ['.mp3', '.flac', '.wav', '.m4a', '.ogg'];
+    const artExt = ['.jpg', '.jpeg', '.png'];
+    const lrcExt = '.lrc';
+
+    async function scan(currentDir) {
+        const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
+        for (const entry of entries) {
+            const fullPath = path.join(currentDir, entry.name);
+            if (entry.isDirectory()) {
+                await scan(fullPath);
+            } else if (entry.isFile()) {
+                const ext = path.extname(entry.name).toLowerCase();
+                const baseName = path.join(currentDir, path.basename(entry.name, ext));
+
+                if (!fileGroups.has(baseName)) {
+                    fileGroups.set(baseName, { audio: null, lrc: null, art: null });
+                }
+                const group = fileGroups.get(baseName);
+
+                if (audioExt.includes(ext) && !group.audio) {
+                    group.audio = fullPath;
+                } else if (lrcExt === ext && !group.lrc) {
+                    group.lrc = fullPath;
+                } else if (artExt.includes(ext) && !group.art) {
+                    group.art = fullPath;
+                }
+            }
+        }
+    }
+
+    await scan(dirPath);
+    return fileGroups;
+}
+
+/**
+ * 处理本地文件导入流程。
+ * @param {string} directoryPath - 用户选择的目录路径。
+ */
+export async function handleLocalImport(directoryPath) {
+    if (!directoryPath) {
+        return { success: false, error: 'No directory provided.' };
+    }
+    sendMessage('import-status', { message: '开始扫描目录...', type: 'default' });
+
+    try {
+        const fileGroups = await scanDirectoryRecursive(directoryPath);
+        const audioTracks = Array.from(fileGroups.values()).filter(group => group.audio);
+
+        if (audioTracks.length === 0) {
+            sendMessage('import-status', { message: '在所选目录中未找到支持的音频文件。', type: 'error' });
+            return { success: true, importedCount: 0 };
+        }
+
+        sendMessage('import-status', { message: `扫描完成，发现 ${audioTracks.length} 首歌曲。开始导入...` });
+
+        let importedCount = 0;
+        const newPlaylistTracks = [];
+
+        for (const group of audioTracks) {
+            const originalName = path.basename(group.audio);
+            sendMessage('import-status', { message: `正在导入: ${originalName}` });
+
+            const title = path.basename(group.audio, path.extname(group.audio));
+            const safeFilename = sanitizeFilename(title);
+
+            try {
+                // 复制音频
+                const newAudioPath = path.join(CONFIG.MUSIC_DIR, `${safeFilename}${path.extname(group.audio)}`);
+                await fs.promises.copyFile(group.audio, newAudioPath);
+
+                const newTrack = {
+                    title: title,
+                    artist: '本地导入',
+                    src: `music/${path.basename(newAudioPath)}`,
+                    albumArt: '',
+                    lyrics: '',
+                    type: 'audio',
+                    pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
+                    initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, ''),
+                };
+
+                // 复制封面
+                if (group.art) {
+                    const newArtPath = path.join(CONFIG.ALBUMART_DIR, `${safeFilename}${path.extname(group.art)}`);
+                    await fs.promises.copyFile(group.art, newArtPath);
+                    newTrack.albumArt = `albumArt/${path.basename(newArtPath)}`;
+                }
+
+                // 复制歌词
+                if (group.lrc) {
+                    const newLrcPath = path.join(CONFIG.MUSIC_DIR, `${safeFilename}.lrc`);
+                    await fs.promises.copyFile(group.lrc, newLrcPath);
+                    newTrack.lyrics = `music/${path.basename(newLrcPath)}`;
+                }
+
+                newPlaylistTracks.push(newTrack);
+                importedCount++;
+            } catch (copyError) {
+                console.error(`导入文件 ${originalName} 时出错:`, copyError);
+            }
+        }
+
+        // 批量更新播放列表
+        if (newPlaylistTracks.length > 0) {
+            await updateLocalPlaylist(newPlaylistTracks);
+        }
+
+        sendMessage('import-status', { message: `导入完成！成功导入 ${importedCount} 首歌曲。`, type: 'success' });
+        return { success: true, importedCount };
+
+    } catch (error) {
+        console.error('[Import] 导入过程失败:', error);
+        sendMessage('import-status', { message: `导入失败: ${error.message}`, type: 'error' });
+        return { success: false, error: error.message };
+    }
+}
+
+
 // --- IPC Handlers (Modified and Original) ---
 
 export async function handleSearchRequest({ query, page = 1 }) {
@@ -280,7 +418,7 @@ export async function handleCacheRequest(trackData) {
         originalSrc, originalAlbumArt, originalLyrics
     };
 
-    await updateLocalPlaylist(newTrack);
+    await updateLocalPlaylist([newTrack]);
     sendMessage('new-track-added', newTrack);
 }
 
@@ -506,7 +644,7 @@ async function processAndDownloadItem(awemeDetail) {
             pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
             initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '')
         };
-        await updateLocalPlaylist(newTrack);
+        await updateLocalPlaylist([newTrack]);
         sendMessage('new-track-added', newTrack);
     } catch (e) {
         sendMessage('download-status', { message: `Failed to download item ${awemeId}: ${e.message}`, type: 'error' });
@@ -525,14 +663,19 @@ async function downloadFile(url, folder, fileName) {
     });
 }
 
-async function updateLocalPlaylist(newTrack) {
+async function updateLocalPlaylist(newTracks) {
     let playlist = [];
     try {
         if (fs.existsSync(CONFIG.PLAYLIST_PATH)) {
             playlist = JSON.parse(fs.readFileSync(CONFIG.PLAYLIST_PATH, 'utf-8'));
         }
     } catch (e) { console.warn(`[Playlist] Failed to read playlist.json`, e.message); }
-    if (playlist.some(track => track.src === newTrack.src)) return;
-    playlist.unshift(newTrack);
-    fs.writeFileSync(CONFIG.PLAYLIST_PATH, JSON.stringify(playlist, null, 2), 'utf-8');
+
+    const existingSrcs = new Set(playlist.map(track => track.src));
+    const uniqueNewTracks = newTracks.filter(track => !existingSrcs.has(track.src));
+
+    if (uniqueNewTracks.length > 0) {
+        const updatedPlaylist = [...uniqueNewTracks, ...playlist];
+        fs.writeFileSync(CONFIG.PLAYLIST_PATH, JSON.stringify(updatedPlaylist, null, 2), 'utf-8');
+    }
 }

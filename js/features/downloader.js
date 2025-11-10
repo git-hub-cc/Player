@@ -1,5 +1,5 @@
 import * as dom from '../dom.js';
-import { showToast, clearSearchResults, renderSearchResults, updateSearchResultItemStatus, renderPaginationControls } from '../ui.js';
+import { showToast, clearSearchResults, renderSearchResults, updateSearchResultItemStatus, renderPaginationControls, showConfirmationModal } from '../ui.js';
 import { playTemporaryTrack } from '../player.js';
 import { pinyin } from 'pinyin-pro';
 
@@ -46,6 +46,9 @@ function updateInputMode() {
     dom.startDownloadBtn.style.display = isUrlMode && !isUserUrl ? 'flex' : 'none';
 
     dom.searchNeteaseBtn.style.display = isUrlMode ? 'none' : 'flex';
+
+    // [修改] 导入按钮现在总是可见
+    document.getElementById('import-local-btn').style.display = 'flex';
 
     if (isUrlMode) {
         dom.panelDescription.textContent = '检测到链接，已切换至抖音下载模式。';
@@ -119,9 +122,6 @@ function requestTrackCache(trackData) {
 }
 
 
-// =========================================================================
-// 【修改】重构搜索函数以支持分页
-// =========================================================================
 /**
  * 执行在线搜索。
  * @param {string} query - 搜索关键词。
@@ -133,7 +133,6 @@ async function performSearch(query, page = 1) {
         return;
     }
 
-    // 如果是新搜索，清空结果；如果是翻页，不清空
     if (page === 1) {
         clearSearchResults();
     }
@@ -155,7 +154,6 @@ async function performSearch(query, page = 1) {
 
         currentSearchQuery = query;
         currentPage = page;
-        // API 返回的总数是歌曲数量，需要计算总页数
         totalPages = Math.ceil(total / ITEMS_PER_PAGE);
 
         renderPaginationControls(currentPage, totalPages);
@@ -165,7 +163,6 @@ async function performSearch(query, page = 1) {
         renderPaginationControls(0, 0); // 失败时隐藏分页
     }
 }
-// =========================================================================
 
 
 /**
@@ -215,9 +212,6 @@ function setupSearchResultsListener() {
     });
 }
 
-// =========================================================================
-// 【新增】设置分页控件的事件监听器
-// =========================================================================
 function setupPaginationListener() {
     dom.paginationControls.addEventListener('click', (e) => {
         const target = e.target.closest('button');
@@ -230,30 +224,78 @@ function setupPaginationListener() {
         }
     });
 }
+
 // =========================================================================
+// 【新增】本地导入按钮的事件处理器
+// =========================================================================
+async function handleLocalImportClick(event) {
+    const importBtn = event.currentTarget;
+    const allButtons = [importBtn, dom.searchNeteaseBtn, dom.startDownloadBtn, dom.downloadWorksBtn, dom.downloadLikesBtn];
+
+    allButtons.forEach(btn => btn.disabled = true);
+    importBtn.classList.add('loading');
+    updateStatus('等待选择目录...');
+
+    try {
+        const result = await window.electronAPI.selectImportDirectory();
+
+        if (!result.canceled && result.filePaths.length > 0) {
+            const dirPath = result.filePaths[0];
+            updateStatus(`已选择目录，开始导入...`);
+
+            const importResult = await window.electronAPI.startLocalImport(dirPath);
+
+            if (importResult.success) {
+                try {
+                    await showConfirmationModal(`成功导入 ${importResult.importedCount} 首歌曲！\n是否立即刷新播放器以加载新歌曲？`);
+                    window.location.reload();
+                } catch (e) {
+                    // 用户点击了取消
+                    updateStatus('导入完成。请手动刷新以查看新内容。', 'success');
+                }
+            } else {
+                showToast(`导入失败: ${importResult.error}`, 'error');
+                updateStatus(`导入失败: ${importResult.error}`, 'error');
+            }
+        } else {
+            updateStatus('已取消导入操作。');
+        }
+    } catch (error) {
+        console.error("本地导入流程出错:", error);
+        showToast(`发生错误: ${error.message}`, 'error');
+        updateStatus(`发生错误: ${error.message}`, 'error');
+    } finally {
+        allButtons.forEach(btn => btn.disabled = false);
+        importBtn.classList.remove('loading');
+    }
+}
 
 /**
- * 初始化所有下载器相关的事件监听器。
+ * 初始化所有下载器相关的事件监听器123。
  */
 export function setupDownloaderListeners() {
+    const importLocalBtn = document.getElementById('import-local-btn');
+
     dom.urlOrSearchInput.addEventListener('input', updateInputMode);
 
     dom.searchNeteaseBtn.addEventListener('click', () => {
         const query = dom.urlOrSearchInput.value.trim();
-        performSearch(query, 1); // 按钮点击总是开始新的第一页搜索
+        performSearch(query, 1);
     });
 
     dom.startDownloadBtn.addEventListener('click', (e) => sendDouyinRequest(e.currentTarget, 'single'));
     dom.downloadWorksBtn.addEventListener('click', (e) => sendDouyinRequest(e.currentTarget, 'works'));
     dom.downloadLikesBtn.addEventListener('click', (e) => sendDouyinRequest(e.currentTarget, 'likes'));
 
+    importLocalBtn.addEventListener('click', handleLocalImportClick); // [新增] 绑定事件
+
     setupSearchResultsListener();
-    setupPaginationListener(); // 【新增】初始化分页监听
+    setupPaginationListener();
 
     window.electronAPI.onDownloadStatus((status) => {
         updateStatus(status.message, status.type);
         if (status.type === 'success' || status.type === 'error') {
-            [dom.startDownloadBtn, dom.downloadWorksBtn, dom.downloadLikesBtn].forEach(btn => {
+            [dom.startDownloadBtn, dom.downloadWorksBtn, dom.downloadLikesBtn, importLocalBtn].forEach(btn => {
                 btn.disabled = false;
                 btn.classList.remove('loading');
             });
@@ -266,5 +308,10 @@ export function setupDownloaderListeners() {
         if (itemInSearchResults) {
             updateSearchResultItemStatus(itemInSearchResults, 'cached');
         }
+    });
+
+    // [新增] 监听本地导入的状态更新
+    window.electronAPI.onImportStatus((status) => {
+        updateStatus(status.message, status.type);
     });
 }
