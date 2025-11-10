@@ -12,9 +12,18 @@ let skeletonTimer = null;
 let nextBackgroundUpdateTime = 0;
 const BACKGROUND_BEAT_MULTIPLIER = 12;
 
+// 【新增】用于在加载轨道时临时存储初始跳转时间
+let _pendingSeekTime = 0;
+export function setPendingSeek(time) { _pendingSeekTime = time > 0 ? time : 0; }
+export function consumePendingSeek() {
+    const time = _pendingSeekTime;
+    _pendingSeekTime = 0;
+    return time;
+}
+
 /**
  * [MODIFIED] 初始化 Web Audio API 上下文。
- * 仅创建上下文和分析器，不在此处连接音频源。
+ * 仅在首次需要时创建。
  */
 function setupAudioContext() {
     if (state.audioContext) return;
@@ -22,65 +31,24 @@ function setupAudioContext() {
     try {
         const context = new (window.AudioContext || window.webkitAudioContext)();
         const analyserNode = context.createAnalyser();
-        analyserNode.fftSize = 256; // 频域数据点的数量 (必须是2的幂)
+        analyserNode.fftSize = 256;
 
         state.setAudioContext(context);
         state.setAnalyser(analyserNode);
 
-        // 连接操作被移至 playTrack (首次) 和 loadTrack (后续) 中，以确保连接到正确的元素
+        // 为 *当前* 的媒体元素创建一个源并连接
+        const source = context.createMediaElementSource(dom.mediaPlayer);
+        source.connect(analyserNode);
+        analyserNode.connect(context.destination);
+        state.setAudioSource(source);
+        console.log("AudioContext and visualizer source connected.");
     } catch (e) {
         console.error("Web Audio API is not supported in this browser.", e);
     }
 }
 
-/**
- * [MODIFIED] 将当前的媒体元素连接到音频分析器。
- * 此函数现在更加健壮，设计为在每次播放器元素更改时调用。
- */
-function connectAudioSource() {
-    // 仅当上下文和播放器元素都存在时才继续
-    if (!state.audioContext || !dom.mediaPlayer) return;
-    try {
-        // 在创建新源之前，断开任何现有源与图的连接
-        if (state.audioSource) {
-            state.audioSource.disconnect();
-        }
-        // 为 *当前* 的媒体元素创建一个新源
-        const source = state.audioContext.createMediaElementSource(dom.mediaPlayer);
-        source.connect(state.analyser);
-        state.analyser.connect(state.audioContext.destination);
-        // 存储新的源节点
-        state.setAudioSource(source);
-    } catch (e) {
-        // 如果尝试重复连接同一个元素，或元素状态不佳，可能会发生此错误。
-        // 作为警告记录，而不是关键错误。
-        console.warn("Could not connect audio source:", e.message);
-    }
-}
-
-/**
- * 创建一个新的 media element，替换旧的，并附加所有必要的事件监听器。
- * 这是为了解决克隆节点时事件监听器丢失的问题，并集中管理核心事件。
- */
-function _recreateMediaPlayerAndAttachListeners() {
-    const oldMediaPlayer = dom.mediaPlayer;
-    const newMediaPlayer = oldMediaPlayer.cloneNode(true);
-
-    newMediaPlayer.addEventListener('loadedmetadata', updateProgress);
-
-    newMediaPlayer.addEventListener('ended', () => {
-        const currentMode = PLAY_MODES[state.currentModeIndex];
-        if (currentMode === 'single') {
-            newMediaPlayer.currentTime = 0;
-            playTrack();
-        } else {
-            playNextTrack();
-        }
-    });
-
-    oldMediaPlayer.parentNode.replaceChild(newMediaPlayer, oldMediaPlayer);
-    dom.updateMediaPlayerReference(newMediaPlayer); // 更新全局 DOM 引用
-}
+// 【移除】connectAudioSource 函数的功能已合并到 setupAudioContext 中
+// 【移除】_recreateMediaPlayerAndAttachListeners 函数，不再克隆元素
 
 export function resetBackgroundBeatTimer() {
     nextBackgroundUpdateTime = 0;
@@ -117,37 +85,14 @@ export async function playTemporaryTrack(track) {
     resetBackgroundBeatTimer();
     state.setCurrentColorPaletteIndex(0);
 
-    // 设置新的播放状态并更新UI
     state.setTemporaryPlayingTrack(track);
     updatePlaylistUI();
-
-    // 先创建和准备好新的播放器
-    _recreateMediaPlayerAndAttachListeners();
-
-    // --- 核心修复 ---
-    // 在创建新媒体元素后，如果音频上下文已存在，则立即重新连接。
-    if (state.audioContext) {
-        connectAudioSource();
-    }
-    // --- 修复结束 ---
 
     dom.trackTitleEl.textContent = track.title || "未知标题";
     dom.trackArtistEl.textContent = track.artist || "未知艺术家";
     const artUrl = track.albumArt || DEFAULT_ART;
     dom.albumArtEl.src = artUrl;
     dom.controlAlbumArtEl.src = artUrl;
-
-    // 在设置 src 之前附加错误处理
-    dom.mediaPlayer.onerror = (e) => {
-        console.error("临时媒体加载错误:", e);
-        hideSkeleton();
-        dom.trackTitleEl.textContent = "错误";
-        dom.trackArtistEl.textContent = "无法播放在线媒体";
-        showToast(`播放失败，媒体资源可能已失效`, 'error');
-        state.clearPlayingTrackInfo();
-        updatePlaylistUI();
-    };
-    dom.mediaPlayer.oncanplay = () => { hideSkeleton(); playTrack(); };
 
     let playableSrc;
     try {
@@ -177,6 +122,9 @@ export async function playTemporaryTrack(track) {
     dom.albumArtEl.onload = () => extractAndApplyGradient(dom.albumArtEl);
     if (dom.albumArtEl.complete) extractAndApplyGradient(dom.albumArtEl);
 
+    // 【修改】直接设置 src 并加载，不再克隆或附加事件监听器
+    setPendingSeek(0); // 临时播放在线曲目从头开始
+    state.setIsPlaying(true); // 准备自动播放
     dom.mediaPlayer.src = playableSrc;
     dom.mediaPlayer.load();
 }
@@ -200,16 +148,6 @@ export async function loadTrack(trackIndex, options = {}) {
     state.setCurrentTrackIndex(trackIndex);
     const track = state.playlist[trackIndex];
 
-    // 先创建和准备好新的播放器
-    _recreateMediaPlayerAndAttachListeners();
-
-    // --- 核心修复 ---
-    // 在创建新媒体元素后，如果音频上下文已存在，则立即重新连接。
-    if (state.audioContext) {
-        connectAudioSource();
-    }
-    // --- 修复结束 ---
-
     dom.trackTitleEl.textContent = track.title || "未知标题";
     dom.trackArtistEl.textContent = track.artist || "未知艺术家";
     const artUrl = track.albumArt || DEFAULT_ART;
@@ -229,46 +167,19 @@ export async function loadTrack(trackIndex, options = {}) {
             } else if (track.lyrics.startsWith('media://')) {
                 const relativePath = track.lyrics.substring('media://'.length);
                 const result = await window.electronAPI.getLrcContent(relativePath);
-                if (result.success) {
-                    lrcText = result.data;
-                } else {
-                    throw new Error(result.error);
-                }
+                if (result.success) lrcText = result.data; else throw new Error(result.error);
             } else if (track.lyrics.startsWith('http')) {
                 const response = await fetch(track.lyrics);
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 lrcText = await response.text();
             }
-
             if (lrcText) state.setParsedLyrics(parseLRC(lrcText));
         } catch (error) {
             console.error(`无法从路径加载歌词 '${track.lyrics}':`, error);
         }
     }
-
     renderLyrics();
     updatePlaylistUI();
-
-    let loadedOnce = false;
-
-    dom.mediaPlayer.onerror = (e) => {
-        console.error("媒体加载错误:", e);
-        if (skeletonTimer) clearTimeout(skeletonTimer);
-        hideSkeleton();
-        dom.trackTitleEl.textContent = "错误";
-        dom.trackArtistEl.textContent = "无法播放此媒体";
-        dom.mainView.style.background = '';
-    };
-
-    dom.mediaPlayer.oncanplay = () => {
-        if (!loadedOnce) {
-            hideSkeleton();
-            updateProgress();
-            if (initialTime > 0) dom.mediaPlayer.currentTime = initialTime;
-            if (state.isPlaying) playTrack();
-            loadedOnce = true;
-        }
-    };
 
     if (track.type === 'audio') {
         dom.albumArtContainer.style.display = 'flex';
@@ -284,18 +195,17 @@ export async function loadTrack(trackIndex, options = {}) {
         dom.mediaPlayer.addEventListener('canplay', () => extractAndApplyGradient(dom.mediaPlayer), { once: true });
     }
 
+    // 【修改】直接设置 src 并加载，事件监听由 main.js 处理
+    setPendingSeek(initialTime);
     dom.mediaPlayer.src = playableSrc;
     dom.mediaPlayer.load();
 }
 
 function runAnimationFrame() {
     updateProgress();
-
-    // 【新增】调用音频可视化绘制函数
     if (state.isPlaying && state.analyser && ((state.playlist[state.currentTrackIndex] && state.playlist[state.currentTrackIndex].type === 'audio') || (state.temporaryPlayingTrack && state.temporaryPlayingTrack.type === 'audio'))) {
         drawVisualizer();
     }
-
     const now = performance.now();
     const currentTrack = state.temporaryPlayingTrack || state.playlist[state.currentTrackIndex];
     if (state.isPlaying && currentTrack && dom.mediaPlayer.readyState > 1 && currentTrack.beatInterval > 0) {
@@ -320,11 +230,9 @@ function runAnimationFrame() {
 export function playTrack() {
     if (!dom.mediaPlayer || !dom.mediaPlayer.src) return;
 
-    // [MODIFIED] 在首次播放时初始化 AudioContext 并进行首次连接
+    // 【修改】首次播放时初始化 AudioContext 并进行连接
     if (!state.audioContext) {
         setupAudioContext();
-        // 首次设置后，我们需要连接*当前*的播放器
-        connectAudioSource();
     }
 
     // 确保 AudioContext 在用户交互后处于 running 状态
@@ -332,20 +240,16 @@ export function playTrack() {
         state.audioContext.resume();
     }
 
-    // [REMOVED] 检查过时元素的逻辑不再需要，因为它已由轨道加载函数处理
-
     const playPromise = dom.mediaPlayer.play();
     if (playPromise !== undefined) {
         playPromise.then(() => {
             state.setIsPlaying(true);
             dom.playPauseBtn.classList.add('playing');
             dom.playPauseBtn.title = '暂停';
-
             const currentTrack = state.temporaryPlayingTrack || state.playlist[state.currentTrackIndex];
             if (currentTrack && currentTrack.beatInterval && nextBackgroundUpdateTime === 0) {
                 nextBackgroundUpdateTime = performance.now();
             }
-
             if (animationFrameId === null) runAnimationFrame();
         }).catch(e => {
             if (e.name !== 'AbortError') console.error("播放失败:", e);
@@ -367,10 +271,8 @@ export const togglePlayPause = () => state.isPlaying ? pauseTrack() : playTrack(
 function changeTrack(direction) {
     if (state.playlist.length <= 1 && !state.temporaryPlayingTrack) return;
 
-    // 如果正在播放临时曲目，切歌将恢复到播放列表
     if(state.temporaryPlayingTrack) {
         state.clearPlayingTrackInfo();
-        // 清除后如果播放列表为空，则重置；否则加载当前索引
         if (state.playlist.length === 0) {
             resetPlayerUI();
             return;
