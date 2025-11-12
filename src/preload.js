@@ -7,16 +7,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     deleteTrack: (trackData) => ipcRenderer.invoke('delete-track', trackData),
     getMusicUrl: (trackInfo) => ipcRenderer.invoke('get-music-url', trackInfo),
     getLrcContent: (relativePath) => ipcRenderer.invoke('get-lrc-content', relativePath),
-    // =========================================================================
-    // 【新增】暴露本地导入相关 API
-    // =========================================================================
     selectImportDirectory: () => ipcRenderer.invoke('select-import-directory'),
     startLocalImport: (dirPath) => ipcRenderer.invoke('start-local-import', dirPath),
-    // =========================================================================
 
     // --- 单向调用 (仅发送) ---
     startDownload: (requestData) => ipcRenderer.send('download-douyin', requestData),
     cacheTrack: (trackData) => ipcRenderer.send('cache-track', trackData),
+    // =========================================================================
+    // 【新增】暴露切换全屏的 API
+    // =========================================================================
+    toggleFullscreen: (state) => ipcRenderer.send('toggle-fullscreen', state),
+    // =========================================================================
 
     // --- 监听主进程的回调 ---
     onDownloadStatus: (callback) => {
@@ -28,12 +29,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('new-track-added', (event, ...args) => callback(...args));
         return () => ipcRenderer.removeAllListeners('new-track-added');
     },
-    // =========================================================================
-    // 【新增】监听本地导入进度的回调
-    // =========================================================================
     onImportStatus: (callback) => {
         ipcRenderer.on('import-status', (event, ...args) => callback(...args));
         return () => ipcRenderer.removeAllListeners('import-status');
+    },
+    // =========================================================================
+    // 【新增】监听全屏状态变化的回调
+    // =========================================================================
+    onFullscreenChange: (callback) => {
+        ipcRenderer.on('fullscreen-change', (event, ...args) => callback(...args));
+        return () => ipcRenderer.removeAllListeners('fullscreen-change');
     },
     // =========================================================================
 });

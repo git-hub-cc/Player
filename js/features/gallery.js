@@ -1,4 +1,4 @@
-// js/features/background-gallery.js
+// js/features/gallery.js
 
 import * as dom from '../dom.js';
 import { DEFAULT_ART } from '../config.js';
@@ -15,6 +15,9 @@ const LONG_PRESS_DURATION = 300;
 const FRICTION = 0.92;
 const IDLE_TIMEOUT = 3000;
 const DRAG_THRESHOLD = 5;
+// === [新增] 自动滚动速度 ===
+const AUTO_SCROLL_SPEED = 0.3;
+// ==========================
 
 // --- 状态变量 ---
 const state = {
@@ -34,10 +37,11 @@ const state = {
     playlistData: [],
     renderedCells: new Map(),
     idleTimer: null,
+    // === [新增] 自动滚动状态 ===
+    isAutoScrolling: false,
+    // ==========================
 };
 
-// 【新增】Debounce (防抖) 辅助函数
-// 用途：防止 resize 事件过于频繁地触发渲染，提高性能。
 function debounce(func, delay) {
     let timeout;
     return function(...args) {
@@ -140,15 +144,23 @@ function updateGallery() {
 }
 
 function animate() {
+    // === [修改] 动画循环逻辑 ===
+    // 缓动动画，使 currentPos 追赶 targetPos
     state.currentPos.x += (state.targetPos.x - state.currentPos.x) * 0.1;
     state.currentPos.y += (state.targetPos.y - state.currentPos.y) * 0.1;
 
-    if (!state.isDragging && (Math.abs(state.velocity.x) > 0.01 || Math.abs(state.velocity.y) > 0.01)) {
+    // 如果是自动滚动模式，则持续更新 targetPos
+    if (state.isAutoScrolling) {
+        state.targetPos.x -= AUTO_SCROLL_SPEED;
+    }
+    // 否则，如果是惯性滚动（非拖拽且有速度）
+    else if (!state.isDragging && (Math.abs(state.velocity.x) > 0.01 || Math.abs(state.velocity.y) > 0.01)) {
         state.velocity.x *= FRICTION;
         state.velocity.y *= FRICTION;
         state.targetPos.x += state.velocity.x;
         state.targetPos.y += state.velocity.y;
     }
+    // ==========================
 
     dom.galleryWrapper.style.transform = `translate(${state.currentPos.x}px, ${state.currentPos.y}px)`;
     const movedDistance = Math.hypot(state.targetPos.x - state.lastUpdatePos.x, state.targetPos.y - state.lastUpdatePos.y);
@@ -167,6 +179,10 @@ export function updatePlaylistData(newPlaylist) {
 }
 
 function onPointerDown(e) {
+    // === [修改] 自动滚动时禁用拖拽 ===
+    if (state.isAutoScrolling) return;
+    // ===================================
+
     e.preventDefault();
     hidePlayer();
     state.isPressing = true;
@@ -238,12 +254,26 @@ function onGalleryItemClick(e) {
     }
 }
 
-// 【新增】创建防抖后的 resize 事件处理器
 const handleResize = debounce(() => {
-    // 确保在窗口大小稳定后，强制重新计算并渲染画廊内容
     console.log("Window resized, updating gallery...");
     updateGallery();
-}, 250); // 250ms 的延迟是一个比较合适的值
+}, 250);
+
+// =========================================================================
+// 【新增】导出用于控制自动滚动的函数
+// =========================================================================
+export function startAutoScroll() {
+    state.isAutoScrolling = true;
+    state.velocity = { x: 0, y: 0 }; // 清除惯性速度
+    dom.galleryContainer.removeEventListener('mousedown', onPointerDown); // 禁用手动拖拽
+}
+
+export function stopAutoScroll() {
+    state.isAutoScrolling = false;
+    dom.galleryContainer.addEventListener('mousedown', onPointerDown); // 恢复手动拖拽
+}
+// =========================================================================
+
 
 export function init(data) {
     if (state.isInitialized || !data || data.length === 0) return;
@@ -251,7 +281,6 @@ export function init(data) {
     dom.galleryContainer.addEventListener('mousedown', onPointerDown);
     dom.galleryContainer.addEventListener('click', onGalleryItemClick);
 
-    // 【修改】在初始化时添加 resize 事件监听
     window.addEventListener('resize', handleResize);
 
     const centerOffset = {

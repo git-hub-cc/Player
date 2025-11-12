@@ -80,14 +80,20 @@ export let audioSource = null;
  */
 export let analyser = null;
 
-// =========================================================================
-// 【新增】存储当前背景渐变的主要颜色，供可视化效果使用
-// =========================================================================
 /**
  * @type {Array<Array<number>>|null} 存储当前背景的基色 [[r,g,b], [r,g,b]]
  */
 export let currentGradientColors = null;
-// =========================================================================
+
+/**
+ * @type {boolean} 是否处于演示/屏保模式。
+ */
+export let isScreensaverMode = false;
+
+/**
+ * @type {boolean} 是否处于伴奏模式（人声消除）。
+ */
+export let isInstrumentalMode = false;
 
 
 // --- State Modifying Functions ---
@@ -180,10 +186,16 @@ export function setAnalyser(analyserNode) {
     analyser = analyserNode;
 }
 
-// =========================================================================
-// 【新增】设置当前背景颜色的函数
-// =========================================================================
 export function setCurrentGradientColors(colors) {
     currentGradientColors = colors;
 }
-// =========================================================================
+
+export function setScreensaverMode(value) {
+    if (isScreensaverMode === value) return;
+    isScreensaverMode = value;
+}
+
+export function setInstrumentalMode(value) {
+    if (isInstrumentalMode === value) return;
+    isInstrumentalMode = value;
+}

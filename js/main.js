@@ -5,7 +5,7 @@ import * as state from './state.js';
 import { PLAY_MODES, desktopTourSteps, mobileTourSteps } from './config.js';
 import { normalizeKey, formatTime } from './utils.js';
 import { pinyin } from 'pinyin-pro';
-import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode, resetBackgroundBeatTimer, resetPlayerUI, consumePendingSeek, playTrack } from './player.js';
+import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode, resetBackgroundBeatTimer, resetPlayerUI, consumePendingSeek, playTrack, toggleInstrumentalMode } from './player.js';
 import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, closeActivePanels, toggleDownloadPanel, showToast, showConfirmationModal } from './ui.js';
 import { loadShortcuts, executeShortcut, setupShortcutListeners } from './features/shortcuts.js';
 import { FeatureTour } from './features/tour.js';
@@ -85,13 +85,43 @@ function makeTrackPlayable(track) {
     return playableTrack;
 }
 
+function enterScreensaverMode() {
+    if (state.isScreensaverMode) return;
+    console.log('Entering screensaver mode...');
+    state.setScreensaverMode(true);
+    window.electronAPI.toggleFullscreen(true);
+    backgroundGallery.startAutoScroll();
+    dom.playerContainer.classList.add('screensaver-active');
+
+    // 如果当前未播放，则开始播放
+    if (!state.isPlaying) {
+        if (state.playlist.length > 0) {
+            // 如果有当前曲目但已暂停，则继续播放，否则从头播放
+            if (dom.mediaPlayer.src && dom.mediaPlayer.currentTime > 0) {
+                playTrack();
+            } else {
+                loadTrack(state.currentTrackIndex, { forcePlay: true });
+            }
+        }
+    }
+}
+
+function exitScreensaverMode() {
+    if (!state.isScreensaverMode) return;
+    console.log('Exiting screensaver mode...');
+    state.setScreensaverMode(false);
+    window.electronAPI.toggleFullscreen(false);
+    backgroundGallery.stopAutoScroll();
+    dom.playerContainer.classList.remove('screensaver-active');
+}
+
 function setupEventListeners() {
     dom.playPauseBtn.addEventListener('click', togglePlayPause);
     dom.prevBtn.addEventListener('click', () => { playPrevTrack(); savePlayerState(); });
     dom.nextBtn.addEventListener('click', () => { playNextTrack(); savePlayerState(); });
     dom.modeBtn.addEventListener('click', () => { cyclePlayMode(); savePlayerState(); });
+    dom.instrumentalBtn.addEventListener('click', toggleInstrumentalMode);
 
-    // --- 【修改】将媒体元素的核心事件监听器移到此处进行统一管理 ---
     dom.mediaPlayer.addEventListener('loadedmetadata', () => {
         updateProgress();
         const seekTime = consumePendingSeek();
@@ -128,7 +158,6 @@ function setupEventListeners() {
             showToast(`播放失败: ${currentTrack.title}`, 'error');
         }
     });
-    // --- 媒体元素监听器结束 ---
 
     dom.progressBar.addEventListener('mousedown', () => state.setIsScrubbing(true));
     dom.progressBar.addEventListener('input', (e) => {
@@ -231,6 +260,17 @@ function setupEventListeners() {
 
     window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') hideContextMenu();
+
+        if (e.key === 'F11') {
+            e.preventDefault();
+            if (state.isScreensaverMode) {
+                exitScreensaverMode();
+            } else {
+                enterScreensaverMode();
+            }
+            return; // 阻止后续快捷键执行
+        }
+
         if (state.isRecordingShortcut || ['input', 'textarea'].includes(e.target.tagName.toLowerCase())) return;
         state.pressedShortcutKeys.add(normalizeKey(e.key));
         for (const actionId in state.shortcutSettings) {
@@ -261,6 +301,15 @@ function setupEventListeners() {
         updatePlaylistUI();
         backgroundGallery.updatePlaylistData(state.playlist);
     });
+
+    if (window.electronAPI && window.electronAPI.onFullscreenChange) {
+        window.electronAPI.onFullscreenChange((isFullscreen) => {
+            console.log(`Received fullscreen change from main: ${isFullscreen}`);
+            if (!isFullscreen && state.isScreensaverMode) {
+                exitScreensaverMode();
+            }
+        });
+    }
 
     setupDownloaderListeners();
     setupShortcutListeners();
