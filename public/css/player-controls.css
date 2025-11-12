@@ -155,3 +155,7 @@
     color: var(--primary-color);
 }
 .mobile-only-btn { display: none; }
+
+#instrumental-btn.active {
+    color: var(--primary-color);
+}

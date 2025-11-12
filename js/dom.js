@@ -53,6 +53,8 @@ export let contextMenu = document.getElementById('custom-context-menu');
 export let templatesContainer = document.getElementById('templates');
 export let docElement = document.documentElement;
 
+export let instrumentalBtn = document.getElementById('instrumental-btn');
+
 // 故障效果元素
 export let glitchOverlay = document.getElementById('glitch-overlay');
 export let glitchLinesGroup = document.getElementById('glitch-lines');

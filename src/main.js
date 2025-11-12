@@ -1,6 +1,6 @@
 // src/main.js
 
-import { app, BrowserWindow, ipcMain, protocol, Menu, dialog } from 'electron'; // [修改] 引入 dialog
+import { app, BrowserWindow, ipcMain, protocol, Menu, dialog } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import * as MainApi from './backend/main-api.js';
@@ -36,6 +36,17 @@ const createWindow = () => {
     if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
         mainWindow.webContents.openDevTools();
     }
+
+    // =========================================================================
+    // 【新增】监听窗口的全屏事件，并通知渲染进程
+    // =========================================================================
+    mainWindow.on('enter-full-screen', () => {
+        mainWindow.webContents.send('fullscreen-change', true);
+    });
+    mainWindow.on('leave-full-screen', () => {
+        mainWindow.webContents.send('fullscreen-change', false);
+    });
+    // =========================================================================
 };
 
 app.whenReady().then(async () => {
@@ -64,11 +75,17 @@ app.whenReady().then(async () => {
     ipcMain.on('download-douyin', (event, data) => MainApi.handleDownloadRequest(data));
     ipcMain.on('cache-track', (event, trackData) => MainApi.handleCacheRequest(trackData));
 
-    // =========================================================================
-    // 【新增】注册用于本地导入的 IPC 处理器
-    // =========================================================================
     ipcMain.handle('select-import-directory', () => MainApi.handleSelectDirectory());
     ipcMain.handle('start-local-import', (event, dirPath) => MainApi.handleLocalImport(dirPath));
+
+    // =========================================================================
+    // 【新增】监听渲染进程的全屏切换请求
+    // =========================================================================
+    ipcMain.on('toggle-fullscreen', (event, state) => {
+        if (mainWindow) {
+            mainWindow.setFullScreen(state);
+        }
+    });
     // =========================================================================
 
     createWindow();

@@ -7,10 +7,23 @@ import { formatTime, parseLRC } from './utils.js';
 import { renderLyrics, syncLyrics, extractAndApplyGradient, showSkeleton, hideSkeleton, updatePlaylistUI, updateModeButton, showToast, drawVisualizer } from './ui.js';
 import { resolvePlayableUrl } from './features/downloader.js';
 
+// --- [新增] 音频效果相关的节点 ---
+let splitterNode = null;
+let gainNodeLeft = null;
+let gainNodeRight = null;
+
 let animationFrameId = null;
 let skeletonTimer = null;
 let nextBackgroundUpdateTime = 0;
 const BACKGROUND_BEAT_MULTIPLIER = 12;
+
+// 【新增】一个辅助函数来清空可视化画布
+function clearVisualizer() {
+    if (dom.audioVisualizer) {
+        const ctx = dom.audioVisualizer.getContext('2d');
+        ctx.clearRect(0, 0, dom.audioVisualizer.width, dom.audioVisualizer.height);
+    }
+}
 
 // 【新增】用于在加载轨道时临时存储初始跳转时间
 let _pendingSeekTime = 0;
@@ -39,6 +52,7 @@ function setupAudioContext() {
         // 为 *当前* 的媒体元素创建一个源并连接
         const source = context.createMediaElementSource(dom.mediaPlayer);
         source.connect(analyserNode);
+        // 【修改】初始连接直接到 destination
         analyserNode.connect(context.destination);
         state.setAudioSource(source);
         console.log("AudioContext and visualizer source connected.");
@@ -47,8 +61,95 @@ function setupAudioContext() {
     }
 }
 
-// 【移除】connectAudioSource 函数的功能已合并到 setupAudioContext 中
-// 【移除】_recreateMediaPlayerAndAttachListeners 函数，不再克隆元素
+// =========================================================================
+// 【新增】设置伴奏模式的音频节点
+// =========================================================================
+function setupInstrumentalNodes() {
+    if (!state.audioContext || splitterNode) return; // 确保只初始化一次
+
+    // 如果音频源是立体声的
+    if (state.audioSource.channelCount >= 2) {
+        splitterNode = state.audioContext.createChannelSplitter(2);
+        gainNodeLeft = state.audioContext.createGain();
+        gainNodeRight = state.audioContext.createGain();
+
+        // 默认连接 (备用，但我们直接切换)
+        gainNodeLeft.gain.value = 1;
+        gainNodeRight.gain.value = 1;
+
+        console.log('[AudioEffects] Instrumental nodes created.');
+    } else {
+        console.warn('[AudioEffects] Source is not stereo, instrumental mode will be ineffective.');
+        showToast('当前音源为单声道，伴奏模式可能无效', 'info');
+    }
+}
+
+// =========================================================================
+// 【新增】切换伴奏模式的核心函数
+// =========================================================================
+export function toggleInstrumentalMode() {
+    state.setInstrumentalMode(!state.isInstrumentalMode);
+    dom.instrumentalBtn.classList.toggle('active', state.isInstrumentalMode);
+
+    if (!state.audioContext) {
+        showToast('音频引擎未初始化', 'error');
+        return;
+    }
+
+    setupInstrumentalNodes();
+
+    const source = state.audioSource;
+    const analyser = state.analyser;
+    const destination = state.audioContext.destination;
+
+    // 断开现有连接以重新配置
+    source.disconnect();
+    analyser.disconnect();
+    if (splitterNode) {
+        splitterNode.disconnect();
+        gainNodeLeft.disconnect();
+        gainNodeRight.disconnect();
+    }
+
+    if (state.isInstrumentalMode && splitterNode) {
+        // --- 开启伴奏模式 ---
+        console.log('[AudioEffects] Enabling Instrumental Mode.');
+        showToast('伴奏模式：开启');
+
+        // 反转右声道相位
+        gainNodeRight.gain.value = -1;
+        gainNodeLeft.gain.value = 1; // 确保左声道正常
+
+        // 音频流: Source -> Analyser -> Splitter -> (Gain L/R) -> Destination
+        source.connect(analyser);
+        analyser.connect(splitterNode);
+
+        splitterNode.connect(gainNodeLeft, 0);  // 左声道
+        splitterNode.connect(gainNodeRight, 1); // 右声道
+
+        gainNodeLeft.connect(destination);
+        gainNodeRight.connect(destination);
+
+    } else {
+        // --- 关闭伴奏模式 ---
+        console.log('[AudioEffects] Disabling Instrumental Mode.');
+        if (state.isInstrumentalMode && !splitterNode) {
+            showToast('伴奏模式：关闭 (音源非立体声)', 'info');
+        } else {
+            showToast('伴奏模式：关闭');
+        }
+
+        // 恢复正常连接: Source -> Analyser -> Destination
+        source.connect(analyser);
+        analyser.connect(destination);
+
+        // 如果之前开启了，重置状态
+        if (state.isInstrumentalMode) {
+            state.setInstrumentalMode(false);
+            dom.instrumentalBtn.classList.remove('active');
+        }
+    }
+}
 
 export function resetBackgroundBeatTimer() {
     nextBackgroundUpdateTime = 0;
@@ -69,6 +170,7 @@ export function resetPlayerUI() {
     state.setParsedLyrics([]);
     renderLyrics();
     hideSkeleton();
+    clearVisualizer();
     // 清除播放信息并更新UI以移除高亮
     state.clearPlayingTrackInfo();
     updatePlaylistUI();
@@ -193,6 +295,7 @@ export async function loadTrack(trackIndex, options = {}) {
         dom.mediaPlayer.style.display = 'block';
         dom.mainView.style.background = '';
         dom.mediaPlayer.addEventListener('canplay', () => extractAndApplyGradient(dom.mediaPlayer), { once: true });
+        clearVisualizer();
     }
 
     // 【修改】直接设置 src 并加载，事件监听由 main.js 处理
@@ -203,7 +306,8 @@ export async function loadTrack(trackIndex, options = {}) {
 
 function runAnimationFrame() {
     updateProgress();
-    if (state.isPlaying && state.analyser && ((state.playlist[state.currentTrackIndex] && state.playlist[state.currentTrackIndex].type === 'audio') || (state.temporaryPlayingTrack && state.temporaryPlayingTrack.type === 'audio'))) {
+    const currentTrackForVisualizer = state.temporaryPlayingTrack || state.playlist[state.currentTrackIndex];
+    if (state.isPlaying && state.analyser && currentTrackForVisualizer && currentTrackForVisualizer.type === 'audio') {
         drawVisualizer();
     }
     const now = performance.now();
