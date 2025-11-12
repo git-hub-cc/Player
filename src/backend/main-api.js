@@ -2,26 +2,31 @@
 
 import path from 'path';
 import fs from 'fs';
-import { BrowserWindow, dialog } from 'electron'; // [修改] 引入 dialog
+// =========================================================================
+// 【修改】从 electron 导入 shell 模块
+// =========================================================================
+import { BrowserWindow, dialog, shell } from 'electron';
 import axios from 'axios';
 import { pinyin } from 'pinyin-pro';
 import { Buffer } from 'buffer';
-import { createHash } from 'crypto'; // For generating cache filenames
+import { createHash } from 'crypto';
 
 import pluginManager from './plugins/manager.js';
 
-// --- Caching Configuration ---
+// --- 配置 ---
 const CACHE_EXPIRATION_DAYS = 7;
 const BACKGROUND_SEARCH_PAGE_DEPTH = 10;
-const ITEMS_PER_PAGE = 10; // Corresponds to the API's page size
-const ONGOING_CACHE_BUILDS = new Set(); // Prevents multiple concurrent builds for the same query
+const ITEMS_PER_PAGE = 10;
+
+// --- 状态管理 ---
+const ONGOING_CACHE_BUILDS = new Set();
+const INITIAL_RESPONSE_PROMISES = new Map();
 
 let appInstance;
 let getWebContents;
-
 let CONFIG = {};
 
-// 应用启动时由 main.js 调用一次
+// --- 初始化 ---
 export function initialize(app, webContentsProvider) {
     appInstance = app;
     getWebContents = webContentsProvider;
@@ -33,7 +38,7 @@ export function initialize(app, webContentsProvider) {
         ALBUMART_DIR: path.join(userDataPath, 'media', 'albumArt'),
         MUSIC_DIR: path.join(userDataPath, 'media', 'music'),
         PLUGINS_DIR: path.join(userDataPath, 'plugins'),
-        SEARCH_CACHE_DIR: path.join(userDataPath, 'search-cache'), // Cache directory
+        SEARCH_CACHE_DIR: path.join(userDataPath, 'search-cache'),
         STATE_PATH: path.join(userDataPath, 'state.json'),
         PLAYLIST_PATH: path.join(userDataPath, 'media', 'playlist.json'),
         HEADLESS_MODE: true,
@@ -45,7 +50,7 @@ export function initialize(app, webContentsProvider) {
         CONFIG.ALBUMART_DIR,
         CONFIG.MUSIC_DIR,
         CONFIG.PLUGINS_DIR,
-        CONFIG.SEARCH_CACHE_DIR // Ensure cache directory is created
+        CONFIG.SEARCH_CACHE_DIR
     ].forEach(dir => {
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     });
@@ -56,8 +61,7 @@ export function initialize(app, webContentsProvider) {
     console.log(`[MainAPI] Search cache stored at: ${CONFIG.SEARCH_CACHE_DIR}`);
 }
 
-// --- Helper Functions (Unchanged) ---
-
+// --- 辅助函数 ---
 function sendMessage(type, data) {
     const wc = getWebContents();
     if (wc && !wc.isDestroyed()) {
@@ -74,30 +78,18 @@ function sanitizeFilename(filename) {
         .trim();
 }
 
-// --- New Caching Helper Functions ---
-
-/**
- * Generates an MD5 hash for a query to be used as a cache filename.
- * @param {string} query The search query.
- * @returns {string} The MD5 hash.
- */
 function getCacheKey(query) {
     const normalizedQuery = query.trim().toLowerCase();
     return createHash('md5').update(normalizedQuery).digest('hex');
 }
 
-/**
- * Validates a URL by making a HEAD request.
- * @param {string} url The URL to validate.
- * @returns {Promise<boolean>} True if the URL is valid, false otherwise.
- */
 async function validateUrl(url) {
     if (!url || !url.startsWith('http')) {
         return false;
     }
     try {
         const response = await axios.head(url, {
-            timeout: 5000, // 5-second timeout
+            timeout: 5000,
             maxRedirects: 5,
             headers: { 'User-Agent': 'Mozilla/5.0' }
         });
@@ -107,72 +99,7 @@ async function validateUrl(url) {
     }
 }
 
-/**
- * Fetches and validates all results for a query in the background and saves them to a cache file.
- * This function is designed to be "fire-and-forget".
- * @param {string} query The search query.
- */
-async function buildCacheForQuery(query) {
-    const cacheKey = getCacheKey(query);
-    if (ONGOING_CACHE_BUILDS.has(cacheKey)) {
-        console.log(`[Cache] Build for '${query}' is already in progress. Skipping.`);
-        return;
-    }
-
-    ONGOING_CACHE_BUILDS.add(cacheKey);
-    console.log(`[Cache] Starting background cache build for '${query}'...`);
-
-    try {
-        const validatedResults = [];
-
-        for (let page = 1; page <= BACKGROUND_SEARCH_PAGE_DEPTH; page++) {
-            console.log(`[Cache] Fetching page ${page}/${BACKGROUND_SEARCH_PAGE_DEPTH} for '${query}'...`);
-            const params = new URLSearchParams({ input: query, filter: 'name', page: page.toString(), type: 'netease' });
-            const response = await axios.post(CONFIG.ONLINE_SEARCH_API, params, {
-                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-                timeout: 10000
-            });
-
-            const tracks = response.data?.data?.list;
-            if (!tracks || tracks.length === 0) {
-                console.log(`[Cache] No more results for '${query}' at page ${page}. Stopping build.`);
-                break;
-            }
-
-            const validationPromises = tracks.map(track => validateUrl(track.url));
-            const validationResults = await Promise.allSettled(validationPromises);
-
-            validationResults.forEach((result, index) => {
-                if (result.status === 'fulfilled' && result.value === true) {
-                    validatedResults.push({ ...tracks[index], source: 'netease' });
-                }
-            });
-        }
-
-        if (validatedResults.length > 0) {
-            const cacheFilePath = path.join(CONFIG.SEARCH_CACHE_DIR, `${cacheKey}.json`);
-            const cacheData = {
-                timestamp: Date.now(),
-                results: validatedResults,
-            };
-            await fs.promises.writeFile(cacheFilePath, JSON.stringify(cacheData)); // No need for pretty print
-            console.log(`[Cache] Successfully built and saved cache for '${query}'. Found ${validatedResults.length} valid tracks.`);
-        } else {
-            console.log(`[Cache] No valid tracks found for '${query}' after scanning ${BACKGROUND_SEARCH_PAGE_DEPTH} pages.`);
-        }
-    } catch (error) {
-        console.error(`[Cache] Error during background cache build for '${query}':`, error.message);
-    } finally {
-        ONGOING_CACHE_BUILDS.delete(cacheKey);
-    }
-}
-
-// --- [新增] 本地导入相关函数 ---
-
-/**
- * 弹出系统对话框让用户选择一个目录。
- * @returns {Promise<Electron.OpenDialogReturnValue>}
- */
+// --- 本地导入函数 ---
 export async function handleSelectDirectory() {
     const mainWindow = BrowserWindow.getAllWindows()[0];
     return dialog.showOpenDialog(mainWindow, {
@@ -180,11 +107,6 @@ export async function handleSelectDirectory() {
     });
 }
 
-/**
- * 递归扫描目录，智能分组音频、歌词和封面文件。
- * @param {string} dirPath - 要扫描的目录路径。
- * @returns {Promise<Map<string, {audio: string|null, lrc: string|null, art: string|null}>>}
- */
 async function scanDirectoryRecursive(dirPath) {
     const fileGroups = new Map();
     const audioExt = ['.mp3', '.flac', '.wav', '.m4a', '.ogg'];
@@ -221,10 +143,6 @@ async function scanDirectoryRecursive(dirPath) {
     return fileGroups;
 }
 
-/**
- * 处理本地文件导入流程。
- * @param {string} directoryPath - 用户选择的目录路径。
- */
 export async function handleLocalImport(directoryPath) {
     if (!directoryPath) {
         return { success: false, error: 'No directory provided.' };
@@ -253,29 +171,23 @@ export async function handleLocalImport(directoryPath) {
             const safeFilename = sanitizeFilename(title);
 
             try {
-                // 复制音频
                 const newAudioPath = path.join(CONFIG.MUSIC_DIR, `${safeFilename}${path.extname(group.audio)}`);
                 await fs.promises.copyFile(group.audio, newAudioPath);
 
                 const newTrack = {
-                    title: title,
-                    artist: '本地导入',
+                    title: title, artist: '本地导入',
                     src: `music/${path.basename(newAudioPath)}`,
-                    albumArt: '',
-                    lyrics: '',
-                    type: 'audio',
+                    albumArt: '', lyrics: '', type: 'audio',
                     pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
                     initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, ''),
                 };
 
-                // 复制封面
                 if (group.art) {
                     const newArtPath = path.join(CONFIG.ALBUMART_DIR, `${safeFilename}${path.extname(group.art)}`);
                     await fs.promises.copyFile(group.art, newArtPath);
                     newTrack.albumArt = `albumArt/${path.basename(newArtPath)}`;
                 }
 
-                // 复制歌词
                 if (group.lrc) {
                     const newLrcPath = path.join(CONFIG.MUSIC_DIR, `${safeFilename}.lrc`);
                     await fs.promises.copyFile(group.lrc, newLrcPath);
@@ -284,15 +196,10 @@ export async function handleLocalImport(directoryPath) {
 
                 newPlaylistTracks.push(newTrack);
                 importedCount++;
-            } catch (copyError) {
-                console.error(`导入文件 ${originalName} 时出错:`, copyError);
-            }
+            } catch (copyError) { console.error(`导入文件 ${originalName} 时出错:`, copyError); }
         }
 
-        // 批量更新播放列表
-        if (newPlaylistTracks.length > 0) {
-            await updateLocalPlaylist(newPlaylistTracks);
-        }
+        if (newPlaylistTracks.length > 0) await updateLocalPlaylist(newPlaylistTracks);
 
         sendMessage('import-status', { message: `导入完成！成功导入 ${importedCount} 首歌曲。`, type: 'success' });
         return { success: true, importedCount };
@@ -303,63 +210,142 @@ export async function handleLocalImport(directoryPath) {
         return { success: false, error: error.message };
     }
 }
+// =========================================================================
+// 【新增】处理打开媒体目录请求的函数
+// =========================================================================
+export function handleOpenMediaFolder() {
+    if (CONFIG.MEDIA_ROOT) {
+        shell.openPath(CONFIG.MEDIA_ROOT).catch(err => {
+            console.error(`[Folder] 无法打开媒体目录: ${CONFIG.MEDIA_ROOT}`, err);
+        });
+    } else {
+        console.error('[Folder] 媒体目录路径未初始化。');
+    }
+}
+// =========================================================================
 
-
-// --- IPC Handlers (Modified and Original) ---
-
+// --- 核心 IPC 处理函数 ---
 export async function handleSearchRequest({ query, page = 1 }) {
-    console.log(`[Search] Received request: query='${query}', page=${page}`);
+    console.log(`[Search] Request: query='${query}', page=${page}`);
     const cacheKey = getCacheKey(query);
     const cacheFilePath = path.join(CONFIG.SEARCH_CACHE_DIR, `${cacheKey}.json`);
 
     try {
         if (fs.existsSync(cacheFilePath)) {
-            const cacheContent = await fs.promises.readFile(cacheFilePath, 'utf-8');
-            const cacheData = JSON.parse(cacheContent);
-            const cacheAgeDays = (Date.now() - cacheData.timestamp) / (1000 * 60 * 60 * 24);
+            const stats = await fs.promises.stat(cacheFilePath);
+            const cacheAgeDays = (Date.now() - stats.mtime.getTime()) / (1000 * 60 * 60 * 24);
 
             if (cacheAgeDays < CACHE_EXPIRATION_DAYS) {
-                console.log(`[Cache] HIT for query '${query}'. Serving from cache.`);
+                console.log(`[Cache] HIT for '${query}'. Serving from cache.`);
+                const cacheContent = await fs.promises.readFile(cacheFilePath, 'utf-8');
+                const cacheData = JSON.parse(cacheContent);
                 const total = cacheData.results.length;
                 const startIndex = (page - 1) * ITEMS_PER_PAGE;
                 const paginatedResults = cacheData.results.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-
                 return { success: true, data: { results: paginatedResults, total } };
             } else {
-                console.log(`[Cache] STALE for query '${query}'. Deleting old cache.`);
-                await fs.promises.unlink(cacheFilePath).catch(e => console.error(`Failed to delete stale cache: ${e.message}`));
+                console.log(`[Cache] STALE for '${query}'. Deleting old cache.`);
+                await fs.promises.unlink(cacheFilePath).catch(e => console.error(`[Cache] Failed to delete stale cache: ${e.message}`));
             }
         }
-    } catch (error) {
-        console.error(`[Cache] Error reading cache for '${query}':`, error.message);
+    } catch (error) { console.error(`[Cache] Error reading cache for '${query}':`, error.message); }
+
+    // --- 缓存未命中或已过期 ---
+    if (page > 1) {
+        // 如果用户在缓存建立前请求后续页面，返回空结果
+        console.log(`[Search] Cache MISS for '${query}', page ${page}. Waiting for cache build.`);
+        return { success: true, data: { results: [], total: 0 } };
     }
 
-    // --- Cache MISS or STALE ---
-    console.log(`[Cache] MISS for query '${query}'. Performing live search and triggering background build.`);
+    // --- 首次搜索 (page === 1) ---
+    console.log(`[Search] Cache MISS for '${query}'. Triggering live search and background build.`);
+
+    if (ONGOING_CACHE_BUILDS.has(cacheKey)) {
+        console.log(`[Cache] Build for '${query}' is already in progress. Awaiting initial response.`);
+    } else {
+        ONGOING_CACHE_BUILDS.add(cacheKey);
+
+        let promiseResolver;
+        const initialResponsePromise = new Promise((resolve, reject) => {
+            promiseResolver = { resolve, reject };
+        });
+        INITIAL_RESPONSE_PROMISES.set(cacheKey, { promise: initialResponsePromise, resolver: promiseResolver });
+
+        // == 启动后台缓存构建任务 (不使用 await) ==
+        (async () => {
+            console.log(`[Cache] Starting background build for '${query}'...`);
+            const allValidatedResults = [];
+            let firstPageTotal = 0;
+            let initialResponseSent = false;
+
+            try {
+                for (let currentPage = 1; currentPage <= BACKGROUND_SEARCH_PAGE_DEPTH; currentPage++) {
+                    const params = new URLSearchParams({ input: query, filter: 'name', page: currentPage.toString(), type: 'netease' });
+                    const response = await axios.post(CONFIG.ONLINE_SEARCH_API, params, {
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                        timeout: 30000
+                    });
+
+                    if (currentPage === 1) firstPageTotal = response.data?.data?.total || 0;
+
+                    const tracks = response.data?.data?.list;
+                    if (!tracks || tracks.length === 0) {
+                        console.log(`[Cache] No more results for '${query}' at page ${currentPage}. Stopping build.`);
+                        break;
+                    }
+
+                    const validationPromises = tracks.map(track => validateUrl(track.url));
+                    const validationResults = await Promise.allSettled(validationPromises);
+                    validationResults.forEach((result, index) => {
+                        if (result.status === 'fulfilled' && result.value === true) {
+                            allValidatedResults.push({ ...tracks[index], source: 'netease' });
+                        }
+                    });
+
+                    if (!initialResponseSent && allValidatedResults.length >= ITEMS_PER_PAGE) {
+                        INITIAL_RESPONSE_PROMISES.get(cacheKey)?.resolver.resolve({
+                            results: allValidatedResults.slice(0, ITEMS_PER_PAGE),
+                            total: firstPageTotal,
+                        });
+                        initialResponseSent = true;
+                        console.log(`[Cache] Sent initial response for '${query}'.`);
+                    }
+                }
+
+                if (!initialResponseSent) {
+                    INITIAL_RESPONSE_PROMISES.get(cacheKey)?.resolver.resolve({
+                        results: allValidatedResults,
+                        total: firstPageTotal,
+                    });
+                    initialResponseSent = true;
+                }
+
+                if (allValidatedResults.length > 0) {
+                    await fs.promises.writeFile(cacheFilePath, JSON.stringify({
+                        timestamp: Date.now(),
+                        results: allValidatedResults,
+                    }));
+                    console.log(`[Cache] Successfully built cache for '${query}' with ${allValidatedResults.length} tracks.`);
+                }
+
+            } catch (err) {
+                console.error(`[Cache] Background build for '${query}' failed:`, err.message);
+                if (!initialResponseSent) {
+                    INITIAL_RESPONSE_PROMISES.get(cacheKey)?.resolver.reject(err);
+                }
+            } finally {
+                ONGOING_CACHE_BUILDS.delete(cacheKey);
+                INITIAL_RESPONSE_PROMISES.delete(cacheKey);
+            }
+        })();
+    }
 
     try {
-        // Immediately fetch the requested page for the user
-        const params = new URLSearchParams({ input: query, filter: 'name', page: page.toString(), type: 'netease' });
-        const response = await axios.post(CONFIG.ONLINE_SEARCH_API, params, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-        });
-
-        if (response.data.code !== 200 || !response.data.data) {
-            throw new Error(response.data.error || 'API returned invalid data format');
-        }
-
-        // Fire-and-forget the background cache build process if it's the first page.
-        if (page === 1) {
-            buildCacheForQuery(query);
-        }
-
-        const searchResults = response.data.data.list ? response.data.data.list.map(track => ({ ...track, source: 'netease' })) : [];
-        const totalResults = response.data.data.total || 0;
-
-        return { success: true, data: { results: searchResults, total: totalResults } };
-
+        const promiseWrapper = INITIAL_RESPONSE_PROMISES.get(cacheKey);
+        if (!promiseWrapper) throw new Error("Promise for initial response was not found.");
+        const { results, total } = await promiseWrapper.promise;
+        return { success: true, data: { results, total } };
     } catch (error) {
-        console.error(`[Search] Live search failed for '${query}':`, error);
         return { success: false, error: error.message };
     }
 }
@@ -385,12 +371,9 @@ export async function handleCacheRequest(trackData) {
     const safeFilename = sanitizeFilename(`${artist} - ${title}`);
     const downloadPromises = [];
 
-    if (originalSrc) {
-        downloadPromises.push(downloadFile(originalSrc, CONFIG.MUSIC_DIR, `${safeFilename}.mp3`));
-    }
-    if (originalAlbumArt) {
-        downloadPromises.push(downloadFile(originalAlbumArt, CONFIG.ALBUMART_DIR, `${safeFilename}.jpg`));
-    }
+    if (originalSrc) downloadPromises.push(downloadFile(originalSrc, CONFIG.MUSIC_DIR, `${safeFilename}.mp3`));
+    if (originalAlbumArt) downloadPromises.push(downloadFile(originalAlbumArt, CONFIG.ALBUMART_DIR, `${safeFilename}.jpg`));
+
     const lyricsPath = path.join(CONFIG.MUSIC_DIR, `${safeFilename}.lrc`);
     if (originalLyrics) {
         if (originalLyrics.startsWith('data:text/plain,')) {
@@ -412,7 +395,7 @@ export async function handleCacheRequest(trackData) {
     const newTrack = {
         title, artist,
         src: `music/${safeFilename}.mp3`,
-        albumArt: `albumArt/${safeFilename}.jpg`,
+        albumArt: fs.existsSync(path.join(CONFIG.ALBUMART_DIR, `${safeFilename}.jpg`)) ? `albumArt/${safeFilename}.jpg` : "",
         lyrics: fs.existsSync(lyricsPath) ? `music/${safeFilename}.lrc` : "",
         type: "audio", pinyin: pinyinStr, initials,
         originalSrc, originalAlbumArt, originalLyrics
@@ -449,48 +432,27 @@ export async function handleDeleteTrack({ src: relativeSrc }) {
 }
 
 export async function handleGetMusicUrl(trackInfo) {
-    if (!trackInfo) {
-        return { success: false, error: 'Failed to get playback URL: No track info provided.' };
-    }
-
+    if (!trackInfo) return { success: false, error: 'Failed to get playback URL: No track info provided.' };
     console.log(`[URL Resolver] Requesting URL for: ${trackInfo.title}`);
-
     try {
         if (trackInfo.src && trackInfo.src.startsWith('http')) {
             console.log(`[URL Resolver] Proxying initial URL: ${trackInfo.src}`);
-            const response = await axios.head(trackInfo.src, {
-                maxRedirects: 10,
-                timeout: 15000,
-                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' }
-            });
+            const response = await axios.head(trackInfo.src, { maxRedirects: 10, timeout: 15000, headers: { 'User-Agent': 'Mozilla/5.0' } });
             const finalUrl = response.request.res.responseUrl;
             if (!finalUrl) throw new Error('Could not resolve final media address.');
             console.log(`[URL Resolver] Success, final URL: ${finalUrl}`);
             return { success: true, url: finalUrl };
         }
-
         const source = trackInfo.source;
-        if (!source) {
-            throw new Error('Track info is missing "source" field, cannot resolve with plugin.');
-        }
-
+        if (!source) throw new Error('Track info is missing "source" field.');
         const activePlugin = pluginManager.getActivePlugin();
-        if (!activePlugin) {
-            throw new Error('No active music plugin to handle this request.');
-        }
-
-        if (!activePlugin.supportedSources[source]) {
-            throw new Error(`Active plugin "${activePlugin.pluginInfo.name}" does not support "${source}" source.`);
-        }
-
+        if (!activePlugin) throw new Error('No active music plugin.');
+        if (!activePlugin.supportedSources[source]) throw new Error(`Active plugin does not support "${source}" source.`);
         console.log(`[URL Resolver] Using plugin "${activePlugin.pluginInfo.name}" to resolve...`);
         const url = await activePlugin.getMusicUrl(trackInfo, '128k');
-
         const response = await axios.head(url, { maxRedirects: 10, timeout: 15000 });
         const finalUrl = response.request.res.responseUrl;
-
         return { success: true, url: finalUrl };
-
     } catch (e) {
         const errorMessage = e.response ? `HTTP ${e.response.status}` : e.message;
         console.error(`[URL Resolver] Failed:`, errorMessage);
@@ -501,38 +463,25 @@ export async function handleGetMusicUrl(trackInfo) {
 export async function handleDownloadRequest(requestData) {
     let url, downloadType;
     if (typeof requestData === 'string') {
-        url = requestData;
-        downloadType = 'single';
+        url = requestData; downloadType = 'single';
     } else {
-        url = requestData.url;
-        downloadType = requestData.downloadType;
+        url = requestData.url; downloadType = requestData.downloadType;
     }
-
     const match = url.match(/(https?:\/\/[^\s]+)|(MS4wLjABAAAA[^\s]+)/);
     if (!match) return sendMessage('download-status', { message: 'No valid URL or user ID found.', type: 'error' });
-
     let startUrl = match[0];
     if (startUrl.startsWith('MS4wLjAB')) startUrl = `https://www.douyin.com/user/${startUrl}`;
-
     sendMessage('download-status', { message: `Target extracted: ${startUrl}` });
-    if (downloadType === 'single') {
-        await downloadSingleVideo(startUrl);
-    } else {
-        sendMessage('download-status', { message: `Bulk download (${downloadType}) is not yet implemented.`, type: 'error' });
-    }
+    if (downloadType === 'single') await downloadSingleVideo(startUrl);
+    else sendMessage('download-status', { message: `Bulk download (${downloadType}) is not yet implemented.`, type: 'error' });
 }
 
 export async function handleGetLrcContent(relativePath) {
-    if (!relativePath) {
-        return { success: false, error: 'No lyrics file path provided.' };
-    }
+    if (!relativePath) return { success: false, error: 'No lyrics file path provided.' };
     const decodedPath = decodeURIComponent(relativePath);
     const fullPath = path.join(CONFIG.MEDIA_ROOT, decodedPath);
-
     try {
-        if (!fs.existsSync(fullPath)) {
-            throw new Error(`File not found: ${fullPath}`);
-        }
+        if (!fs.existsSync(fullPath)) throw new Error(`File not found: ${fullPath}`);
         const content = await fs.promises.readFile(fullPath, 'utf-8');
         return { success: true, data: content };
     } catch (e) {
@@ -541,114 +490,68 @@ export async function handleGetLrcContent(relativePath) {
     }
 }
 
-
-// --- Unchanged Functions ---
-
 async function downloadSingleVideo(videoUrl) {
     sendMessage('download-status', { message: 'Launching headless browser...' });
-
-    const win = new BrowserWindow({
-        show: false,
-        webPreferences: {
-            partition: `persist:douyin_session_${Date.now()}`,
-            preload: path.join(__dirname, 'backend', 'douyin-preload.js'),
-            contextIsolation: true,
-            sandbox: true,
-        },
-    });
-
+    const win = new BrowserWindow({ show: false, webPreferences: { partition: `persist:douyin_session_${Date.now()}`, preload: path.join(__dirname, 'backend', 'douyin-preload.js'), contextIsolation: true, sandbox: true } });
     win.webContents.setAudioMuted(true);
-
     try {
         const apiResponsePromise = new Promise(async (resolve, reject) => {
-            const timeout = setTimeout(() => {
-                reject(new Error('API response timed out (60 seconds)'));
-            }, 60000);
-
+            const timeout = setTimeout(() => reject(new Error('API response timed out')), 60000);
             let hasAttached = false;
-
             win.webContents.on('did-finish-load', async () => {
                 if (hasAttached || win.isDestroyed()) return;
                 hasAttached = true;
-
                 try {
                     const debuggerApi = win.webContents.debugger;
-                    await debuggerApi.attach('1.3');
-                    await debuggerApi.sendCommand('Network.enable');
+                    await debuggerApi.attach('1.3'); await debuggerApi.sendCommand('Network.enable');
                     sendMessage('download-status', { message: 'Page loaded, listening for network data...' });
-
                     debuggerApi.on('message', async (event, method, params) => {
                         if (method === 'Network.responseReceived' && params.response.url.includes('aweme/v1/web/aweme/detail/')) {
                             try {
                                 const responseBody = await debuggerApi.sendCommand('Network.getResponseBody', { requestId: params.requestId });
-                                const jsonData = JSON.parse(responseBody.body);
-                                clearTimeout(timeout);
-                                resolve(jsonData);
-                            } catch (err) {
-                                if (!err.message.includes('No resource with given identifier found')) {
-                                    reject(err);
-                                }
-                            }
+                                clearTimeout(timeout); resolve(JSON.parse(responseBody.body));
+                            } catch (err) { if (!err.message.includes('No resource with given identifier found')) reject(err); }
                         }
                     });
-                } catch (attachError) {
-                    reject(new Error(`Failed to attach debugger: ${attachError.message}`));
-                }
+                } catch (attachError) { reject(new Error(`Failed to attach debugger: ${attachError.message}`)); }
             });
         });
-
         await win.loadURL(videoUrl, { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' });
-
         sendMessage('download-status', { message: 'Navigating page, waiting for API response...' });
         const apiResponseJson = await apiResponsePromise;
-
         if (!apiResponseJson?.aweme_detail) {
-            sendMessage('download-status', { message: 'Could not intercept a valid API response.', type: 'error' });
-            return;
+            sendMessage('download-status', { message: 'Could not intercept a valid API response.', type: 'error' }); return;
         }
-
         await processAndDownloadItem(apiResponseJson.aweme_detail);
         sendMessage('download-status', { message: 'Video download complete!', type: 'success' });
-
     } catch (error) {
         sendMessage('download-status', { message: `Browser operation failed: ${error.message}`, type: 'error' });
     } finally {
         if (win && !win.isDestroyed()) {
-            if (win.webContents.debugger.isAttached()) {
-                await win.webContents.debugger.detach();
-            }
+            if (win.webContents.debugger.isAttached()) await win.webContents.debugger.detach();
             win.close();
         }
-        console.log('[Downloader] Headless browser closed.');
     }
 }
 
 async function processAndDownloadItem(awemeDetail) {
-    const awemeId = awemeDetail?.aweme_id;
-    if (!awemeId) return;
+    const awemeId = awemeDetail?.aweme_id; if (!awemeId) return;
     try {
         const videoUri = awemeDetail?.video?.play_addr?.uri;
         const coverUrl = awemeDetail?.video?.cover?.url_list?.[0];
-
         if (videoUri) await downloadFile(`https://www.douyin.com/aweme/v1/play/?video_id=${videoUri}`, CONFIG.VIDEOS_DIR, `${awemeId}.mp4`);
-        if (coverUrl) await downloadFile(coverUrl, CONFIG.ALBUMART_DIR, `${awemeId}.jpg`);
-        else return;
-
+        if (coverUrl) await downloadFile(coverUrl, CONFIG.ALBUMART_DIR, `${awemeId}.jpg`); else return;
         const title = awemeDetail.desc || "Untitled Video";
         const newTrack = {
-            title,
-            artist: awemeDetail.author?.nickname || "Unknown Author",
-            src: `videos/${awemeId}.mp4`,
-            albumArt: `albumArt/${awemeId}.jpg`,
+            title, artist: awemeDetail.author?.nickname || "Unknown Author",
+            src: `videos/${awemeId}.mp4`, albumArt: `albumArt/${awemeId}.jpg`,
             type: "video", lyrics: "",
             pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
             initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '')
         };
         await updateLocalPlaylist([newTrack]);
         sendMessage('new-track-added', newTrack);
-    } catch (e) {
-        sendMessage('download-status', { message: `Failed to download item ${awemeId}: ${e.message}`, type: 'error' });
-    }
+    } catch (e) { sendMessage('download-status', { message: `Failed to download item ${awemeId}: ${e.message}`, type: 'error' }); }
 }
 
 async function downloadFile(url, folder, fileName) {
@@ -658,8 +561,7 @@ async function downloadFile(url, folder, fileName) {
     const response = await axios({ url, method: 'GET', responseType: 'stream' });
     response.data.pipe(writer);
     return new Promise((resolve, reject) => {
-        writer.on('finish', resolve);
-        writer.on('error', reject);
+        writer.on('finish', resolve); writer.on('error', reject);
     });
 }
 
@@ -670,10 +572,8 @@ async function updateLocalPlaylist(newTracks) {
             playlist = JSON.parse(fs.readFileSync(CONFIG.PLAYLIST_PATH, 'utf-8'));
         }
     } catch (e) { console.warn(`[Playlist] Failed to read playlist.json`, e.message); }
-
     const existingSrcs = new Set(playlist.map(track => track.src));
     const uniqueNewTracks = newTracks.filter(track => !existingSrcs.has(track.src));
-
     if (uniqueNewTracks.length > 0) {
         const updatedPlaylist = [...uniqueNewTracks, ...playlist];
         fs.writeFileSync(CONFIG.PLAYLIST_PATH, JSON.stringify(updatedPlaylist, null, 2), 'utf-8');
