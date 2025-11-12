@@ -55,6 +55,12 @@ export let docElement = document.documentElement;
 
 export let instrumentalBtn = document.getElementById('instrumental-btn');
 
+// =========================================================================
+// 【新增】打开媒体目录按钮的 DOM 引用
+// =========================================================================
+export let openMediaFolderBtn = document.getElementById('open-media-folder-btn');
+// =========================================================================
+
 // 故障效果元素
 export let glitchOverlay = document.getElementById('glitch-overlay');
 export let glitchLinesGroup = document.getElementById('glitch-lines');

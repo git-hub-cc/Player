@@ -121,6 +121,15 @@ function setupEventListeners() {
     dom.nextBtn.addEventListener('click', () => { playNextTrack(); savePlayerState(); });
     dom.modeBtn.addEventListener('click', () => { cyclePlayMode(); savePlayerState(); });
     dom.instrumentalBtn.addEventListener('click', toggleInstrumentalMode);
+    // =========================================================================
+    // 【新增】为“打开媒体目录”按钮添加事件监听器
+    // =========================================================================
+    if (dom.openMediaFolderBtn && window.electronAPI?.openMediaFolder) {
+        dom.openMediaFolderBtn.addEventListener('click', () => {
+            window.electronAPI.openMediaFolder();
+        });
+    }
+    // =========================================================================
 
     dom.mediaPlayer.addEventListener('loadedmetadata', () => {
         updateProgress();
@@ -254,7 +263,7 @@ function setupEventListeners() {
             const index = parseInt(target.dataset.index, 10);
             if (!isNaN(index)) handleDeleteTrackRequest(index);
         } else {
-            executeShortcut(action);
+            executeShortcut(actionId);
         }
     });
 
