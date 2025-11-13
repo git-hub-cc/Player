@@ -28,6 +28,15 @@
 .panel-header h2 { font-size: 16px; font-weight: 700; color: var(--text-primary); }
 .panel-header .control-btn:hover { background-color: var(--highlight-bg); border-radius: 50%;}
 
+/* ========================================================================= */
+/* 【新增】面板头部右侧动作按钮容器样式                                      */
+/* ========================================================================= */
+.panel-header-actions {
+    display: flex;
+    align-items: center;
+}
+/* ========================================================================= */
+
 /* Panel Search Input */
 .panel-search-container {
     padding: 16px 20px 8px;

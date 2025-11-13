@@ -139,9 +139,18 @@
         <aside id="playlist-panel" class="playlist-panel">
             <div class="panel-header">
                 <h2>下载列表</h2>
-                <button id="close-playlist-btn" class="control-btn" title="关闭">
-                    <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
-                </button>
+                <!-- ========================================================================= -->
+                <!-- 【修改】将“打开媒体目录”和“关闭”按钮放入一个容器中，以便在右侧对齐 -->
+                <!-- ========================================================================= -->
+                <div class="panel-header-actions">
+                    <button id="open-media-folder-btn" class="control-btn" title="打开媒体目录">
+                        <svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"></path></svg>
+                    </button>
+                    <button id="close-playlist-btn" class="control-btn" title="关闭">
+                        <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+                    </button>
+                </div>
+                <!-- ========================================================================= -->
             </div>
             <div class="panel-search-container">
                 <input type="search" id="playlist-search" class="panel-search" placeholder="搜索 (歌名/歌手/拼音/首字母)">
@@ -162,11 +171,6 @@
             <div class="info-content">
                 <h3>项目地址</h3>
                 <p>https://github.com/git-hub-cc/Player</p>
-                <h3>新功能</h3>
-                <p>1. <b>功能导览</b>: 首次访问时，将自动启动新功能导览，帮助您快速上手。</p>
-                <p>2. <b>快捷键设置</b>: 点击右下角 <svg class="inline-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"></path></svg> 按钮可自定义键盘快捷键。</p>
-                <p>3. <b>播放模式</b>: 点击播放控制区的循环/随机按钮，即可切换播放模式。</p>
-                <p>4. <b>列表搜索</b>: 在播放列表面板中，可使用拼音或首字母进行模糊搜索。</p>
                 <h3>设计灵感</h3>
                 <p>本播放器的用户界面 (UI) 设计语言主要灵感来源于 Spotify 桌面客户端，JIEJOE旨在致敬其现代化、美观且用户友好的交互体验。</p>
                 <h3>资源来源声明</h3>
@@ -298,11 +302,7 @@
                 </button>
                 <button id="playlist-btn" class="control-btn" title="下载列表"><svg viewBox="0 0 24 24"><path d="M3 6h14v2H3V6zm0 5h14v2H3v-2zm0 5h10v2H3v-2zM17 10v8l5-4-5-4z"></path></svg></button>
                 <!-- ========================================================================= -->
-                <!-- 【新增】打开媒体目录按钮 -->
-                <!-- ========================================================================= -->
-                <button id="open-media-folder-btn" class="control-btn" title="打开媒体目录">
-                    <svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"></path></svg>
-                </button>
+                <!-- 【修改】打开媒体目录按钮已从此区域移除 -->
                 <!-- ========================================================================= -->
                 <div class="volume-container">
                     <button id="volume-btn" class="control-btn" title="静音">
