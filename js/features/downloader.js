@@ -1,3 +1,5 @@
+// js/features/downloader.js
+
 import * as dom from '../dom.js';
 import { showToast, clearSearchResults, renderSearchResults, updateSearchResultItemStatus, renderPaginationControls, showConfirmationModal } from '../ui.js';
 import { playTemporaryTrack } from '../player.js';
@@ -33,29 +35,47 @@ function transformApiData(apiTrack) {
     };
 }
 
+
 /**
- * 根据输入框内容更新 UI 模式（URL 下载模式 vs. 关键词搜索模式）。
+ * =========================================================================
+ * 【修改】 updateInputMode 函数
+ * 增强了此函数，使其能够识别B站链接。
+ * 当检测到不同类型的链接时，会显示/隐藏相应的下载按钮。
+ * =========================================================================
+ * @param {string} message - 要显示的消息。
  */
 function updateInputMode() {
     const inputText = dom.urlOrSearchInput.value.trim();
     const isUrlMode = inputText.toLowerCase().includes('http');
 
-    const isUserUrl = isUrlMode && (inputText.includes('/user/') || inputText.includes('MS4wLjAB'));
-    dom.downloadWorksBtn.style.display = isUserUrl ? 'flex' : 'none';
-    dom.downloadLikesBtn.style.display = isUserUrl ? 'flex' : 'none';
-    dom.startDownloadBtn.style.display = isUrlMode && !isUserUrl ? 'flex' : 'none';
+    // B站链接特定逻辑
+    const isBilibiliUrl = isUrlMode && inputText.includes('bilibili.com/video/');
 
+    // 抖音用户主页链接特定逻辑
+    const isDouyinUserUrl = isUrlMode && (inputText.includes('/user/') || inputText.includes('MS4wLjAB'));
+
+    // 按钮显隐控制
+    dom.downloadWorksBtn.style.display = isDouyinUserUrl ? 'flex' : 'none';
+    dom.downloadLikesBtn.style.display = isDouyinUserUrl ? 'flex' : 'none';
+    // “开始下载”按钮适用于所有非用户主页的单视频链接（抖音和B站）
+    dom.startDownloadBtn.style.display = (isUrlMode && !isDouyinUserUrl) ? 'flex' : 'none';
+
+    // 搜索按钮只在非URL模式下显示
     dom.searchNeteaseBtn.style.display = isUrlMode ? 'none' : 'flex';
 
-    // [修改] 导入按钮现在总是可见
+    // 本地导入按钮始终可见
     document.getElementById('import-local-btn').style.display = 'flex';
 
-    if (isUrlMode) {
-        dom.panelDescription.textContent = '检测到链接，已切换至抖音下载模式。';
+    // 更新面板描述文本
+    if (isBilibiliUrl) {
+        dom.panelDescription.textContent = '检测到B站链接，点击“开始下载”进行处理。';
+    } else if (isUrlMode) {
+        dom.panelDescription.textContent = '检测到抖音链接，已切换至下载模式。';
     } else {
-        dom.panelDescription.textContent = '输入歌曲名进行在线搜索，或粘贴抖音分享链接进行本地下载。';
+        dom.panelDescription.textContent = '输入歌曲名进行在线搜索，或粘贴视频分享链接进行本地下载。';
     }
 }
+
 
 /**
  * 更新下载面板底部的状态信息。
@@ -166,14 +186,14 @@ async function performSearch(query, page = 1) {
 
 
 /**
- * 向主进程发送抖音下载请求。
+ * 向主进程发送下载请求（通用）。
  * @param {HTMLElement} clickedButton - 被点击的按钮元素。
  * @param {'single' | 'works' | 'likes'} downloadType - 下载类型。
  */
-function sendDouyinRequest(clickedButton, downloadType = 'single') {
+function sendDownloadRequest(clickedButton, downloadType = 'single') {
     const urlText = dom.urlOrSearchInput.value;
     if (!urlText.trim()) {
-        updateStatus('错误：请输入有效的分享文本。', 'error');
+        updateStatus('错误：请输入有效的分享文本或URL。', 'error');
         return;
     }
 
@@ -186,6 +206,7 @@ function sendDouyinRequest(clickedButton, downloadType = 'single') {
     updateStatus('已发送请求到主进程，请稍候...', 'default');
 
     const requestData = (downloadType === 'single') ? urlText : { url: urlText, downloadType };
+    // 使用统一的 'download-douyin' 通道名，后端会进行分发
     window.electronAPI.startDownload(requestData);
 }
 
@@ -225,9 +246,7 @@ function setupPaginationListener() {
     });
 }
 
-// =========================================================================
-// 【新增】本地导入按钮的事件处理器
-// =========================================================================
+// 本地导入按钮的事件处理器
 async function handleLocalImportClick(event) {
     const importBtn = event.currentTarget;
     const allButtons = [importBtn, dom.searchNeteaseBtn, dom.startDownloadBtn, dom.downloadWorksBtn, dom.downloadLikesBtn];
@@ -271,7 +290,7 @@ async function handleLocalImportClick(event) {
 }
 
 /**
- * 初始化所有下载器相关的事件监听器123。
+ * 初始化所有下载器相关的事件监听器。
  */
 export function setupDownloaderListeners() {
     const importLocalBtn = document.getElementById('import-local-btn');
@@ -283,11 +302,11 @@ export function setupDownloaderListeners() {
         performSearch(query, 1);
     });
 
-    dom.startDownloadBtn.addEventListener('click', (e) => sendDouyinRequest(e.currentTarget, 'single'));
-    dom.downloadWorksBtn.addEventListener('click', (e) => sendDouyinRequest(e.currentTarget, 'works'));
-    dom.downloadLikesBtn.addEventListener('click', (e) => sendDouyinRequest(e.currentTarget, 'likes'));
+    dom.startDownloadBtn.addEventListener('click', (e) => sendDownloadRequest(e.currentTarget, 'single'));
+    dom.downloadWorksBtn.addEventListener('click', (e) => sendDownloadRequest(e.currentTarget, 'works'));
+    dom.downloadLikesBtn.addEventListener('click', (e) => sendDownloadRequest(e.currentTarget, 'likes'));
 
-    importLocalBtn.addEventListener('click', handleLocalImportClick); // [新增] 绑定事件
+    importLocalBtn.addEventListener('click', handleLocalImportClick);
 
     setupSearchResultsListener();
     setupPaginationListener();
@@ -310,7 +329,6 @@ export function setupDownloaderListeners() {
         }
     });
 
-    // [新增] 监听本地导入的状态更新
     window.electronAPI.onImportStatus((status) => {
         updateStatus(status.message, status.type);
     });
