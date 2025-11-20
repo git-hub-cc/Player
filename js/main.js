@@ -2,13 +2,13 @@
 
 import * as dom from './dom.js';
 import * as state from './state.js';
-import { PLAY_MODES, desktopTourSteps, mobileTourSteps } from './config.js';
+import { PLAY_MODES } from './config.js'; // [修改] 移除了 desktopTourSteps, mobileTourSteps 引用
 import { normalizeKey, formatTime } from './utils.js';
 import { pinyin } from 'pinyin-pro';
 import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode, resetBackgroundBeatTimer, resetPlayerUI, consumePendingSeek, playTrack, toggleInstrumentalMode } from './player.js';
-import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, closeActivePanels, toggleDownloadPanel, showToast, showConfirmationModal } from './ui.js';
+import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, closeActivePanels, toggleDownloadPanel, showToast, showConfirmationModal, toggleEmptyState } from './ui.js';
 import { loadShortcuts, executeShortcut, setupShortcutListeners } from './features/shortcuts.js';
-import { FeatureTour } from './features/tour.js';
+// [修改] 移除了 FeatureTour 引用
 import * as backgroundGallery from './features/gallery.js';
 import { setupDownloaderListeners, requestTrackDeletion } from './features/downloader.js';
 
@@ -61,13 +61,16 @@ async function handleDeleteTrackRequest(index) {
         if (isDeletingCurrent) {
             if (state.playlist.length === 0) {
                 resetPlayerUI();
+                toggleEmptyState(true);
             } else {
                 loadTrack(state.currentTrackIndex, { forcePlay: wasPlaying });
             }
+        } else if (state.playlist.length === 0) {
+            toggleEmptyState(true);
         }
         showToast(`"${track.title}" 已删除`);
     } catch (err) {
-        console.log("删除操作已由用户取消。");
+        console.log("删除操作已由用户取消。", err);
     }
 }
 
@@ -87,16 +90,16 @@ function makeTrackPlayable(track) {
 
 function enterScreensaverMode() {
     if (state.isScreensaverMode) return;
+    if (state.playlist.length === 0) return;
+
     console.log('Entering screensaver mode...');
     state.setScreensaverMode(true);
     window.electronAPI.toggleFullscreen(true);
     backgroundGallery.startAutoScroll();
     dom.playerContainer.classList.add('screensaver-active');
 
-    // 如果当前未播放，则开始播放
     if (!state.isPlaying) {
         if (state.playlist.length > 0) {
-            // 如果有当前曲目但已暂停，则继续播放，否则从头播放
             if (dom.mediaPlayer.src && dom.mediaPlayer.currentTime > 0) {
                 playTrack();
             } else {
@@ -121,12 +124,30 @@ function setupEventListeners() {
     dom.nextBtn.addEventListener('click', () => { playNextTrack(); savePlayerState(); });
     dom.modeBtn.addEventListener('click', () => { cyclePlayMode(); savePlayerState(); });
     dom.instrumentalBtn.addEventListener('click', toggleInstrumentalMode);
-    // =========================================================================
-    // 【新增】为“打开媒体目录”按钮添加事件监听器
-    // =========================================================================
+
     if (dom.openMediaFolderBtn && window.electronAPI?.openMediaFolder) {
         dom.openMediaFolderBtn.addEventListener('click', () => {
             window.electronAPI.openMediaFolder();
+        });
+    }
+
+    // =========================================================================
+    // 【修复】阻止事件冒泡，防止触发 mainView 的 click 事件（该事件会关闭所有面板）
+    // =========================================================================
+    if (dom.emptyStateSearchBtn) {
+        dom.emptyStateSearchBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // <--- 关键修复：阻止冒泡
+            toggleDownloadPanel();
+            setTimeout(() => {
+                if (dom.urlOrSearchInput) dom.urlOrSearchInput.focus();
+            }, 500);
+        });
+    }
+
+    if (dom.emptyStateImportBtn) {
+        dom.emptyStateImportBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // <--- 关键修复：阻止冒泡
+            if (dom.importLocalBtn) dom.importLocalBtn.click();
         });
     }
     // =========================================================================
@@ -157,6 +178,15 @@ function setupEventListeners() {
     });
 
     dom.mediaPlayer.addEventListener('error', (e) => {
+        // =========================================================================
+        // 【修复】更严格的空状态检查，防止空 src 报错干扰
+        // =========================================================================
+        const src = dom.mediaPlayer.getAttribute('src');
+        if ((!src || src === '' || src === 'null') && state.playlist.length === 0) {
+            return; // 忽略空状态下的加载错误
+        }
+        // =========================================================================
+
         console.error("媒体加载错误:", e);
         hideSkeleton();
         dom.trackTitleEl.textContent = "错误";
@@ -231,6 +261,8 @@ function setupEventListeners() {
     dom.playlistSearchInput.addEventListener('input', filterPlaylist);
 
     document.addEventListener('contextmenu', (e) => {
+        if (state.playlist.length === 0) return;
+
         hideContextMenu();
         const playlistItem = e.target.closest('#playlist .playlist-item');
         let context = {};
@@ -277,10 +309,13 @@ function setupEventListeners() {
             } else {
                 enterScreensaverMode();
             }
-            return; // 阻止后续快捷键执行
+            return;
         }
 
         if (state.isRecordingShortcut || ['input', 'textarea'].includes(e.target.tagName.toLowerCase())) return;
+
+        if (state.playlist.length === 0) return;
+
         state.pressedShortcutKeys.add(normalizeKey(e.key));
         for (const actionId in state.shortcutSettings) {
             const requiredKeys = new Set(state.shortcutSettings[actionId].keys);
@@ -299,12 +334,16 @@ function setupEventListeners() {
 
         const oldPlaylistLength = state.playlist.length;
         state.setPlaylist([trackForPlaylist, ...state.playlist]);
-        if (oldPlaylistLength > 0) {
-            state.setCurrentTrackIndex(state.currentTrackIndex + 1);
-        } else {
+
+        if (oldPlaylistLength === 0) {
+            toggleEmptyState(false);
             state.setCurrentTrackIndex(0);
+            backgroundGallery.init(state.playlist);
             loadTrack(0, { forcePlay: true });
+        } else {
+            state.setCurrentTrackIndex(state.currentTrackIndex + 1);
         }
+
         showToast(`已添加 "${trackForPlaylist.title}" 到下载列表！`);
         renderPlaylist();
         updatePlaylistUI();
@@ -387,12 +426,17 @@ async function init() {
     backgroundGallery.init(state.playlist);
 
     if (state.playlist.length > 0) {
+        toggleEmptyState(false);
         renderPlaylist();
         updatePlaylistUI();
         await loadTrack(state.currentTrackIndex, { initialTime });
     } else {
         resetPlayerUI();
         hideSkeleton();
+        toggleEmptyState(true);
+        setTimeout(() => {
+            toggleDownloadPanel();
+        }, 600);
     }
 
     updateVolumeBarVisual(dom.mediaPlayer.volume, dom.mediaPlayer.muted);
@@ -401,13 +445,7 @@ async function init() {
     renderContextMenu({ type: 'global' });
     setupEventListeners();
 
-    if (!localStorage.getItem('player_tour_completed')) {
-        setTimeout(() => {
-            const isMobile = window.innerWidth <= 900;
-            const playerTour = new FeatureTour(isMobile ? mobileTourSteps : desktopTourSteps);
-            playerTour.start();
-        }, 500);
-    }
+    // [修改] 移除了引导页自动启动的代码
 }
 
 document.addEventListener('DOMContentLoaded', init);

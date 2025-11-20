@@ -14,11 +14,7 @@ export let trackArtistEl = document.getElementById('track-artist');
 export let albumArtEl = document.getElementById('album-art');
 export let controlAlbumArtEl = document.getElementById('control-album-art');
 export let albumArtContainer = document.getElementById('album-art-container');
-// =========================================================================
-// 【新增】音频可视化画布的 DOM 引用
-// =========================================================================
 export let audioVisualizer = document.getElementById('audio-visualizer');
-// =========================================================================
 export let lyricsBtn = document.getElementById('lyrics-btn');
 export let lyricsContainer = document.getElementById('lyrics-container');
 export let lyricsList = document.getElementById('lyrics-list');
@@ -52,14 +48,10 @@ export let galleryWrapper = document.getElementById('gallery-wrapper');
 export let contextMenu = document.getElementById('custom-context-menu');
 export let templatesContainer = document.getElementById('templates');
 export let docElement = document.documentElement;
+export let playerControls = document.querySelector('.player-controls'); // 【新增】底部控制栏引用
 
 export let instrumentalBtn = document.getElementById('instrumental-btn');
-
-// =========================================================================
-// 【新增】打开媒体目录按钮的 DOM 引用
-// =========================================================================
 export let openMediaFolderBtn = document.getElementById('open-media-folder-btn');
-// =========================================================================
 
 // 故障效果元素
 export let glitchOverlay = document.getElementById('glitch-overlay');
@@ -89,11 +81,8 @@ export let downloaderView = document.getElementById('downloader-view');
 export let panelDescription = downloaderView.querySelector('.panel-description');
 export let searchResultsContainer = document.getElementById('search-results-container');
 export let searchResultsList = document.getElementById('search-results-list');
-// =========================================================================
-// 【新增】分页控件容器的 DOM 引用
-// =========================================================================
 export let paginationControls = document.getElementById('pagination-controls');
-// =========================================================================
+export let importLocalBtn = document.getElementById('import-local-btn'); // 【新增】方便引用
 
 // --- 通用确认模态框元素 ---
 export let confirmationModal = document.getElementById('confirmation-modal-overlay');
@@ -101,7 +90,13 @@ export let confirmationMessage = document.getElementById('confirmation-message')
 export let confirmBtn = document.getElementById('confirm-btn');
 export let cancelBtn = document.getElementById('cancel-btn');
 
-// 【移除】updateMediaPlayerReference 函数不再需要
+// =========================================================================
+// 【新增】空状态视图相关元素引用
+// =========================================================================
+export let emptyStateView = document.getElementById('empty-state-view');
+export let emptyStateSearchBtn = document.getElementById('empty-state-search-btn');
+export let emptyStateImportBtn = document.getElementById('empty-state-import-btn');
+// =========================================================================
 
 // DOM Query/Creation Functions
 export const getTemplateElementById = (id) => document.getElementById(id);

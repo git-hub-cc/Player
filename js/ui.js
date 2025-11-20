@@ -31,8 +31,35 @@ function manageSidePanel(panelToToggle) {
 }
 
 // =========================================================================
-// 【核心修改】重写音频可视化绘制函数，实现沿专辑封面发散的动态色彩效果
+// 【新增】切换空状态视图的函数
 // =========================================================================
+export function toggleEmptyState(isEmpty) {
+    if (isEmpty) {
+        // 显示空状态
+        dom.mainView.classList.add('is-empty');
+
+        // 禁用底部控制栏
+        dom.playerControls.classList.add('disabled');
+
+        // 重置背景为默认渐变
+        dom.mainView.style.background = 'linear-gradient(145deg, #2a2a2a, #121212)';
+        state.setCurrentGradientColors(null);
+
+        // 清空播放信息
+        dom.trackTitleEl.textContent = '等待播放';
+        dom.trackArtistEl.textContent = '请添加歌曲';
+        dom.currentTimeEl.textContent = '0:00';
+        dom.durationEl.textContent = '0:00';
+        dom.progressBar.value = 0;
+        dom.progressBar.style.setProperty('--value-percent', '0%');
+    } else {
+        // 隐藏空状态，恢复正常
+        dom.mainView.classList.remove('is-empty');
+        dom.playerControls.classList.remove('disabled');
+    }
+}
+// =========================================================================
+
 export function drawVisualizer() {
     if (!state.analyser || !dom.audioVisualizer || !dom.albumArtContainer) return;
 
@@ -66,24 +93,21 @@ export function drawVisualizer() {
     const maxBarHeight = 100;
     const numBars = 64;
 
-    // --- 【新增】实时动态色彩计算 ---
+    // --- 实时动态色彩计算 ---
     let startColor, endColor;
     if (state.currentGradientColors && state.currentGradientColors.length > 0) {
-        // 使用背景中较亮的颜色作为基色
         const baseRgb = state.currentGradientColors[1];
         const baseHsl = rgbToHsl(baseRgb[0], baseRgb[1], baseRgb[2]);
 
-        // 策略C: 计算一个和谐且更亮的类比色
         const newHue = (baseHsl.h + 30) % 360;
-        const newSat = Math.min(baseHsl.s + 0.15, 1.0); // 增加饱和度
-        const newLight = Math.min(baseHsl.l + 0.2, 0.85); // 增加亮度，但不至于过曝
+        const newSat = Math.min(baseHsl.s + 0.15, 1.0);
+        const newLight = Math.min(baseHsl.l + 0.2, 0.85);
 
         const newRgb = hslToRgb(newHue, newSat, newLight);
 
         startColor = `rgba(${newRgb[0]}, ${newRgb[1]}, ${newRgb[2]}, 0.3)`;
         endColor = `rgba(${newRgb[0]}, ${newRgb[1]}, ${newRgb[2]}, 0.8)`;
     } else {
-        // 备用颜色
         startColor = 'rgba(29, 185, 84, 0.2)';
         endColor = 'rgba(29, 185, 84, 0.8)';
     }
@@ -96,7 +120,6 @@ export function drawVisualizer() {
     const step = halfPerimeter / numBars;
 
     for (let i = 0; i < numBars; i++) {
-        // 反转数据索引，使高能量柱（低频）显示在顶部
         const dataIndex = Math.floor((numBars - 1 - i) * (visualizerBufferLength * 0.75) / numBars);
         const barHeight = Math.pow(visualizerDataArray[dataIndex] / 255, 2.5) * maxBarHeight;
 
@@ -142,7 +165,6 @@ export function drawVisualizer() {
         ctx.stroke();
     }
 }
-// =========================================================================
 
 export function triggerGlitchEffect(duration = 800) {
     if (!dom.mainView || !dom.glitchOverlay || !dom.feTurbulence) return;
