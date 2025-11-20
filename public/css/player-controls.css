@@ -159,3 +159,14 @@
 #instrumental-btn.active {
     color: var(--primary-color);
 }
+
+/* ========================================================================= */
+/* 【新增】空状态下的控制条样式                                              */
+/* ========================================================================= */
+.player-controls.disabled {
+    opacity: 0.5;
+    pointer-events: none; /* 禁用所有点击 */
+    filter: grayscale(100%);
+}
+/* 允许特定按钮在禁用状态下依然可点击（如果需要，比如“添加”按钮，但目前逻辑是全禁） */
+/* .player-controls.disabled #download-panel-btn { pointer-events: auto; opacity: 1; } */

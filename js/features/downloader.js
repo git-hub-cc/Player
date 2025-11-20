@@ -10,29 +10,53 @@ let currentSearchResults = [];
 let currentSearchQuery = '';
 let currentPage = 1;
 let totalPages = 1;
-const ITEMS_PER_PAGE = 10; // API每页返回10个项目
+const ITEMS_PER_PAGE = 10; // 注意：如果新API每页返回20条，这里仅用于计算页码
 
 /**
- * 将在线搜索 API 返回的数据转换为应用内部使用的标准格式。
- * @param {object} apiTrack - 从 API 获取的原始曲目数据。
+ * 将后端返回的统一数据转换为前端播放器使用的曲目对象。
+ * 兼容新旧两种 API 的数据结构。
+ * @param {object} apiTrack - 后端返回的标准化曲目数据。
  * @returns {object} - 转换后的曲目对象。
  */
 function transformApiData(apiTrack) {
     const title = apiTrack.title || '未知标题';
-    return {
+
+    // 构造基础对象
+    const track = {
         title: title,
-        artist: apiTrack.author || '未知艺术家',
-        src: apiTrack.url,
-        albumArt: apiTrack.pic,
-        lyrics: apiTrack.lrc,
+        artist: apiTrack.artist || '未知艺术家',
+        albumArt: apiTrack.albumArt || apiTrack.pic || '', // 兼容新旧字段
         type: 'audio',
+
+        // 关键：保存元数据，用于后续获取真实链接
+        id: apiTrack.id,
         source: apiTrack.source || 'netease',
-        originalSrc: apiTrack.url,
-        originalAlbumArt: apiTrack.pic,
-        originalLyrics: apiTrack.lrc,
+        lyricId: apiTrack.lyricId,
+
+        // 兼容旧版字段，用于下载
+        originalSrc: apiTrack.url, // 旧版有直接 URL
+        originalAlbumArt: apiTrack.pic, // 旧版封面
+        originalLyrics: apiTrack.lrc, // 旧版歌词文本
+
+        // 拼音辅助
         pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
         initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '')
     };
+
+    // 处理播放源 src
+    if (apiTrack.url) {
+        // 旧版 API 直接返回了可用的 URL
+        track.src = apiTrack.url;
+        // 旧版歌词通常是直接文本
+        track.lyrics = apiTrack.lrc;
+    } else {
+        // 新版 API：没有直接 URL，设置为 null 或特殊标识
+        // 播放器核心 player.js 会检测到空 src，然后调用 resolvePlayableUrl
+        track.src = '';
+        track.lyrics = ''; // 歌词也是懒加载
+    }
+
+    return track;
 }
 
 
@@ -111,7 +135,8 @@ export async function requestTrackDeletion(track) {
 }
 
 /**
- * 请求主进程解析一个曲目的可播放 URL，以解决 CORS 问题。
+ * 请求主进程解析一个曲目的可播放 URL，以解决 CORS 问题或懒加载。
+ * 兼容新 API 的 ID 解析机制。
  * @param {object} track - 曲目信息对象。
  * @returns {Promise<string>} - 可播放的 URL。
  * @throws {Error} 如果无法获取 URL。
@@ -121,10 +146,18 @@ export async function resolvePlayableUrl(track) {
         return track.src;
     }
 
-    console.log(`[Resolver] 请求主进程解析URL: ${track.title}`);
+    // 如果 track.src 已经是有效 http 链接（旧版缓存或直接解析），后端可能会直接做 HEAD 检查
+    // 如果 track.src 为空（新版），后端会利用 track.id 和 track.source 去请求真实链接
+
+    console.log(`[Resolver] 请求主进程解析URL: ${track.title} (ID: ${track.id})`);
+
+    // 传递完整的 track 对象，包含 id, source 等关键信息
     const result = await window.electronAPI.getMusicUrl(track);
+
     if (result.success && result.url) {
-        console.log(`[Resolver] 成功获取可播放URL: ${result.url.substring(0, 100)}...`);
+        console.log(`[Resolver] 成功获取可播放URL: ${result.url.substring(0, 50)}...`);
+        // 缓存该 URL 到当前会话的 track 对象中，避免重复请求（可选）
+        track.src = result.url;
         return result.url;
     } else {
         console.error(`[Resolver] 主进程解析URL失败:`, result.error);
@@ -138,6 +171,7 @@ export async function resolvePlayableUrl(track) {
  */
 function requestTrackCache(trackData) {
     console.log(`[Cache] 发送缓存请求: ${trackData.title}`);
+    // 将完整对象发送给后端，后端会根据 provider 模式决定如何下载
     window.electronAPI.cacheTrack(trackData);
 }
 
@@ -169,15 +203,18 @@ async function performSearch(query, page = 1) {
 
     if (result.success) {
         const { results, total } = result.data;
+        // 使用新的转换逻辑
         currentSearchResults = results.map(transformApiData);
         renderSearchResults(currentSearchResults);
 
         currentSearchQuery = query;
         currentPage = page;
-        totalPages = Math.ceil(total / ITEMS_PER_PAGE);
+        // 估算总页数 (如果后端返回的 total 是准确的)
+        const pageSize = results.length > 0 ? results.length : ITEMS_PER_PAGE;
+        totalPages = Math.ceil(total / pageSize) || 1;
 
         renderPaginationControls(currentPage, totalPages);
-        updateStatus(`搜索成功！显示第 ${page} / ${totalPages} 页，共约 ${total} 首歌曲。`, 'success');
+        updateStatus(`搜索成功！当前显示 ${results.length} 首歌曲。`, 'success');
     } else {
         updateStatus(`搜索失败: ${result.error}`, 'error');
         renderPaginationControls(0, 0); // 失败时隐藏分页
@@ -228,6 +265,8 @@ function setupSearchResultsListener() {
             updateSearchResultItemStatus(item, 'downloading');
             requestTrackCache(clickedTrack);
         } else {
+            // 播放临时曲目
+            // player.js 中的 playTemporaryTrack 会调用 resolvePlayableUrl 来解析真实链接
             playTemporaryTrack(clickedTrack);
         }
     });
@@ -323,9 +362,21 @@ export function setupDownloaderListeners() {
 
     window.electronAPI.onNewTrack((newTrack) => {
         document.dispatchEvent(new CustomEvent('new-track-added', { detail: newTrack }));
-        const itemInSearchResults = dom.searchResultsList.querySelector(`.playlist-item[data-src="${newTrack.originalSrc || newTrack.src}"]`);
-        if (itemInSearchResults) {
-            updateSearchResultItemStatus(itemInSearchResults, 'cached');
+        // 尝试在当前搜索结果中找到对应项并标记为已下载
+        // 兼容新旧两种 ID 匹配方式
+        if (dom.searchResultsList) {
+            const items = dom.searchResultsList.querySelectorAll('.playlist-item');
+            items.forEach(item => {
+                const trackIndex = parseInt(item.dataset.index, 10);
+                const track = currentSearchResults[trackIndex];
+                if (track) {
+                    // 如果 ID 相同，或者 URL 相同
+                    if ((newTrack.id && newTrack.id === track.id) ||
+                        (newTrack.originalSrc && newTrack.originalSrc === track.originalSrc)) {
+                        updateSearchResultItemStatus(item, 'cached');
+                    }
+                }
+            });
         }
     });
 

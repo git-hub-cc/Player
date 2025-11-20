@@ -7,13 +7,19 @@ import axios from 'axios';
 import { pinyin } from 'pinyin-pro';
 import { Buffer } from 'buffer';
 import { createHash } from 'crypto';
-import pluginManager from './plugins/manager.js';
 import { exec } from 'child_process';
+import pluginManager from './plugins/manager.js';
+import * as gdstudio from './providers/gdstudio.js'; // 【新增】引入 GDStudio 适配器
 
-// --- 配置 ---
+// --- 核心配置开关 ---
+// 选项: 'LEGACY' (旧版爬虫) 或 'GD_STUDIO' (新版 API)
+const PROVIDER_MODE = 'GD_STUDIO';
+// -------------------
+
+// --- 配置常量 ---
 const CACHE_EXPIRATION_DAYS = 7;
 const BACKGROUND_SEARCH_PAGE_DEPTH = 10;
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 10; // 旧版分页数，新版API默认为20，可调整
 
 // --- 状态管理 ---
 const ONGOING_CACHE_BUILDS = new Set();
@@ -22,7 +28,7 @@ const INITIAL_RESPONSE_PROMISES = new Map();
 let appInstance;
 let getWebContents;
 let CONFIG = {};
-let FFMPEG_PATH = ''; // 初始化为空字符串
+let FFMPEG_PATH = '';
 
 // --- 初始化 ---
 export function initialize(app, webContentsProvider) {
@@ -40,9 +46,11 @@ export function initialize(app, webContentsProvider) {
         STATE_PATH: path.join(userDataPath, 'state.json'),
         PLAYLIST_PATH: path.join(userDataPath, 'media', 'playlist.json'),
         HEADLESS_MODE: true,
+        // 旧版 API 地址
         ONLINE_SEARCH_API: 'https://www.myfreemp3.com.cn/',
     };
 
+    // 确保目录存在
     [
         CONFIG.VIDEOS_DIR,
         CONFIG.ALBUMART_DIR,
@@ -53,44 +61,32 @@ export function initialize(app, webContentsProvider) {
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     });
 
+    // --- FFmpeg 定位逻辑 (从旧代码补充完整) ---
     console.log('--- [FFmpeg 日志] 开始定位 FFmpeg ---');
-    console.log(`[FFmpeg 日志] app.isPackaged (是否为生产环境): ${app.isPackaged}`);
+    console.log(`[FFmpeg 日志] app.isPackaged: ${app.isPackaged}`);
 
     if (app.isPackaged) {
-        console.log(`[FFmpeg 日志] 生产环境 App 路径 (app.getAppPath()): ${app.getAppPath()}`);
         FFMPEG_PATH = path.join(path.dirname(app.getAppPath()), 'ffmpeg', 'win32-x64', 'ffmpeg.exe');
     } else {
-        console.log(`[FFmpeg 日志] 开发环境项目根目录 (process.cwd()): ${process.cwd()}`);
         FFMPEG_PATH = path.join(process.cwd(), 'ffmpeg', 'win32-x64', 'ffmpeg.exe');
     }
-
-    console.log(`[FFmpeg 日志] 最终计算出的 FFmpeg 路径: ${FFMPEG_PATH}`);
+    console.log(`[FFmpeg 日志] 路径: ${FFMPEG_PATH}`);
 
     if (!fs.existsSync(FFMPEG_PATH)) {
-        console.error(`[FFmpeg 日志] 错误: 在上述路径未找到 FFmpeg 可执行文件。`);
+        console.error(`[FFmpeg 日志] 错误: 未找到 FFmpeg。`);
+        // 尝试检查目录以辅助调试
         const expectedDir = path.dirname(FFMPEG_PATH);
-        console.log(`[FFmpeg 日志] 正在检查预期目录是否存在: ${expectedDir}`);
         if (fs.existsSync(expectedDir)) {
-            try {
-                const files = fs.readdirSync(expectedDir);
-                console.log(`[FFmpeg 日志] 目录存在，但内容为: [${files.join(', ')}]。请确认 'ffmpeg.exe' 是否在此目录中。`);
-            } catch (e) {
-                console.error(`[FFmpeg 日志] 无法读取目录内容: ${e.message}`);
-            }
-        } else {
-            console.error(`[FFmpeg 日志] 错误: 连 FFmpeg 所在的目录 (${expectedDir}) 都不存在。请检查 extraResources 配置是否正确以及打包是否成功。`);
+            console.log(`[FFmpeg 日志] 目录存在，但 ffmpeg.exe 不在其中。`);
         }
         FFMPEG_PATH = '';
     } else {
-        console.log(`[FFmpeg 日志] 成功: FFmpeg 已在指定路径找到！`);
+        console.log(`[FFmpeg 日志] 成功: FFmpeg 已就绪。`);
     }
     console.log('--- [FFmpeg 日志] 定位结束 ---');
 
-
     pluginManager.initialize(CONFIG.PLUGINS_DIR);
-
-    console.log(`[MainAPI] Initialized. Media stored at: ${CONFIG.MEDIA_ROOT}`);
-    console.log(`[MainAPI] Search cache stored at: ${CONFIG.SEARCH_CACHE_DIR}`);
+    console.log(`[MainAPI] Initialized. Mode: ${PROVIDER_MODE}`);
 }
 
 // --- 辅助函数 ---
@@ -115,10 +111,9 @@ function getCacheKey(query) {
     return createHash('md5').update(normalizedQuery).digest('hex');
 }
 
+// 用于旧版逻辑的 URL 验证
 async function validateUrl(url) {
-    if (!url || !url.startsWith('http')) {
-        return false;
-    }
+    if (!url || !url.startsWith('http')) return false;
     try {
         const response = await axios.head(url, {
             timeout: 5000,
@@ -131,14 +126,294 @@ async function validateUrl(url) {
     }
 }
 
-// --- 本地导入函数 ---
-export async function handleSelectDirectory() {
-    const mainWindow = BrowserWindow.getAllWindows()[0];
-    return dialog.showOpenDialog(mainWindow, {
-        properties: ['openDirectory']
-    });
+// --- 核心处理：搜索请求 ---
+export async function handleSearchRequest({ query, page = 1 }) {
+    console.log(`[Search] Request: query='${query}', page=${page}, mode=${PROVIDER_MODE}`);
+
+    // 【分支 1】新版 GDStudio 逻辑
+    if (PROVIDER_MODE === 'GD_STUDIO') {
+        try {
+            // 直接调用适配器，无需复杂的后台缓存逻辑，因为新 API 响应较快且支持分页
+            const { list, total } = await gdstudio.search(query, page);
+            return { success: true, data: { results: list, total } };
+        } catch (error) {
+            console.error('[Search] GDStudio error:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // 【分支 2】旧版 Legacy 逻辑 (带缓存和后台验证)
+    const cacheKey = getCacheKey(query);
+    const cacheFilePath = path.join(CONFIG.SEARCH_CACHE_DIR, `${cacheKey}.json`);
+
+    try {
+        if (fs.existsSync(cacheFilePath)) {
+            const stats = await fs.promises.stat(cacheFilePath);
+            const cacheAgeDays = (Date.now() - stats.mtime.getTime()) / (1000 * 60 * 60 * 24);
+
+            if (cacheAgeDays < CACHE_EXPIRATION_DAYS) {
+                console.log(`[Cache] HIT for '${query}'.`);
+                const cacheContent = await fs.promises.readFile(cacheFilePath, 'utf-8');
+                const cacheData = JSON.parse(cacheContent);
+                const total = cacheData.results.length;
+                const startIndex = (page - 1) * ITEMS_PER_PAGE;
+                const paginatedResults = cacheData.results.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+                return { success: true, data: { results: paginatedResults, total } };
+            } else {
+                fs.promises.unlink(cacheFilePath).catch(() => {});
+            }
+        }
+    } catch (error) { console.error(`[Cache] Error reading cache:`, error.message); }
+
+    if (page > 1) {
+        return { success: true, data: { results: [], total: 0 } };
+    }
+
+    // 触发旧版后台搜索构建...
+    if (!ONGOING_CACHE_BUILDS.has(cacheKey)) {
+        triggerLegacyBackgroundBuild(query, cacheKey, cacheFilePath);
+    }
+
+    try {
+        const promiseWrapper = INITIAL_RESPONSE_PROMISES.get(cacheKey);
+        if (!promiseWrapper) {
+            // 如果没有正在进行的 promise，可能是并发问题，简单重试
+            await new Promise(r => setTimeout(r, 100));
+            const retryWrapper = INITIAL_RESPONSE_PROMISES.get(cacheKey);
+            if(retryWrapper) {
+                const { results, total } = await retryWrapper.promise;
+                return { success: true, data: { results, total } };
+            }
+            return { success: false, error: "Search initialization failed" };
+        }
+        const { results, total } = await promiseWrapper.promise;
+        return { success: true, data: { results, total } };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
 }
 
+// (旧版) 后台构建缓存逻辑
+function triggerLegacyBackgroundBuild(query, cacheKey, cacheFilePath) {
+    ONGOING_CACHE_BUILDS.add(cacheKey);
+    let promiseResolver;
+    const initialResponsePromise = new Promise((resolve, reject) => { promiseResolver = { resolve, reject }; });
+    INITIAL_RESPONSE_PROMISES.set(cacheKey, { promise: initialResponsePromise, resolver: promiseResolver });
+
+    (async () => {
+        const allValidatedResults = [];
+        let firstPageTotal = 0;
+        let initialResponseSent = false;
+        try {
+            for (let currentPage = 1; currentPage <= BACKGROUND_SEARCH_PAGE_DEPTH; currentPage++) {
+                const params = new URLSearchParams({ input: query, filter: 'name', page: currentPage.toString(), type: 'netease' });
+                const response = await axios.post(CONFIG.ONLINE_SEARCH_API, params, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, timeout: 30000 });
+                if (currentPage === 1) firstPageTotal = response.data?.data?.total || 0;
+                const tracks = response.data?.data?.list;
+                if (!tracks || tracks.length === 0) break;
+
+                // 验证 URL
+                const validationPromises = tracks.map(track => validateUrl(track.url));
+                const validationResults = await Promise.allSettled(validationPromises);
+                validationResults.forEach((result, index) => {
+                    if (result.status === 'fulfilled' && result.value === true) {
+                        allValidatedResults.push({ ...tracks[index], source: 'netease' });
+                    }
+                });
+
+                if (!initialResponseSent && allValidatedResults.length >= ITEMS_PER_PAGE) {
+                    INITIAL_RESPONSE_PROMISES.get(cacheKey)?.resolver.resolve({ results: allValidatedResults.slice(0, ITEMS_PER_PAGE), total: firstPageTotal });
+                    initialResponseSent = true;
+                }
+            }
+            if (!initialResponseSent) INITIAL_RESPONSE_PROMISES.get(cacheKey)?.resolver.resolve({ results: allValidatedResults, total: firstPageTotal });
+            if (allValidatedResults.length > 0) await fs.promises.writeFile(cacheFilePath, JSON.stringify({ timestamp: Date.now(), results: allValidatedResults }));
+        } catch (err) {
+            if (!initialResponseSent) INITIAL_RESPONSE_PROMISES.get(cacheKey)?.resolver.reject(err);
+        } finally {
+            ONGOING_CACHE_BUILDS.delete(cacheKey);
+            INITIAL_RESPONSE_PROMISES.delete(cacheKey);
+        }
+    })();
+}
+
+// --- 核心处理：获取播放链接 ---
+export async function handleGetMusicUrl(trackInfo) {
+    if (!trackInfo) return { success: false, error: 'No track info provided.' };
+    console.log(`[URL Resolver] Resolving: ${trackInfo.title}`);
+
+    try {
+        // 1. 如果已经是 HTTP 链接，尝试直接探测真实地址 (旧版逻辑兼容)
+        if (trackInfo.src && trackInfo.src.startsWith('http')) {
+            // 如果是新版 API 返回的 ID 模式，前端 src 可能为空，这里跳过
+            // 如果是旧版，src 是一个临时的 302 链接
+            if (!trackInfo.id || PROVIDER_MODE === 'LEGACY') {
+                console.log(`[URL Resolver] Proxying legacy URL...`);
+                const response = await axios.head(trackInfo.src, { maxRedirects: 10, timeout: 15000, headers: { 'User-Agent': 'Mozilla/5.0' } });
+                return { success: true, url: response.request.res.responseUrl || trackInfo.src };
+            }
+        }
+
+        // 2. 【新增】 GDStudio 模式：使用 ID 获取真实链接
+        if (PROVIDER_MODE === 'GD_STUDIO' && trackInfo.id && trackInfo.source) {
+            console.log(`[URL Resolver] Fetching via GDStudio API (ID: ${trackInfo.id})...`);
+            const url = await gdstudio.getMusicUrl(trackInfo);
+            return { success: true, url };
+        }
+
+        // 3. 插件系统兜底 (原有逻辑)
+        if (trackInfo.source) {
+            const activePlugin = pluginManager.getActivePlugin();
+            if (activePlugin && activePlugin.supportedSources[trackInfo.source]) {
+                console.log(`[URL Resolver] Using plugin...`);
+                const url = await activePlugin.getMusicUrl(trackInfo, '128k');
+                return { success: true, url };
+            }
+        }
+
+        throw new Error('No suitable method to resolve URL.');
+    } catch (e) {
+        console.error(`[URL Resolver] Failed:`, e.message);
+        return { success: false, error: e.message };
+    }
+}
+
+// --- 核心处理：缓存/下载请求 ---
+export async function handleCacheRequest(trackData) {
+    // 兼容处理：新旧 API 字段映射
+    const title = trackData.title || 'Unknown';
+    const artist = trackData.artist || 'Unknown';
+
+    // 旧版字段: originalSrc, originalAlbumArt, originalLyrics
+    // 新版字段: id, source, albumArt, lyricId
+
+    console.log(`[Download] Request: ${artist} - ${title}`);
+    const safeFilename = sanitizeFilename(`${artist} - ${title}`);
+    const downloadPromises = [];
+
+    // 1. 处理音频文件
+    let audioUrl = trackData.originalSrc; // 旧版优先
+    if (PROVIDER_MODE === 'GD_STUDIO' && !audioUrl && trackData.id) {
+        try {
+            // 新版需要先获取下载链接
+            audioUrl = await gdstudio.getMusicUrl(trackData);
+        } catch (e) {
+            sendMessage('download-status', { message: `获取音频链接失败: ${e.message}`, type: 'error' });
+            return;
+        }
+    }
+    if (audioUrl) {
+        downloadPromises.push(downloadFile(audioUrl, CONFIG.MUSIC_DIR, `${safeFilename}.mp3`));
+    }
+
+    // 2. 处理封面
+    // 新版 albumArt 已经是完整 URL，旧版是 originalAlbumArt
+    const artUrl = trackData.albumArt || trackData.originalAlbumArt;
+    if (artUrl) {
+        downloadPromises.push(downloadFile(artUrl, CONFIG.ALBUMART_DIR, `${safeFilename}.jpg`));
+    }
+
+    // 3. 处理歌词
+    const lyricsPath = path.join(CONFIG.MUSIC_DIR, `${safeFilename}.lrc`);
+    let lyricContent = '';
+
+    // 新版：通过 lyricId 获取
+    if (PROVIDER_MODE === 'GD_STUDIO' && trackData.lyricId) {
+        try {
+            lyricContent = await gdstudio.getLyric(trackData.lyricId, trackData.source);
+        } catch (e) { console.warn('Failed to fetch lyrics via API'); }
+    }
+    // 旧版：可能是 data URI 或 HTTP URL
+    else if (trackData.originalLyrics) {
+        if (trackData.originalLyrics.startsWith('data:text/plain,')) {
+            lyricContent = decodeURIComponent(trackData.originalLyrics.substring('data:text/plain,'.length));
+        } else if (trackData.originalLyrics.startsWith('http')) {
+            // 如果是 URL，加入下载队列
+            downloadPromises.push(downloadFile(trackData.originalLyrics, CONFIG.MUSIC_DIR, `${safeFilename}.lrc`));
+        }
+    }
+
+    // 如果获取到了文本内容，直接写入
+    if (lyricContent) {
+        fs.writeFileSync(lyricsPath, lyricContent, 'utf-8');
+    }
+
+    try {
+        await Promise.all(downloadPromises);
+        console.log(`[Download] Success: ${safeFilename}`);
+
+        // 构造新的本地 Track 对象
+        const newTrack = {
+            title, artist,
+            src: `music/${safeFilename}.mp3`,
+            albumArt: fs.existsSync(path.join(CONFIG.ALBUMART_DIR, `${safeFilename}.jpg`)) ? `albumArt/${safeFilename}.jpg` : "",
+            lyrics: fs.existsSync(lyricsPath) ? `music/${safeFilename}.lrc` : "",
+            type: "audio",
+            pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
+            initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, ''),
+            // 保存元数据以便未来可能的重新解析
+            id: trackData.id,
+            source: trackData.source
+        };
+
+        await updateLocalPlaylist([newTrack]);
+        sendMessage('new-track-added', newTrack);
+        sendMessage('download-status', { message: `下载完成: ${title}`, type: 'success' });
+
+    } catch (error) {
+        console.error(`[Download] Failed:`, error);
+        sendMessage('download-status', { message: `下载失败: ${error.message}`, type: 'error' });
+    }
+}
+
+// --- 歌词读取 ---
+export async function handleGetLrcContent(relativePath) {
+    const fullPath = path.join(CONFIG.MEDIA_ROOT, decodeURIComponent(relativePath));
+    try {
+        if (!fs.existsSync(fullPath)) throw new Error('File not found');
+        return { success: true, data: await fs.promises.readFile(fullPath, 'utf-8') };
+    } catch (e) { return { success: false, error: e.message }; }
+}
+
+// --- 删除逻辑 ---
+export async function handleDeleteTrack({ src: relativeSrc }) {
+    if (!relativeSrc) return { success: false, error: 'Delete failed: No track path provided.' };
+    try {
+        let playlist = [];
+        if (fs.existsSync(CONFIG.PLAYLIST_PATH)) {
+            playlist = JSON.parse(fs.readFileSync(CONFIG.PLAYLIST_PATH, 'utf-8'));
+        }
+        const trackToDelete = playlist.find(t => t.src === relativeSrc);
+        if (!trackToDelete) return { success: false, error: 'Delete failed: Track not found in playlist.' };
+
+        fs.writeFileSync(CONFIG.PLAYLIST_PATH, JSON.stringify(playlist.filter(t => t.src !== relativeSrc), null, 2), 'utf-8');
+
+        ['src', 'albumArt', 'lyrics'].forEach(key => {
+            if (trackToDelete[key]) {
+                const filePath = path.join(CONFIG.MEDIA_ROOT, trackToDelete[key]);
+                if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+            }
+        });
+        console.log(`[Deletion] Successfully deleted "${trackToDelete.title}"`);
+        return { success: true, message: `Successfully deleted "${trackToDelete.title}"` };
+    } catch (error) {
+        console.error(`[Deletion] Error during deletion:`, error);
+        return { success: false, error: error.message };
+    }
+}
+
+// --- 本地文件导入逻辑 (从旧代码补充完整) ---
+
+export async function handleSelectDirectory() {
+    const mainWindow = BrowserWindow.getAllWindows()[0];
+    return dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });
+}
+
+export function handleOpenMediaFolder() {
+    if (CONFIG.MEDIA_ROOT) shell.openPath(CONFIG.MEDIA_ROOT);
+}
+
+// 递归扫描目录
 async function scanDirectoryRecursive(dirPath) {
     const fileGroups = new Map();
     const audioExt = ['.mp3', '.flac', '.wav', '.m4a', '.ogg'];
@@ -176,9 +451,7 @@ async function scanDirectoryRecursive(dirPath) {
 }
 
 export async function handleLocalImport(directoryPath) {
-    if (!directoryPath) {
-        return { success: false, error: 'No directory provided.' };
-    }
+    if (!directoryPath) return { success: false, error: 'No directory provided.' };
     sendMessage('import-status', { message: '开始扫描目录...', type: 'default' });
 
     try {
@@ -242,247 +515,8 @@ export async function handleLocalImport(directoryPath) {
         return { success: false, error: error.message };
     }
 }
-export function handleOpenMediaFolder() {
-    if (CONFIG.MEDIA_ROOT) {
-        shell.openPath(CONFIG.MEDIA_ROOT).catch(err => {
-            console.error(`[Folder] 无法打开媒体目录: ${CONFIG.MEDIA_ROOT}`, err);
-        });
-    } else {
-        console.error('[Folder] 媒体目录路径未初始化。');
-    }
-}
 
-// --- 核心 IPC 处理函数 ---
-export async function handleSearchRequest({ query, page = 1 }) {
-    console.log(`[Search] Request: query='${query}', page=${page}`);
-    const cacheKey = getCacheKey(query);
-    const cacheFilePath = path.join(CONFIG.SEARCH_CACHE_DIR, `${cacheKey}.json`);
-
-    try {
-        if (fs.existsSync(cacheFilePath)) {
-            const stats = await fs.promises.stat(cacheFilePath);
-            const cacheAgeDays = (Date.now() - stats.mtime.getTime()) / (1000 * 60 * 60 * 24);
-
-            if (cacheAgeDays < CACHE_EXPIRATION_DAYS) {
-                console.log(`[Cache] HIT for '${query}'. Serving from cache.`);
-                const cacheContent = await fs.promises.readFile(cacheFilePath, 'utf-8');
-                const cacheData = JSON.parse(cacheContent);
-                const total = cacheData.results.length;
-                const startIndex = (page - 1) * ITEMS_PER_PAGE;
-                const paginatedResults = cacheData.results.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-                return { success: true, data: { results: paginatedResults, total } };
-            } else {
-                console.log(`[Cache] STALE for '${query}'. Deleting old cache.`);
-                await fs.promises.unlink(cacheFilePath).catch(e => console.error(`[Cache] Failed to delete stale cache: ${e.message}`));
-            }
-        }
-    } catch (error) { console.error(`[Cache] Error reading cache for '${query}':`, error.message); }
-
-    if (page > 1) {
-        console.log(`[Search] Cache MISS for '${query}', page ${page}. Waiting for cache build.`);
-        return { success: true, data: { results: [], total: 0 } };
-    }
-
-    console.log(`[Search] Cache MISS for '${query}'. Triggering live search and background build.`);
-
-    if (ONGOING_CACHE_BUILDS.has(cacheKey)) {
-        console.log(`[Cache] Build for '${query}' is already in progress. Awaiting initial response.`);
-    } else {
-        ONGOING_CACHE_BUILDS.add(cacheKey);
-
-        let promiseResolver;
-        const initialResponsePromise = new Promise((resolve, reject) => {
-            promiseResolver = { resolve, reject };
-        });
-        INITIAL_RESPONSE_PROMISES.set(cacheKey, { promise: initialResponsePromise, resolver: promiseResolver });
-
-        (async () => {
-            console.log(`[Cache] Starting background build for '${query}'...`);
-            const allValidatedResults = [];
-            let firstPageTotal = 0;
-            let initialResponseSent = false;
-
-            try {
-                for (let currentPage = 1; currentPage <= BACKGROUND_SEARCH_PAGE_DEPTH; currentPage++) {
-                    const params = new URLSearchParams({ input: query, filter: 'name', page: currentPage.toString(), type: 'netease' });
-                    const response = await axios.post(CONFIG.ONLINE_SEARCH_API, params, {
-                        headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                        timeout: 30000
-                    });
-
-                    if (currentPage === 1) firstPageTotal = response.data?.data?.total || 0;
-
-                    const tracks = response.data?.data?.list;
-                    if (!tracks || tracks.length === 0) {
-                        console.log(`[Cache] No more results for '${query}' at page ${currentPage}. Stopping build.`);
-                        break;
-                    }
-
-                    const validationPromises = tracks.map(track => validateUrl(track.url));
-                    const validationResults = await Promise.allSettled(validationPromises);
-                    validationResults.forEach((result, index) => {
-                        if (result.status === 'fulfilled' && result.value === true) {
-                            allValidatedResults.push({ ...tracks[index], source: 'netease' });
-                        }
-                    });
-
-                    if (!initialResponseSent && allValidatedResults.length >= ITEMS_PER_PAGE) {
-                        INITIAL_RESPONSE_PROMISES.get(cacheKey)?.resolver.resolve({
-                            results: allValidatedResults.slice(0, ITEMS_PER_PAGE),
-                            total: firstPageTotal,
-                        });
-                        initialResponseSent = true;
-                        console.log(`[Cache] Sent initial response for '${query}'.`);
-                    }
-                }
-
-                if (!initialResponseSent) {
-                    INITIAL_RESPONSE_PROMISES.get(cacheKey)?.resolver.resolve({
-                        results: allValidatedResults,
-                        total: firstPageTotal,
-                    });
-                    initialResponseSent = true;
-                }
-
-                if (allValidatedResults.length > 0) {
-                    await fs.promises.writeFile(cacheFilePath, JSON.stringify({
-                        timestamp: Date.now(),
-                        results: allValidatedResults,
-                    }));
-                    console.log(`[Cache] Successfully built cache for '${query}' with ${allValidatedResults.length} tracks.`);
-                }
-
-            } catch (err) {
-                console.error(`[Cache] Background build for '${query}' failed:`, err.message);
-                if (!initialResponseSent) {
-                    INITIAL_RESPONSE_PROMISES.get(cacheKey)?.resolver.reject(err);
-                }
-            } finally {
-                ONGOING_CACHE_BUILDS.delete(cacheKey);
-                INITIAL_RESPONSE_PROMISES.delete(cacheKey);
-            }
-        })();
-    }
-
-    try {
-        const promiseWrapper = INITIAL_RESPONSE_PROMISES.get(cacheKey);
-        if (!promiseWrapper) throw new Error("Promise for initial response was not found.");
-        const { results, total } = await promiseWrapper.promise;
-        return { success: true, data: { results, total } };
-    } catch (error) {
-        return { success: false, error: error.message };
-    }
-}
-
-export async function getLocalPlaylist() {
-    try {
-        if (fs.existsSync(CONFIG.PLAYLIST_PATH)) {
-            const playlistData = JSON.parse(fs.readFileSync(CONFIG.PLAYLIST_PATH, 'utf-8'));
-            return { success: true, data: playlistData };
-        } else {
-            return { success: true, data: [] };
-        }
-    } catch (e) {
-        console.error(`[Playlist] Failed to read playlist.json:`, e);
-        return { success: false, error: e.message };
-    }
-}
-
-export async function handleCacheRequest(trackData) {
-    const { originalSrc, originalAlbumArt, originalLyrics, title, artist, pinyin: pinyinStr, initials } = trackData;
-    console.log(`[Download] Received cache request: ${artist} - ${title}`);
-
-    const safeFilename = sanitizeFilename(`${artist} - ${title}`);
-    const downloadPromises = [];
-
-    if (originalSrc) downloadPromises.push(downloadFile(originalSrc, CONFIG.MUSIC_DIR, `${safeFilename}.mp3`));
-    if (originalAlbumArt) downloadPromises.push(downloadFile(originalAlbumArt, CONFIG.ALBUMART_DIR, `${safeFilename}.jpg`));
-
-    const lyricsPath = path.join(CONFIG.MUSIC_DIR, `${safeFilename}.lrc`);
-    if (originalLyrics) {
-        if (originalLyrics.startsWith('data:text/plain,')) {
-            fs.writeFileSync(lyricsPath, decodeURIComponent(originalLyrics.substring('data:text/plain,'.length)), 'utf-8');
-        } else if (originalLyrics.startsWith('http')) {
-            downloadPromises.push(downloadFile(originalLyrics, CONFIG.MUSIC_DIR, `${safeFilename}.lrc`));
-        }
-    }
-
-    try {
-        await Promise.all(downloadPromises);
-        console.log(`[Download] Resources downloaded for: ${safeFilename}`);
-    } catch (error) {
-        console.error(`[Download] Resource download failed for ${safeFilename}:`, error);
-        sendMessage('download-status', { message: `Download '${title}' failed: ${error.message}`, type: 'error' });
-        return;
-    }
-
-    const newTrack = {
-        title, artist,
-        src: `music/${safeFilename}.mp3`,
-        albumArt: fs.existsSync(path.join(CONFIG.ALBUMART_DIR, `${safeFilename}.jpg`)) ? `albumArt/${safeFilename}.jpg` : "",
-        lyrics: fs.existsSync(lyricsPath) ? `music/${safeFilename}.lrc` : "",
-        type: "audio", pinyin: pinyinStr, initials,
-        originalSrc, originalAlbumArt, originalLyrics
-    };
-
-    await updateLocalPlaylist([newTrack]);
-    sendMessage('new-track-added', newTrack);
-}
-
-export async function handleDeleteTrack({ src: relativeSrc }) {
-    if (!relativeSrc) return { success: false, error: 'Delete failed: No track path provided.' };
-    try {
-        let playlist = [];
-        if (fs.existsSync(CONFIG.PLAYLIST_PATH)) {
-            playlist = JSON.parse(fs.readFileSync(CONFIG.PLAYLIST_PATH, 'utf-8'));
-        }
-        const trackToDelete = playlist.find(t => t.src === relativeSrc);
-        if (!trackToDelete) return { success: false, error: 'Delete failed: Track not found in playlist.' };
-
-        fs.writeFileSync(CONFIG.PLAYLIST_PATH, JSON.stringify(playlist.filter(t => t.src !== relativeSrc), null, 2), 'utf-8');
-
-        ['src', 'albumArt', 'lyrics'].forEach(key => {
-            if (trackToDelete[key]) {
-                const filePath = path.join(CONFIG.MEDIA_ROOT, trackToDelete[key]);
-                if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-            }
-        });
-        console.log(`[Deletion] Successfully deleted "${trackToDelete.title}"`);
-        return { success: true, message: `Successfully deleted "${trackToDelete.title}"` };
-    } catch (error) {
-        console.error(`[Deletion] Error during deletion:`, error);
-        return { success: false, error: error.message };
-    }
-}
-
-export async function handleGetMusicUrl(trackInfo) {
-    if (!trackInfo) return { success: false, error: 'Failed to get playback URL: No track info provided.' };
-    console.log(`[URL Resolver] Requesting URL for: ${trackInfo.title}`);
-    try {
-        if (trackInfo.src && trackInfo.src.startsWith('http')) {
-            console.log(`[URL Resolver] Proxying initial URL: ${trackInfo.src}`);
-            const response = await axios.head(trackInfo.src, { maxRedirects: 10, timeout: 15000, headers: { 'User-Agent': 'Mozilla/5.0' } });
-            const finalUrl = response.request.res.responseUrl;
-            if (!finalUrl) throw new Error('Could not resolve final media address.');
-            console.log(`[URL Resolver] Success, final URL: ${finalUrl}`);
-            return { success: true, url: finalUrl };
-        }
-        const source = trackInfo.source;
-        if (!source) throw new Error('Track info is missing "source" field.');
-        const activePlugin = pluginManager.getActivePlugin();
-        if (!activePlugin) throw new Error('No active music plugin.');
-        if (!activePlugin.supportedSources[source]) throw new Error(`Active plugin does not support "${source}" source.`);
-        console.log(`[URL Resolver] Using plugin "${activePlugin.pluginInfo.name}" to resolve...`);
-        const url = await activePlugin.getMusicUrl(trackInfo, '128k');
-        const response = await axios.head(url, { maxRedirects: 10, timeout: 15000 });
-        const finalUrl = response.request.res.responseUrl;
-        return { success: true, url: finalUrl };
-    } catch (e) {
-        const errorMessage = e.response ? `HTTP ${e.response.status}` : e.message;
-        console.error(`[URL Resolver] Failed:`, errorMessage);
-        return { success: false, error: `Failed to get playback URL: ${errorMessage}` };
-    }
-}
+// --- 抖音/B站下载逻辑 (从旧代码补充完整) ---
 
 export async function handleDownloadRequest(requestData) {
     let url, downloadType;
@@ -516,22 +550,9 @@ export async function handleDownloadRequest(requestData) {
     }
 }
 
-export async function handleGetLrcContent(relativePath) {
-    if (!relativePath) return { success: false, error: 'No lyrics file path provided.' };
-    const decodedPath = decodeURIComponent(relativePath);
-    const fullPath = path.join(CONFIG.MEDIA_ROOT, decodedPath);
-    try {
-        if (!fs.existsSync(fullPath)) throw new Error(`File not found: ${fullPath}`);
-        const content = await fs.promises.readFile(fullPath, 'utf-8');
-        return { success: true, data: content };
-    } catch (e) {
-        console.error(`[LRC Reader] Failed to read lyrics file: ${fullPath}`, e);
-        return { success: false, error: `Failed to read lyrics: ${e.message}` };
-    }
-}
-
 async function downloadSingleVideo(videoUrl) {
     sendMessage('download-status', { message: 'Launching headless browser...' });
+    // 注意：这里引用了 'backend/douyin-preload.js'，请确保该文件在项目中存在
     const win = new BrowserWindow({ show: false, webPreferences: { partition: `persist:douyin_session_${Date.now()}`, preload: path.join(__dirname, 'backend', 'douyin-preload.js'), contextIsolation: true, sandbox: true } });
     win.webContents.setAudioMuted(true);
     try {
@@ -593,73 +614,6 @@ async function processAndDownloadItem(awemeDetail) {
         await updateLocalPlaylist([newTrack]);
         sendMessage('new-track-added', newTrack);
     } catch (e) { sendMessage('download-status', { message: `Failed to download item ${awemeId}: ${e.message}`, type: 'error' }); }
-}
-
-// =========================================================================
-// 【修复】将下载逻辑分离
-// =========================================================================
-
-/**
- * 通用文件下载函数 (用于抖音、音乐封面等)。
- * 此函数不包含 Referer，具有更好的通用性。
- */
-async function downloadFile(url, folder, fileName) {
-    const filePath = path.join(folder, fileName);
-    if (fs.existsSync(filePath)) {
-        console.log(`[Download] File already exists, skipping: ${fileName}`);
-        return;
-    };
-    const writer = fs.createWriteStream(filePath);
-    const response = await axios({ url, method: 'GET', responseType: 'stream', headers: { 'User-Agent': 'Mozilla/5.0' } });
-    response.data.pipe(writer);
-    return new Promise((resolve, reject) => {
-        writer.on('finish', resolve); writer.on('error', reject);
-    });
-}
-
-/**
- * Bilibili 专用文件下载函数。
- * 此函数强制添加 Referer 请求头，以满足B站服务器的防盗链要求。
- * @param {string} url - 要下载的资源URL
- * @param {string} folder - 保存目录
- * @param {string} fileName - 保存文件名
- * @param {string} refererUrl - Bilibili 视频页面的 URL，用作 Referer
- */
-async function downloadBilibiliFile(url, folder, fileName, refererUrl) {
-    const filePath = path.join(folder, fileName);
-    if (fs.existsSync(filePath)) {
-        console.log(`[Bili Download] File already exists, skipping: ${fileName}`);
-        return;
-    }
-    const writer = fs.createWriteStream(filePath);
-    const response = await axios({
-        url,
-        method: 'GET',
-        responseType: 'stream',
-        headers: {
-            'User-Agent': 'Mozilla/5.0',
-            'Referer': refererUrl
-        }
-    });
-    response.data.pipe(writer);
-    return new Promise((resolve, reject) => {
-        writer.on('finish', resolve); writer.on('error', reject);
-    });
-}
-
-async function updateLocalPlaylist(newTracks) {
-    let playlist = [];
-    try {
-        if (fs.existsSync(CONFIG.PLAYLIST_PATH)) {
-            playlist = JSON.parse(fs.readFileSync(CONFIG.PLAYLIST_PATH, 'utf-8'));
-        }
-    } catch (e) { console.warn(`[Playlist] Failed to read playlist.json`, e.message); }
-    const existingSrcs = new Set(playlist.map(track => track.src));
-    const uniqueNewTracks = newTracks.filter(track => !existingSrcs.has(track.src));
-    if (uniqueNewTracks.length > 0) {
-        const updatedPlaylist = [...uniqueNewTracks, ...playlist];
-        fs.writeFileSync(CONFIG.PLAYLIST_PATH, JSON.stringify(updatedPlaylist, null, 2), 'utf-8');
-    }
 }
 
 async function downloadBilibiliVideo(videoUrl) {
@@ -741,5 +695,57 @@ async function downloadBilibiliVideo(videoUrl) {
     } catch (error) {
         console.error('[Bilibili Download] 错误:', error);
         sendMessage('download-status', { message: `B站下载失败: ${error.message}`, type: 'error' });
+    }
+}
+
+// --- 通用文件操作 & 工具 ---
+
+export async function getLocalPlaylist() {
+    try {
+        if (fs.existsSync(CONFIG.PLAYLIST_PATH)) {
+            const playlistData = JSON.parse(fs.readFileSync(CONFIG.PLAYLIST_PATH, 'utf-8'));
+            return { success: true, data: playlistData };
+        } else {
+            return { success: true, data: [] };
+        }
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+}
+
+async function downloadFile(url, folder, fileName) {
+    const filePath = path.join(folder, fileName);
+    if (fs.existsSync(filePath)) return;
+    const writer = fs.createWriteStream(filePath);
+    const response = await axios({ url, method: 'GET', responseType: 'stream', headers: { 'User-Agent': 'Mozilla/5.0' } });
+    response.data.pipe(writer);
+    return new Promise((resolve, reject) => {
+        writer.on('finish', resolve); writer.on('error', reject);
+    });
+}
+
+async function downloadBilibiliFile(url, folder, fileName, refererUrl) {
+    const filePath = path.join(folder, fileName);
+    if (fs.existsSync(filePath)) return;
+    const writer = fs.createWriteStream(filePath);
+    const response = await axios({
+        url, method: 'GET', responseType: 'stream',
+        headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': refererUrl }
+    });
+    response.data.pipe(writer);
+    return new Promise((resolve, reject) => {
+        writer.on('finish', resolve); writer.on('error', reject);
+    });
+}
+
+async function updateLocalPlaylist(newTracks) {
+    let playlist = [];
+    try {
+        if (fs.existsSync(CONFIG.PLAYLIST_PATH)) playlist = JSON.parse(fs.readFileSync(CONFIG.PLAYLIST_PATH, 'utf-8'));
+    } catch (e) {}
+    const existingSrcs = new Set(playlist.map(track => track.src));
+    const uniqueNewTracks = newTracks.filter(track => !existingSrcs.has(track.src));
+    if (uniqueNewTracks.length > 0) {
+        fs.writeFileSync(CONFIG.PLAYLIST_PATH, JSON.stringify([...uniqueNewTracks, ...playlist], null, 2), 'utf-8');
     }
 }

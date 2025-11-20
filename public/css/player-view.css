@@ -162,3 +162,96 @@
     align-items: center;
     justify-content: center;
 }
+
+/* ========================================================================= */
+/* 【新增】空状态视图样式                                                    */
+/* ========================================================================= */
+.empty-state-view {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: none; /* 默认隐藏 */
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    z-index: 10;
+    background: transparent; /* 依赖父容器 .main-view 的背景 */
+}
+
+/* 当父容器有 .is-empty 类时显示 */
+.main-view.is-empty .empty-state-view {
+    display: flex;
+    animation: fadeIn 0.5s ease-out;
+}
+
+/* 同时隐藏媒体播放器 */
+.main-view.is-empty .media-visualizer {
+    display: none;
+}
+
+.empty-content {
+    background-color: rgba(255, 255, 255, 0.05);
+    padding: 40px;
+    border-radius: 16px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    max-width: 400px;
+    width: 90%;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.empty-icon {
+    font-size: 64px;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    opacity: 0.7;
+}
+
+.empty-icon svg {
+    width: 64px;
+    height: 64px;
+    fill: currentColor;
+}
+
+.empty-content h1 {
+    font-size: 24px;
+    margin-bottom: 10px;
+    color: var(--text-primary);
+}
+
+.empty-content p {
+    color: var(--text-secondary);
+    margin-bottom: 30px;
+    font-size: 14px;
+}
+
+.empty-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.empty-actions .action-btn {
+    width: 100%;
+    justify-content: center;
+    gap: 8px;
+}
+
+.empty-actions .action-btn.secondary-btn {
+    background-color: transparent;
+    border: 1px solid var(--text-secondary);
+    color: var(--text-primary);
+}
+
+.empty-actions .action-btn.secondary-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-color: var(--text-primary);
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
