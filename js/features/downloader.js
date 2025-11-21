@@ -30,7 +30,7 @@ function transformApiData(apiTrack) {
 
         // 关键：保存元数据，用于后续获取真实链接
         id: apiTrack.id,
-        source: apiTrack.source || 'netease',
+        source: apiTrack.source || 'joox',
         lyricId: apiTrack.lyricId,
 
         // 兼容旧版字段，用于下载
