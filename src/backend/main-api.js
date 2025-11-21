@@ -9,21 +9,30 @@ import { Buffer } from 'buffer';
 import { createHash } from 'crypto';
 import { exec } from 'child_process';
 import pluginManager from './plugins/manager.js';
-import * as gdstudio from './providers/gdstudio.js'; // 【新增】引入 GDStudio 适配器
+import * as gdstudio from './providers/gdstudio.js';
 
 // --- 核心配置开关 ---
 // 选项: 'LEGACY' (旧版爬虫) 或 'GD_STUDIO' (新版 API)
-const PROVIDER_MODE = 'GD_STUDIO';
+const PROVIDER_MODE = 'LEGACY';
 // -------------------
 
 // --- 配置常量 ---
 const CACHE_EXPIRATION_DAYS = 7;
-const BACKGROUND_SEARCH_PAGE_DEPTH = 10;
-const ITEMS_PER_PAGE = 10; // 旧版分页数，新版API默认为20，可调整
+const BACKGROUND_SEARCH_PAGE_DEPTH = 20;
+const ITEMS_PER_PAGE = 10; // 旧版分页数
+
+// 【新增】等待与轮询配置
+const SEARCH_WAIT_TIMEOUT = 20000; // 搜索最大等待时间 (毫秒)
+const POLLING_INTERVAL = 500;      // 轮询间隔 (毫秒)
 
 // --- 状态管理 ---
 const ONGOING_CACHE_BUILDS = new Set();
 const INITIAL_RESPONSE_PROMISES = new Map();
+
+// 【新增】实时搜索结果缓冲区
+// Key: cacheKey, Value: Array<Track>
+// 用于在爬虫尚未结束写入文件前，让前端能读取到已经爬取到的中间结果
+const REALTIME_SEARCH_BUFFER = new Map();
 
 let appInstance;
 let getWebContents;
@@ -61,10 +70,8 @@ export function initialize(app, webContentsProvider) {
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     });
 
-    // --- FFmpeg 定位逻辑 (从旧代码补充完整) ---
+    // --- FFmpeg 定位逻辑 ---
     console.log('--- [FFmpeg 日志] 开始定位 FFmpeg ---');
-    console.log(`[FFmpeg 日志] app.isPackaged: ${app.isPackaged}`);
-
     if (app.isPackaged) {
         FFMPEG_PATH = path.join(path.dirname(app.getAppPath()), 'ffmpeg', 'win32-x64', 'ffmpeg.exe');
     } else {
@@ -74,11 +81,6 @@ export function initialize(app, webContentsProvider) {
 
     if (!fs.existsSync(FFMPEG_PATH)) {
         console.error(`[FFmpeg 日志] 错误: 未找到 FFmpeg。`);
-        // 尝试检查目录以辅助调试
-        const expectedDir = path.dirname(FFMPEG_PATH);
-        if (fs.existsSync(expectedDir)) {
-            console.log(`[FFmpeg 日志] 目录存在，但 ffmpeg.exe 不在其中。`);
-        }
         FFMPEG_PATH = '';
     } else {
         console.log(`[FFmpeg 日志] 成功: FFmpeg 已就绪。`);
@@ -133,7 +135,6 @@ export async function handleSearchRequest({ query, page = 1 }) {
     // 【分支 1】新版 GDStudio 逻辑
     if (PROVIDER_MODE === 'GD_STUDIO') {
         try {
-            // 直接调用适配器，无需复杂的后台缓存逻辑，因为新 API 响应较快且支持分页
             const { list, total } = await gdstudio.search(query, page);
             return { success: true, data: { results: list, total } };
         } catch (error) {
@@ -147,17 +148,20 @@ export async function handleSearchRequest({ query, page = 1 }) {
     const cacheFilePath = path.join(CONFIG.SEARCH_CACHE_DIR, `${cacheKey}.json`);
 
     try {
+        // 1. 优先检查磁盘缓存文件
         if (fs.existsSync(cacheFilePath)) {
             const stats = await fs.promises.stat(cacheFilePath);
             const cacheAgeDays = (Date.now() - stats.mtime.getTime()) / (1000 * 60 * 60 * 24);
 
             if (cacheAgeDays < CACHE_EXPIRATION_DAYS) {
-                console.log(`[Cache] HIT for '${query}'.`);
+                console.log(`[Cache] HIT for '${query}'. Reading from disk.`);
                 const cacheContent = await fs.promises.readFile(cacheFilePath, 'utf-8');
                 const cacheData = JSON.parse(cacheContent);
                 const total = cacheData.results.length;
                 const startIndex = (page - 1) * ITEMS_PER_PAGE;
-                const paginatedResults = cacheData.results.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+                // 修复边界问题
+                const endIndex = startIndex + ITEMS_PER_PAGE;
+                const paginatedResults = cacheData.results.slice(startIndex, endIndex);
                 return { success: true, data: { results: paginatedResults, total } };
             } else {
                 fs.promises.unlink(cacheFilePath).catch(() => {});
@@ -165,37 +169,85 @@ export async function handleSearchRequest({ query, page = 1 }) {
         }
     } catch (error) { console.error(`[Cache] Error reading cache:`, error.message); }
 
-    if (page > 1) {
-        return { success: true, data: { results: [], total: 0 } };
-    }
-
-    // 触发旧版后台搜索构建...
-    if (!ONGOING_CACHE_BUILDS.has(cacheKey)) {
+    // 2. 如果没有磁盘缓存，且请求的是第一页，触发后台爬虫
+    if (page === 1 && !ONGOING_CACHE_BUILDS.has(cacheKey)) {
         triggerLegacyBackgroundBuild(query, cacheKey, cacheFilePath);
     }
 
-    try {
-        const promiseWrapper = INITIAL_RESPONSE_PROMISES.get(cacheKey);
-        if (!promiseWrapper) {
-            // 如果没有正在进行的 promise，可能是并发问题，简单重试
-            await new Promise(r => setTimeout(r, 100));
-            const retryWrapper = INITIAL_RESPONSE_PROMISES.get(cacheKey);
-            if(retryWrapper) {
-                const { results, total } = await retryWrapper.promise;
-                return { success: true, data: { results, total } };
+    // 3. 【核心修改】处理等待逻辑 (Page 1 的初始等待，或 Page > 1 的增量等待)
+    // 如果任务正在进行中，我们进入轮询模式，从内存缓冲区读取数据
+    if (ONGOING_CACHE_BUILDS.has(cacheKey)) {
+        console.log(`[Search] Waiting for buffer data... (Page ${page})`);
+        const startTime = Date.now();
+        const requiredCount = page * ITEMS_PER_PAGE;
+        const startIndex = (page - 1) * ITEMS_PER_PAGE;
+
+        // 长轮询：等待内存缓冲区中有足够的数据
+        while (Date.now() - startTime < SEARCH_WAIT_TIMEOUT) {
+            // 检查缓冲区
+            const currentBuffer = REALTIME_SEARCH_BUFFER.get(cacheKey) || [];
+            const isFinished = !ONGOING_CACHE_BUILDS.has(cacheKey);
+
+            // 如果数据量满足当前页需求，或者爬虫已经结束（可能没那么多数据）
+            if (currentBuffer.length >= requiredCount || (isFinished && currentBuffer.length > 0)) {
+                const total = currentBuffer.length;
+                // 此时如果爬虫结束但数据不够当前页的起始点，说明确实没数据了
+                if (startIndex >= total) {
+                    return { success: true, data: { results: [], total } };
+                }
+                const results = currentBuffer.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+                return { success: true, data: { results, total: isFinished ? total : 9999 } }; // 9999 表示还在爬
             }
-            return { success: false, error: "Search initialization failed" };
+
+            // 如果爬虫结束了且没有数据
+            if (isFinished && currentBuffer.length === 0) {
+                break; // 退出循环，走后面的失败或空逻辑
+            }
+
+            // 等待一段时间再检查
+            await new Promise(r => setTimeout(r, POLLING_INTERVAL));
         }
-        const { results, total } = await promiseWrapper.promise;
-        return { success: true, data: { results, total } };
-    } catch (error) {
-        return { success: false, error: error.message };
+
+        // 超时后的兜底
+        const buffer = REALTIME_SEARCH_BUFFER.get(cacheKey) || [];
+        if (buffer.length > 0) {
+            const total = buffer.length;
+            const results = buffer.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+            return { success: true, data: { results, total } };
+        }
     }
+
+    // 4. 如果 Page 1 的 Promise 还在 (通常被上面的轮询覆盖，这里作为保险)
+    if (page === 1) {
+        try {
+            const promiseWrapper = INITIAL_RESPONSE_PROMISES.get(cacheKey);
+            if (!promiseWrapper) {
+                // 并发边界情况：任务刚好结束，或者没开始
+                // 尝试最后一次读取磁盘
+                if (fs.existsSync(cacheFilePath)) {
+                    const content = await fs.promises.readFile(cacheFilePath, 'utf-8');
+                    const data = JSON.parse(content);
+                    return { success: true, data: { results: data.results.slice(0, ITEMS_PER_PAGE), total: data.results.length } };
+                }
+                return { success: false, error: "Search initialization failed or no results." };
+            }
+            const { results, total } = await promiseWrapper.promise;
+            return { success: true, data: { results, total } };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    }
+
+    // 5. 其他情况（如 Page > 1 且无任务无缓存）
+    return { success: true, data: { results: [], total: 0 } };
 }
 
 // (旧版) 后台构建缓存逻辑
 function triggerLegacyBackgroundBuild(query, cacheKey, cacheFilePath) {
     ONGOING_CACHE_BUILDS.add(cacheKey);
+    // 【修改】初始化内存缓冲区
+    REALTIME_SEARCH_BUFFER.set(cacheKey, []);
+
     let promiseResolver;
     const initialResponsePromise = new Promise((resolve, reject) => { promiseResolver = { resolve, reject }; });
     INITIAL_RESPONSE_PROMISES.set(cacheKey, { promise: initialResponsePromise, resolver: promiseResolver });
@@ -206,6 +258,8 @@ function triggerLegacyBackgroundBuild(query, cacheKey, cacheFilePath) {
         let initialResponseSent = false;
         try {
             for (let currentPage = 1; currentPage <= BACKGROUND_SEARCH_PAGE_DEPTH; currentPage++) {
+                // 检查任务是否被取消或不再需要（可选优化，此处略）
+
                 const params = new URLSearchParams({ input: query, filter: 'name', page: currentPage.toString(), type: 'netease' });
                 const response = await axios.post(CONFIG.ONLINE_SEARCH_API, params, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, timeout: 30000 });
                 if (currentPage === 1) firstPageTotal = response.data?.data?.total || 0;
@@ -215,24 +269,48 @@ function triggerLegacyBackgroundBuild(query, cacheKey, cacheFilePath) {
                 // 验证 URL
                 const validationPromises = tracks.map(track => validateUrl(track.url));
                 const validationResults = await Promise.allSettled(validationPromises);
+
+                const newValidTracks = [];
                 validationResults.forEach((result, index) => {
                     if (result.status === 'fulfilled' && result.value === true) {
-                        allValidatedResults.push({ ...tracks[index], source: 'netease' });
+                        newValidTracks.push({ ...tracks[index], source: 'joox' });
                     }
                 });
 
+                // 【修改】将新验证通过的歌曲加入总列表和内存缓冲区
+                if (newValidTracks.length > 0) {
+                    allValidatedResults.push(...newValidTracks);
+
+                    // 同步更新内存缓冲区，供前端长轮询读取
+                    const currentBuffer = REALTIME_SEARCH_BUFFER.get(cacheKey) || [];
+                    currentBuffer.push(...newValidTracks);
+                    REALTIME_SEARCH_BUFFER.set(cacheKey, currentBuffer);
+                }
+
+                // 触发 Page 1 的快速响应 (仅一次)
                 if (!initialResponseSent && allValidatedResults.length >= ITEMS_PER_PAGE) {
                     INITIAL_RESPONSE_PROMISES.get(cacheKey)?.resolver.resolve({ results: allValidatedResults.slice(0, ITEMS_PER_PAGE), total: firstPageTotal });
                     initialResponseSent = true;
                 }
             }
+
+            // 循环结束后的清理
             if (!initialResponseSent) INITIAL_RESPONSE_PROMISES.get(cacheKey)?.resolver.resolve({ results: allValidatedResults, total: firstPageTotal });
-            if (allValidatedResults.length > 0) await fs.promises.writeFile(cacheFilePath, JSON.stringify({ timestamp: Date.now(), results: allValidatedResults }));
+
+            // 写入磁盘缓存
+            if (allValidatedResults.length > 0) {
+                await fs.promises.writeFile(cacheFilePath, JSON.stringify({ timestamp: Date.now(), results: allValidatedResults }));
+            }
         } catch (err) {
+            console.error(`[Search Background] Error: ${err.message}`);
             if (!initialResponseSent) INITIAL_RESPONSE_PROMISES.get(cacheKey)?.resolver.reject(err);
         } finally {
             ONGOING_CACHE_BUILDS.delete(cacheKey);
             INITIAL_RESPONSE_PROMISES.delete(cacheKey);
+            // 【修改】任务结束后，延迟清理缓冲区，以防有最后的请求正在读取
+            setTimeout(() => {
+                REALTIME_SEARCH_BUFFER.delete(cacheKey);
+            }, 5000);
         }
     })();
 }
@@ -245,8 +323,6 @@ export async function handleGetMusicUrl(trackInfo) {
     try {
         // 1. 如果已经是 HTTP 链接，尝试直接探测真实地址 (旧版逻辑兼容)
         if (trackInfo.src && trackInfo.src.startsWith('http')) {
-            // 如果是新版 API 返回的 ID 模式，前端 src 可能为空，这里跳过
-            // 如果是旧版，src 是一个临时的 302 链接
             if (!trackInfo.id || PROVIDER_MODE === 'LEGACY') {
                 console.log(`[URL Resolver] Proxying legacy URL...`);
                 const response = await axios.head(trackInfo.src, { maxRedirects: 10, timeout: 15000, headers: { 'User-Agent': 'Mozilla/5.0' } });
@@ -254,14 +330,14 @@ export async function handleGetMusicUrl(trackInfo) {
             }
         }
 
-        // 2. 【新增】 GDStudio 模式：使用 ID 获取真实链接
+        // 2. GDStudio 模式
         if (PROVIDER_MODE === 'GD_STUDIO' && trackInfo.id && trackInfo.source) {
             console.log(`[URL Resolver] Fetching via GDStudio API (ID: ${trackInfo.id})...`);
             const url = await gdstudio.getMusicUrl(trackInfo);
             return { success: true, url };
         }
 
-        // 3. 插件系统兜底 (原有逻辑)
+        // 3. 插件系统兜底
         if (trackInfo.source) {
             const activePlugin = pluginManager.getActivePlugin();
             if (activePlugin && activePlugin.supportedSources[trackInfo.source]) {
@@ -280,22 +356,17 @@ export async function handleGetMusicUrl(trackInfo) {
 
 // --- 核心处理：缓存/下载请求 ---
 export async function handleCacheRequest(trackData) {
-    // 兼容处理：新旧 API 字段映射
     const title = trackData.title || 'Unknown';
     const artist = trackData.artist || 'Unknown';
-
-    // 旧版字段: originalSrc, originalAlbumArt, originalLyrics
-    // 新版字段: id, source, albumArt, lyricId
 
     console.log(`[Download] Request: ${artist} - ${title}`);
     const safeFilename = sanitizeFilename(`${artist} - ${title}`);
     const downloadPromises = [];
 
     // 1. 处理音频文件
-    let audioUrl = trackData.originalSrc; // 旧版优先
+    let audioUrl = trackData.originalSrc;
     if (PROVIDER_MODE === 'GD_STUDIO' && !audioUrl && trackData.id) {
         try {
-            // 新版需要先获取下载链接
             audioUrl = await gdstudio.getMusicUrl(trackData);
         } catch (e) {
             sendMessage('download-status', { message: `获取音频链接失败: ${e.message}`, type: 'error' });
@@ -307,7 +378,6 @@ export async function handleCacheRequest(trackData) {
     }
 
     // 2. 处理封面
-    // 新版 albumArt 已经是完整 URL，旧版是 originalAlbumArt
     const artUrl = trackData.albumArt || trackData.originalAlbumArt;
     if (artUrl) {
         downloadPromises.push(downloadFile(artUrl, CONFIG.ALBUMART_DIR, `${safeFilename}.jpg`));
@@ -317,23 +387,19 @@ export async function handleCacheRequest(trackData) {
     const lyricsPath = path.join(CONFIG.MUSIC_DIR, `${safeFilename}.lrc`);
     let lyricContent = '';
 
-    // 新版：通过 lyricId 获取
     if (PROVIDER_MODE === 'GD_STUDIO' && trackData.lyricId) {
         try {
             lyricContent = await gdstudio.getLyric(trackData.lyricId, trackData.source);
         } catch (e) { console.warn('Failed to fetch lyrics via API'); }
     }
-    // 旧版：可能是 data URI 或 HTTP URL
     else if (trackData.originalLyrics) {
         if (trackData.originalLyrics.startsWith('data:text/plain,')) {
             lyricContent = decodeURIComponent(trackData.originalLyrics.substring('data:text/plain,'.length));
         } else if (trackData.originalLyrics.startsWith('http')) {
-            // 如果是 URL，加入下载队列
             downloadPromises.push(downloadFile(trackData.originalLyrics, CONFIG.MUSIC_DIR, `${safeFilename}.lrc`));
         }
     }
 
-    // 如果获取到了文本内容，直接写入
     if (lyricContent) {
         fs.writeFileSync(lyricsPath, lyricContent, 'utf-8');
     }
@@ -342,7 +408,6 @@ export async function handleCacheRequest(trackData) {
         await Promise.all(downloadPromises);
         console.log(`[Download] Success: ${safeFilename}`);
 
-        // 构造新的本地 Track 对象
         const newTrack = {
             title, artist,
             src: `music/${safeFilename}.mp3`,
@@ -351,7 +416,6 @@ export async function handleCacheRequest(trackData) {
             type: "audio",
             pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
             initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, ''),
-            // 保存元数据以便未来可能的重新解析
             id: trackData.id,
             source: trackData.source
         };
@@ -402,7 +466,7 @@ export async function handleDeleteTrack({ src: relativeSrc }) {
     }
 }
 
-// --- 本地文件导入逻辑 (从旧代码补充完整) ---
+// --- 本地文件导入逻辑 ---
 
 export async function handleSelectDirectory() {
     const mainWindow = BrowserWindow.getAllWindows()[0];
@@ -413,7 +477,6 @@ export function handleOpenMediaFolder() {
     if (CONFIG.MEDIA_ROOT) shell.openPath(CONFIG.MEDIA_ROOT);
 }
 
-// 递归扫描目录
 async function scanDirectoryRecursive(dirPath) {
     const fileGroups = new Map();
     const audioExt = ['.mp3', '.flac', '.wav', '.m4a', '.ogg'];
@@ -516,7 +579,7 @@ export async function handleLocalImport(directoryPath) {
     }
 }
 
-// --- 抖音/B站下载逻辑 (从旧代码补充完整) ---
+// --- 抖音/B站下载逻辑 ---
 
 export async function handleDownloadRequest(requestData) {
     let url, downloadType;
@@ -552,7 +615,6 @@ export async function handleDownloadRequest(requestData) {
 
 async function downloadSingleVideo(videoUrl) {
     sendMessage('download-status', { message: 'Launching headless browser...' });
-    // 注意：这里引用了 'backend/douyin-preload.js'，请确保该文件在项目中存在
     const win = new BrowserWindow({ show: false, webPreferences: { partition: `persist:douyin_session_${Date.now()}`, preload: path.join(__dirname, 'backend', 'douyin-preload.js'), contextIsolation: true, sandbox: true } });
     win.webContents.setAudioMuted(true);
     try {
@@ -600,7 +662,6 @@ async function processAndDownloadItem(awemeDetail) {
     try {
         const videoUri = awemeDetail?.video?.play_addr?.uri;
         const coverUrl = awemeDetail?.video?.cover?.url_list?.[0];
-        // 使用通用的 downloadFile 函数
         if (videoUri) await downloadFile(`https://www.douyin.com/aweme/v1/play/?video_id=${videoUri}`, CONFIG.VIDEOS_DIR, `${awemeId}.mp4`);
         if (coverUrl) await downloadFile(coverUrl, CONFIG.ALBUMART_DIR, `${awemeId}.jpg`); else return;
         const title = awemeDetail.desc || "Untitled Video";
@@ -655,7 +716,6 @@ async function downloadBilibiliVideo(videoUrl) {
         const coverPath = path.join(CONFIG.ALBUMART_DIR, `${safeFilename}.jpg`);
         const finalPath = path.join(CONFIG.VIDEOS_DIR, `${safeFilename}.mp4`);
 
-        // 调用 Bilibili 专用下载函数
         await Promise.all([
             downloadBilibiliFile(videoStream.baseUrl, path.dirname(videoTempPath), path.basename(videoTempPath), videoUrl),
             downloadBilibiliFile(audioStream.baseUrl, path.dirname(audioTempPath), path.basename(audioTempPath), videoUrl),

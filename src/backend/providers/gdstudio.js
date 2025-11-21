@@ -4,7 +4,7 @@ import axios from 'axios';
 
 // --- 配置 ---
 const API_BASE_URL = 'https://music-api.gdstudio.xyz/api.php';
-const DEFAULT_SOURCE = 'netease'; // 默认源：netease, tencent, kugou 等
+const DEFAULT_SOURCE = 'joox'; // 默认源：netease, tencent, kugou 等
 const TIMEOUT = 20000; // 适当增加超时时间，因为现在涉及多次请求
 
 // 创建 Axios 实例
