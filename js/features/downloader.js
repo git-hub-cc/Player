@@ -10,7 +10,7 @@ let currentSearchResults = [];
 let currentSearchQuery = '';
 let currentPage = 1;
 let totalPages = 1;
-const ITEMS_PER_PAGE = 10; // 注意：如果新API每页返回20条，这里仅用于计算页码
+const ITEMS_PER_PAGE = 10;
 
 /**
  * 将后端返回的统一数据转换为前端播放器使用的曲目对象。
@@ -63,8 +63,7 @@ function transformApiData(apiTrack) {
 /**
  * =========================================================================
  * 【修改】 updateInputMode 函数
- * 增强了此函数，使其能够识别B站链接。
- * 当检测到不同类型的链接时，会显示/隐藏相应的下载按钮。
+ * 增强了此函数，使其能够识别 B站、Jable 和 YouTube 链接。
  * =========================================================================
  * @param {string} message - 要显示的消息。
  */
@@ -75,13 +74,20 @@ function updateInputMode() {
     // B站链接特定逻辑
     const isBilibiliUrl = isUrlMode && inputText.includes('bilibili.com/video/');
 
+    // Jable链接特定逻辑
+    const isJableUrl = isUrlMode && inputText.includes('jable.tv/videos/');
+
+    // 【新增】YouTube 链接特定逻辑
+    const isYoutubeUrl = isUrlMode && (inputText.includes('youtube.com/') || inputText.includes('youtu.be/'));
+
     // 抖音用户主页链接特定逻辑
     const isDouyinUserUrl = isUrlMode && (inputText.includes('/user/') || inputText.includes('MS4wLjAB'));
 
     // 按钮显隐控制
     dom.downloadWorksBtn.style.display = isDouyinUserUrl ? 'flex' : 'none';
     dom.downloadLikesBtn.style.display = isDouyinUserUrl ? 'flex' : 'none';
-    // “开始下载”按钮适用于所有非用户主页的单视频链接（抖音和B站）
+
+    // “开始下载”按钮适用于所有非用户主页的单视频链接（抖音、B站、Jable、YouTube）
     dom.startDownloadBtn.style.display = (isUrlMode && !isDouyinUserUrl) ? 'flex' : 'none';
 
     // 搜索按钮只在非URL模式下显示
@@ -93,6 +99,10 @@ function updateInputMode() {
     // 更新面板描述文本
     if (isBilibiliUrl) {
         dom.panelDescription.textContent = '检测到B站链接，点击“开始下载”进行处理。';
+    } else if (isJableUrl) {
+        dom.panelDescription.textContent = '检测到Jable链接，点击“开始下载”进行处理。';
+    } else if (isYoutubeUrl) {
+        dom.panelDescription.textContent = '检测到YouTube链接，点击“开始下载”进行处理。';
     } else if (isUrlMode) {
         dom.panelDescription.textContent = '检测到抖音链接，已切换至下载模式。';
     } else {
