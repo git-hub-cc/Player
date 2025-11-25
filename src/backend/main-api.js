@@ -148,7 +148,12 @@ function sendMessage(type, data) {
 
 function sanitizeFilename(filename) {
     if (!filename) return 'untitled';
-    return filename.replace(/[\/\\?%*:|"<>_,\s]+/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '').trim();
+    // [增强] 更严格地替换掉所有可能引起问题的字符，包括但不限于：
+    // \ / ? % * : | " < > _ , . # & … ' ’ 和所有空白字符
+    // 将它们全部替换为连字符 '-'
+    const sanitized = filename.replace(/[\/\\?%*:|"<>_,\s\.\#\&\…'’]+/g, '-');
+    // 清理多余的连字符
+    return sanitized.replace(/-+/g, '-').replace(/^-+|-+$/g, '').trim();
 }
 
 function getCacheKey(query) {
