@@ -38,7 +38,7 @@ export function toggleEmptyState(isEmpty) {
         // 显示空状态
         dom.mainView.classList.add('is-empty');
 
-        // 禁用底部控制栏
+        // 【优化】禁用底部控制栏
         dom.playerControls.classList.add('disabled');
 
         // 重置背景为默认渐变

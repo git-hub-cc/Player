@@ -2,23 +2,20 @@
 
 const { FusesPlugin } = require('@electron-forge/plugin-fuses');
 const { FuseV1Options, FuseVersion } = require('@electron/fuses');
-const path = require('path'); // 确保引入了 Node.js 的 path 模块
+const path = require('path');
 
 module.exports = {
     packagerConfig: {
         asar: true,
         icon: './public/assets/app',
         // =========================================================================
-        // 【核心修复】 修正了属性名并使用了更可靠的路径
+        // 【最终确认】 这是确保 ffmpeg 目录被打包的正确配置
         //
-        // 1. 属性名从 'extraResources' (错误) 修正为 'extraResource' (正确)。
-        //    这是导致文件夹未被打包的根本原因。
-        //
-        // 2. 使用 path.join(__dirname, 'ffmpeg') 来确保路径的正确解析。
-        //
-        // 这个配置会告诉 Electron Forge 在打包时，
-        // 将项目根目录下的 'ffmpeg' 文件夹完整地复制到
-        // 打包后应用的 resources 目录下。
+        // 1. 属性名是 `extraResource` (单数)。
+        // 2. 它告诉打包工具将项目根目录下的 'ffmpeg' 文件夹
+        //    完整复制到打包后应用的 resources 目录下。
+        //    - 开发时: C:\...\Player\ffmpeg
+        //    - 打包后: C:\Program Files\Player\resources\ffmpeg
         // =========================================================================
         extraResource: [
             path.join(__dirname, 'ffmpeg')
