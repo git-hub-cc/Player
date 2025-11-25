@@ -2,13 +2,12 @@
 
 import * as dom from './dom.js';
 import * as state from './state.js';
-import { PLAY_MODES } from './config.js'; // [修改] 移除了 desktopTourSteps, mobileTourSteps 引用
+import { PLAY_MODES } from './config.js';
 import { normalizeKey, formatTime } from './utils.js';
 import { pinyin } from 'pinyin-pro';
 import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode, resetBackgroundBeatTimer, resetPlayerUI, consumePendingSeek, playTrack, toggleInstrumentalMode } from './player.js';
 import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, closeActivePanels, toggleDownloadPanel, showToast, showConfirmationModal, toggleEmptyState } from './ui.js';
 import { loadShortcuts, executeShortcut, setupShortcutListeners } from './features/shortcuts.js';
-// [修改] 移除了 FeatureTour 引用
 import * as backgroundGallery from './features/gallery.js';
 import { setupDownloaderListeners, requestTrackDeletion } from './features/downloader.js';
 
@@ -44,49 +43,93 @@ function loadPlayerState() {
     }
 }
 
+// =========================================================================
+// 【核心修复】重构删除逻辑以允许删除正在播放的文件
+// =========================================================================
 async function handleDeleteTrackRequest(index) {
     const track = state.playlist[index];
     if (!track) return;
+
     try {
         await showConfirmationModal(`确定要删除 "${track.title}" 吗？\n文件将从磁盘中永久移除。`);
-        const deleted = await requestTrackDeletion(track);
-        if (!deleted) return;
-        const oldTrackIndex = state.currentTrackIndex;
-        const isDeletingCurrent = oldTrackIndex === index;
+
         const wasPlaying = state.isPlaying;
-        state.removeTrack(index);
-        renderPlaylist();
-        updatePlaylistUI();
-        backgroundGallery.updatePlaylistData(state.playlist);
+        const isDeletingCurrent = state.currentTrackIndex === index;
+
+        // 1. 如果正在删除当前播放的曲目，则先重置播放器UI
+        //    这会暂停播放并清空 src，从而释放操作系统对文件的锁定。
         if (isDeletingCurrent) {
-            if (state.playlist.length === 0) {
-                resetPlayerUI();
-                toggleEmptyState(true);
-            } else {
+            resetPlayerUI();
+        }
+
+        // 2. 向主进程发送删除文件的请求
+        const deleted = await requestTrackDeletion(track);
+
+        // 3. 如果文件删除失败（例如，权限问题）
+        if (!deleted) {
+            // 如果之前停止了播放，则尝试恢复播放
+            if (isDeletingCurrent) {
+                loadTrack(index, { forcePlay: wasPlaying });
+            }
+            return;
+        }
+
+        // 4. 文件删除成功，更新前端状态和UI
+        state.removeTrack(index); // 从播放列表状态中移除
+        renderPlaylist(); // 重新渲染播放列表
+        updatePlaylistUI(); // 更新UI高亮等
+        backgroundGallery.updatePlaylistData(state.playlist); // 更新背景画廊数据
+
+        // 5. 决定下一步操作：播放下一首或进入空状态
+        if (state.playlist.length === 0) {
+            // 如果列表空了，显示空状态界面
+            toggleEmptyState(true);
+        } else {
+            // 如果列表不为空，且删除的是当前播放曲目
+            if (isDeletingCurrent) {
+                // 加载新的当前曲目（索引可能已改变），并根据之前的播放状态决定是否自动播放
                 loadTrack(state.currentTrackIndex, { forcePlay: wasPlaying });
             }
-        } else if (state.playlist.length === 0) {
-            toggleEmptyState(true);
         }
+
         showToast(`"${track.title}" 已删除`);
+
     } catch (err) {
+        // 用户在确认对话框中点击了“取消”
         console.log("删除操作已由用户取消。", err);
     }
 }
+// =========================================================================
 
+/**
+ * [修正] 增强 makeTrackPlayable 函数，以正确编码包含特殊字符的文件路径
+ * @param {object} track - 原始曲目对象
+ * @returns {object} - 处理后可供播放的曲目对象
+ */
 function makeTrackPlayable(track) {
     const playableTrack = { ...track };
+
+    // 辅助函数，用于安全地编码 media:// 协议的路径。
+    // 这能确保文件名中的特殊字符 (如 #, ?, …) 不会破坏 URL 结构。
+    // 它将路径按 '/' 分割，对每个部分（目录或文件名）进行编码，然后再用 '/' 连接起来。
+    const encodeMediaUrl = (relativePath) => {
+        if (!relativePath) return '';
+        const encodedPath = relativePath.split('/').map(segment => encodeURIComponent(segment)).join('/');
+        return `media://${encodedPath}`;
+    };
+
     if (playableTrack.src && !playableTrack.src.startsWith('http')) {
-        playableTrack.src = `media://${playableTrack.src}`;
+        playableTrack.src = encodeMediaUrl(playableTrack.src);
     }
     if (playableTrack.albumArt && !playableTrack.albumArt.startsWith('http')) {
-        playableTrack.albumArt = `media://${playableTrack.albumArt}`;
+        playableTrack.albumArt = encodeMediaUrl(playableTrack.albumArt);
     }
     if (playableTrack.lyrics && !playableTrack.lyrics.startsWith('http') && !playableTrack.lyrics.startsWith('data:')) {
-        playableTrack.lyrics = `media://${playableTrack.lyrics}`;
+        playableTrack.lyrics = encodeMediaUrl(playableTrack.lyrics);
     }
     return playableTrack;
 }
+
 
 function enterScreensaverMode() {
     if (state.isScreensaverMode) return;
@@ -131,12 +174,9 @@ function setupEventListeners() {
         });
     }
 
-    // =========================================================================
-    // 【修复】阻止事件冒泡，防止触发 mainView 的 click 事件（该事件会关闭所有面板）
-    // =========================================================================
     if (dom.emptyStateSearchBtn) {
         dom.emptyStateSearchBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); // <--- 关键修复：阻止冒泡
+            e.stopPropagation();
             toggleDownloadPanel();
             setTimeout(() => {
                 if (dom.urlOrSearchInput) dom.urlOrSearchInput.focus();
@@ -146,11 +186,10 @@ function setupEventListeners() {
 
     if (dom.emptyStateImportBtn) {
         dom.emptyStateImportBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); // <--- 关键修复：阻止冒泡
+            e.stopPropagation();
             if (dom.importLocalBtn) dom.importLocalBtn.click();
         });
     }
-    // =========================================================================
 
     dom.mediaPlayer.addEventListener('loadedmetadata', () => {
         updateProgress();
@@ -178,14 +217,10 @@ function setupEventListeners() {
     });
 
     dom.mediaPlayer.addEventListener('error', (e) => {
-        // =========================================================================
-        // 【修复】更严格的空状态检查，防止空 src 报错干扰
-        // =========================================================================
         const src = dom.mediaPlayer.getAttribute('src');
         if ((!src || src === '' || src === 'null') && state.playlist.length === 0) {
-            return; // 忽略空状态下的加载错误
+            return;
         }
-        // =========================================================================
 
         console.error("媒体加载错误:", e);
         hideSkeleton();
@@ -295,7 +330,7 @@ function setupEventListeners() {
             const index = parseInt(target.dataset.index, 10);
             if (!isNaN(index)) handleDeleteTrackRequest(index);
         } else {
-            executeShortcut(actionId);
+            executeShortcut(action);
         }
     });
 
@@ -444,8 +479,6 @@ async function init() {
     loadShortcuts();
     renderContextMenu({ type: 'global' });
     setupEventListeners();
-
-    // [修改] 移除了引导页自动启动的代码
 }
 
 document.addEventListener('DOMContentLoaded', init);

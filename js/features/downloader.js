@@ -6,7 +6,6 @@ import { playTemporaryTrack } from '../player.js';
 import { pinyin } from 'pinyin-pro';
 
 let currentSearchResults = [];
-// --- [新增] 分页状态变量 ---
 let currentSearchQuery = '';
 let currentPage = 1;
 let totalPages = 1;
@@ -21,39 +20,27 @@ const ITEMS_PER_PAGE = 10;
 function transformApiData(apiTrack) {
     const title = apiTrack.title || '未知标题';
 
-    // 构造基础对象
     const track = {
         title: title,
         artist: apiTrack.artist || '未知艺术家',
-        albumArt: apiTrack.albumArt || apiTrack.pic || '', // 兼容新旧字段
+        albumArt: apiTrack.albumArt || apiTrack.pic || '',
         type: 'audio',
-
-        // 关键：保存元数据，用于后续获取真实链接
         id: apiTrack.id,
         source: apiTrack.source || 'joox',
         lyricId: apiTrack.lyricId,
-
-        // 兼容旧版字段，用于下载
-        originalSrc: apiTrack.url, // 旧版有直接 URL
-        originalAlbumArt: apiTrack.pic, // 旧版封面
-        originalLyrics: apiTrack.lrc, // 旧版歌词文本
-
-        // 拼音辅助
+        originalSrc: apiTrack.url,
+        originalAlbumArt: apiTrack.pic,
+        originalLyrics: apiTrack.lrc,
         pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
         initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '')
     };
 
-    // 处理播放源 src
     if (apiTrack.url) {
-        // 旧版 API 直接返回了可用的 URL
         track.src = apiTrack.url;
-        // 旧版歌词通常是直接文本
         track.lyrics = apiTrack.lrc;
     } else {
-        // 新版 API：没有直接 URL，设置为 null 或特殊标识
-        // 播放器核心 player.js 会检测到空 src，然后调用 resolvePlayableUrl
         track.src = '';
-        track.lyrics = ''; // 歌词也是懒加载
+        track.lyrics = '';
     }
 
     return track;
@@ -71,32 +58,17 @@ function updateInputMode() {
     const inputText = dom.urlOrSearchInput.value.trim();
     const isUrlMode = inputText.toLowerCase().includes('http');
 
-    // B站链接特定逻辑
     const isBilibiliUrl = isUrlMode && inputText.includes('bilibili.com/video/');
-
-    // Jable链接特定逻辑
     const isJableUrl = isUrlMode && inputText.includes('jable.tv/videos/');
-
-    // 【新增】YouTube 链接特定逻辑
     const isYoutubeUrl = isUrlMode && (inputText.includes('youtube.com/') || inputText.includes('youtu.be/'));
-
-    // 抖音用户主页链接特定逻辑
     const isDouyinUserUrl = isUrlMode && (inputText.includes('/user/') || inputText.includes('MS4wLjAB'));
 
-    // 按钮显隐控制
     dom.downloadWorksBtn.style.display = isDouyinUserUrl ? 'flex' : 'none';
     dom.downloadLikesBtn.style.display = isDouyinUserUrl ? 'flex' : 'none';
-
-    // “开始下载”按钮适用于所有非用户主页的单视频链接（抖音、B站、Jable、YouTube）
     dom.startDownloadBtn.style.display = (isUrlMode && !isDouyinUserUrl) ? 'flex' : 'none';
-
-    // 搜索按钮只在非URL模式下显示
     dom.searchNeteaseBtn.style.display = isUrlMode ? 'none' : 'flex';
-
-    // 本地导入按钮始终可见
     document.getElementById('import-local-btn').style.display = 'flex';
 
-    // 更新面板描述文本
     if (isBilibiliUrl) {
         dom.panelDescription.textContent = '检测到B站链接，点击“开始下载”进行处理。';
     } else if (isJableUrl) {
@@ -126,19 +98,32 @@ function updateStatus(message, type = 'default') {
 }
 
 /**
+ * =========================================================================
+ * 【核心修复】修正删除请求的路径，确保与后端 playlist.json 中的路径一致
+ * =========================================================================
  * 向主进程请求删除一个已下载的曲目。
  * @param {object} track - 要删除的曲目对象。
  */
 export async function requestTrackDeletion(track) {
-    const relativeSrc = track.src.startsWith('media://')
-        ? track.src.substring('media://'.length)
-        : track.src;
+    // 1. 从前端的 track 对象中获取编码后的 src (e.g., "media://music/song%20name.mp3")
+    const encodedSrc = track.src;
 
-    console.log(`[Deletion] 请求删除: ${relativeSrc}`);
-    const result = await window.electronAPI.deleteTrack({ src: relativeSrc });
+    // 2. 去掉协议头，得到编码后的相对路径
+    const encodedRelativeSrc = encodedSrc.startsWith('media://')
+        ? encodedSrc.substring('media://'.length)
+        : encodedSrc;
+
+    // 3. 【关键修复】对路径进行解码，还原成原始路径 (e.g., "music/song name.mp3")
+    //    这样才能与 `playlist.json` 中存储的未编码路径匹配
+    const decodedRelativeSrc = decodeURIComponent(encodedRelativeSrc);
+
+    console.log(`[Deletion] 请求删除 (解码后路径): ${decodedRelativeSrc}`);
+    const result = await window.electronAPI.deleteTrack({ src: decodedRelativeSrc });
+
     if (result.success) {
-        showToast(result.message, 'success');
+        // 成功消息由 main.js 统一处理
     } else {
+        // 失败时显示错误提示
         showToast(result.error, 'error');
     }
     return result.success;
@@ -156,17 +141,12 @@ export async function resolvePlayableUrl(track) {
         return track.src;
     }
 
-    // 如果 track.src 已经是有效 http 链接（旧版缓存或直接解析），后端可能会直接做 HEAD 检查
-    // 如果 track.src 为空（新版），后端会利用 track.id 和 track.source 去请求真实链接
-
     console.log(`[Resolver] 请求主进程解析URL: ${track.title} (ID: ${track.id})`);
 
-    // 传递完整的 track 对象，包含 id, source 等关键信息
     const result = await window.electronAPI.getMusicUrl(track);
 
     if (result.success && result.url) {
         console.log(`[Resolver] 成功获取可播放URL: ${result.url.substring(0, 50)}...`);
-        // 缓存该 URL 到当前会话的 track 对象中，避免重复请求（可选）
         track.src = result.url;
         return result.url;
     } else {
@@ -181,7 +161,6 @@ export async function resolvePlayableUrl(track) {
  */
 function requestTrackCache(trackData) {
     console.log(`[Cache] 发送缓存请求: ${trackData.title}`);
-    // 将完整对象发送给后端，后端会根据 provider 模式决定如何下载
     window.electronAPI.cacheTrack(trackData);
 }
 
@@ -213,13 +192,11 @@ async function performSearch(query, page = 1) {
 
     if (result.success) {
         const { results, total } = result.data;
-        // 使用新的转换逻辑
         currentSearchResults = results.map(transformApiData);
         renderSearchResults(currentSearchResults);
 
         currentSearchQuery = query;
         currentPage = page;
-        // 估算总页数 (如果后端返回的 total 是准确的)
         const pageSize = results.length > 0 ? results.length : ITEMS_PER_PAGE;
         totalPages = Math.ceil(total / pageSize) || 1;
 
@@ -227,7 +204,7 @@ async function performSearch(query, page = 1) {
         updateStatus(`搜索成功！当前显示 ${results.length} 首歌曲。`, 'success');
     } else {
         updateStatus(`搜索失败: ${result.error}`, 'error');
-        renderPaginationControls(0, 0); // 失败时隐藏分页
+        renderPaginationControls(0, 0);
     }
 }
 
@@ -245,7 +222,7 @@ function sendDownloadRequest(clickedButton, downloadType = 'single') {
     }
 
     clearSearchResults();
-    renderPaginationControls(0, 0); // 清空分页
+    renderPaginationControls(0, 0);
 
     const allDownloadButtons = [dom.startDownloadBtn, dom.downloadWorksBtn, dom.downloadLikesBtn];
     allDownloadButtons.forEach(btn => btn.disabled = true);
@@ -253,7 +230,6 @@ function sendDownloadRequest(clickedButton, downloadType = 'single') {
     updateStatus('已发送请求到主进程，请稍候...', 'default');
 
     const requestData = (downloadType === 'single') ? urlText : { url: urlText, downloadType };
-    // 使用统一的 'download-douyin' 通道名，后端会进行分发
     window.electronAPI.startDownload(requestData);
 }
 
@@ -275,8 +251,6 @@ function setupSearchResultsListener() {
             updateSearchResultItemStatus(item, 'downloading');
             requestTrackCache(clickedTrack);
         } else {
-            // 播放临时曲目
-            // player.js 中的 playTemporaryTrack 会调用 resolvePlayableUrl 来解析真实链接
             playTemporaryTrack(clickedTrack);
         }
     });
@@ -295,7 +269,6 @@ function setupPaginationListener() {
     });
 }
 
-// 本地导入按钮的事件处理器
 async function handleLocalImportClick(event) {
     const importBtn = event.currentTarget;
     const allButtons = [importBtn, dom.searchNeteaseBtn, dom.startDownloadBtn, dom.downloadWorksBtn, dom.downloadLikesBtn];
@@ -318,7 +291,6 @@ async function handleLocalImportClick(event) {
                     await showConfirmationModal(`成功导入 ${importResult.importedCount} 首歌曲！\n是否立即刷新播放器以加载新歌曲？`);
                     window.location.reload();
                 } catch (e) {
-                    // 用户点击了取消
                     updateStatus('导入完成。请手动刷新以查看新内容。', 'success');
                 }
             } else {
@@ -372,15 +344,12 @@ export function setupDownloaderListeners() {
 
     window.electronAPI.onNewTrack((newTrack) => {
         document.dispatchEvent(new CustomEvent('new-track-added', { detail: newTrack }));
-        // 尝试在当前搜索结果中找到对应项并标记为已下载
-        // 兼容新旧两种 ID 匹配方式
         if (dom.searchResultsList) {
             const items = dom.searchResultsList.querySelectorAll('.playlist-item');
             items.forEach(item => {
                 const trackIndex = parseInt(item.dataset.index, 10);
                 const track = currentSearchResults[trackIndex];
                 if (track) {
-                    // 如果 ID 相同，或者 URL 相同
                     if ((newTrack.id && newTrack.id === track.id) ||
                         (newTrack.originalSrc && newTrack.originalSrc === track.originalSrc)) {
                         updateSearchResultItemStatus(item, 'cached');
