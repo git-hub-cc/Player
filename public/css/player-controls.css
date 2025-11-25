@@ -10,7 +10,7 @@
     border-top: 1px solid #282828;
     z-index: 2001; /* 【修改】确保 z-index 高于面板 */
     position: relative; /* 【新增】确保 z-index 生效 */
-    transition: opacity 0.3s ease, visibility 0.3s ease;
+    transition: opacity 0.3s ease, visibility 0.3s ease, filter 0.3s ease; /* 【优化】添加 filter 过渡 */
 }
 .track-info {
     display: flex;
@@ -168,5 +168,4 @@
     pointer-events: none; /* 禁用所有点击 */
     filter: grayscale(100%);
 }
-/* 允许特定按钮在禁用状态下依然可点击（如果需要，比如“添加”按钮，但目前逻辑是全禁） */
-/* .player-controls.disabled #download-panel-btn { pointer-events: auto; opacity: 1; } */
+/* ========================================================================= */

@@ -11,8 +11,8 @@ import { exec } from 'child_process';
 import pluginManager from './plugins/manager.js';
 import * as gdstudio from './providers/gdstudio.js';
 import * as jableProvider from './providers/jable.js';
-// 【新增】引入 YouTube provider
 import * as youtubeProvider from './providers/youtube.js';
+import WinReg from 'winreg';
 
 // --- 核心配置开关 ---
 const PROVIDER_MODE = 'LEGACY';
@@ -32,12 +32,50 @@ let appInstance;
 let getWebContents;
 let CONFIG = {};
 let FFMPEG_PATH = '';
-// 【新增】yt-dlp 路径
 let YT_DLP_PATH = '';
+let systemProxy = null;
 
-export function initialize(app, webContentsProvider) {
+async function detectSystemProxy() {
+    if (process.platform !== 'win32') {
+        const proxyVar = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy;
+        if (proxyVar) {
+            console.log(`[Proxy Detector] Found proxy from environment variables: ${proxyVar}`);
+            return proxyVar;
+        }
+        return null;
+    }
+    try {
+        const regKey = new WinReg({
+            hive: WinReg.HKCU,
+            key: '\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings'
+        });
+        const values = await new Promise((resolve, reject) => {
+            regKey.values((err, items) => {
+                if (err) return reject(err);
+                const result = {};
+                items.forEach(item => { result[item.name] = item.value; });
+                resolve(result);
+            });
+        });
+        if (values.ProxyEnable === '0x1' && values.ProxyServer) {
+            const proxyServer = values.ProxyServer;
+            const proxyUrl = `http://${proxyServer.split(';')[0]}`;
+            console.log(`[Proxy Detector] System proxy detected: ${proxyUrl}`);
+            return proxyUrl;
+        }
+        console.log('[Proxy Detector] System proxy is not enabled.');
+        return null;
+    } catch (error) {
+        console.error('[Proxy Detector] Failed to read registry for proxy settings:', error);
+        return null;
+    }
+}
+
+export async function initialize(app, webContentsProvider) {
     appInstance = app;
     getWebContents = webContentsProvider;
+
+    systemProxy = await detectSystemProxy();
 
     const userDataPath = appInstance.getPath('userData');
     CONFIG = {
@@ -57,25 +95,52 @@ export function initialize(app, webContentsProvider) {
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     });
 
-    // --- 外部工具定位 ---
+    // =========================================================================
+    // 【核心路径修复】 动态、跨平台地定位外部工具
+    // =========================================================================
     console.log('--- [Tools Log] 开始定位外部工具 ---');
-    const basePath = app.isPackaged ? process.resourcesPath : process.cwd();
 
-    // 假设 ffmpeg 和 yt-dlp 都放在 ffmpeg/win32-x64 目录下
-    FFMPEG_PATH = path.join(basePath, 'ffmpeg', 'win32-x64', 'ffmpeg.exe');
-    YT_DLP_PATH = path.join(basePath, 'ffmpeg', 'win32-x64', 'yt-dlp.exe');
+    // 1. 确定根目录
+    //    - 开发环境 (`app.isPackaged` 为 false): 根目录是项目文件夹 `process.cwd()`
+    //    - 生产环境 (`app.isPackaged` 为 true): 根目录是应用的 `resources` 文件夹 `process.resourcesPath`
+    const basePath = app.isPackaged ? process.resourcesPath : process.cwd();
+    console.log(`[Tools Log] Base path: ${basePath}`);
+
+    // 2. 根据操作系统和架构确定子目录
+    //    这使得代码更具可移植性，未来支持Mac或Linux时无需修改
+    let platformSubPath = '';
+    if (process.platform === 'win32') {
+        // 假设我们只支持64位Windows
+        platformSubPath = 'win32-x64';
+    } else if (process.platform === 'darwin') { // macOS
+        platformSubPath = process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
+    } else { // Linux等
+        // 这里可以添加对Linux的支持
+        console.warn(`[Tools Log] Unsupported platform: ${process.platform}. FFmpeg/yt-dlp may not be found.`);
+    }
+    console.log(`[Tools Log] Platform sub-path: ${platformSubPath}`);
+
+    // 3. 构造最终路径
+    const ffmpegDir = path.join(basePath, 'ffmpeg', platformSubPath);
+    const ffmpegExe = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+    const ytDlpExe = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+
+    FFMPEG_PATH = path.join(ffmpegDir, ffmpegExe);
+    YT_DLP_PATH = path.join(ffmpegDir, ytDlpExe);
 
     console.log(`[FFmpeg Path]: ${FFMPEG_PATH}`);
     console.log(`[yt-dlp Path]: ${YT_DLP_PATH}`);
 
-    if (!fs.existsSync(FFMPEG_PATH)) console.error(`[Error] FFmpeg not found.`);
+    if (!fs.existsSync(FFMPEG_PATH)) console.error(`[Error] FFmpeg not found at the specified path.`);
     if (!fs.existsSync(YT_DLP_PATH)) console.error(`[Error] yt-dlp not found. YouTube download will fail.`);
 
     console.log('--- [Tools Log] 定位结束 ---');
+    // =========================================================================
 
     pluginManager.initialize(CONFIG.PLUGINS_DIR);
 }
 
+// ... (省略所有其他函数，它们保持不变)
 function sendMessage(type, data) {
     const wc = getWebContents();
     if (wc && !wc.isDestroyed()) wc.send(type, data);
@@ -100,7 +165,6 @@ async function validateUrl(url) {
 }
 
 export async function handleSearchRequest({ query, page = 1 }) {
-    // ... (搜索逻辑保持不变)
     if (PROVIDER_MODE === 'GD_STUDIO') {
         try {
             const { list, total } = await gdstudio.search(query, page);
@@ -221,7 +285,6 @@ function triggerLegacyBackgroundBuild(query, cacheKey, cacheFilePath) {
 }
 
 export async function handleGetMusicUrl(trackInfo) {
-    // ... (保持不变)
     if (!trackInfo) return { success: false, error: 'No track info provided.' };
     try {
         if (trackInfo.src && trackInfo.src.startsWith('http')) {
@@ -246,7 +309,6 @@ export async function handleGetMusicUrl(trackInfo) {
 }
 
 export async function handleCacheRequest(trackData) {
-    // ... (保持不变，这是音乐下载)
     const title = trackData.title || 'Unknown';
     const artist = trackData.artist || 'Unknown';
     console.log(`[Download] Request: ${artist} - ${title}`);
@@ -288,7 +350,6 @@ export async function handleGetLrcContent(relativePath) {
 }
 
 export async function handleDeleteTrack({ src: relativeSrc }) {
-    // ... (保持不变)
     if (!relativeSrc) return { success: false, error: 'Delete failed: No track path provided.' };
     try {
         let playlist = [];
@@ -315,7 +376,6 @@ export function handleOpenMediaFolder() {
     if (CONFIG.MEDIA_ROOT) shell.openPath(CONFIG.MEDIA_ROOT);
 }
 
-// ... (handleLocalImport 和 scanDirectoryRecursive 保持不变)
 async function scanDirectoryRecursive(dirPath) {
     const fileGroups = new Map();
     const audioExt = ['.mp3', '.flac', '.wav', '.m4a', '.ogg'];
@@ -384,8 +444,6 @@ export async function handleLocalImport(directoryPath) {
     } catch (error) { return { success: false, error: error.message }; }
 }
 
-// --- 下载处理入口 ---
-
 export async function handleDownloadRequest(requestData) {
     let url, downloadType;
     if (typeof requestData === 'string') {
@@ -401,16 +459,13 @@ export async function handleDownloadRequest(requestData) {
 
     const matchedContent = match[0];
 
-    // === 路由分发 ===
     if (matchedContent.includes('bilibili.com/video/')) {
         await downloadBilibiliVideo(matchedContent);
     } else if (matchedContent.includes('jable.tv/videos/')) {
         await downloadJableVideo(matchedContent);
     } else if (matchedContent.includes('youtube.com/') || matchedContent.includes('youtu.be/')) {
-        // 【新增】YouTube 下载入口
-        await downloadYoutubeVideo(matchedContent);
+        await downloadYoutubeVideo(matchedContent, systemProxy);
     } else {
-        // 默认为抖音
         let startUrl = matchedContent;
         if (startUrl.startsWith('MS4wLjAB')) {
             startUrl = `https://www.douyin.com/user/${startUrl}`;
@@ -426,7 +481,6 @@ export async function handleDownloadRequest(requestData) {
 }
 
 async function downloadSingleVideo(videoUrl) {
-    // ... (保持不变)
     sendMessage('download-status', { message: 'Launching headless browser...' });
     const win = new BrowserWindow({ show: false, webPreferences: { partition: `persist:douyin_session_${Date.now()}`, preload: path.join(__dirname, 'backend', 'douyin-preload.js'), contextIsolation: true, sandbox: true } });
     win.webContents.setAudioMuted(true);
@@ -471,7 +525,6 @@ async function downloadSingleVideo(videoUrl) {
 }
 
 async function processAndDownloadItem(awemeDetail) {
-    // ... (保持不变)
     const awemeId = awemeDetail?.aweme_id; if (!awemeId) return;
     try {
         const videoUri = awemeDetail?.video?.play_addr?.uri;
@@ -492,7 +545,6 @@ async function processAndDownloadItem(awemeDetail) {
 }
 
 async function downloadBilibiliVideo(videoUrl) {
-    // ... (保持不变)
     if (!FFMPEG_PATH) { sendMessage('download-status', { message: '错误: FFmpeg 未找到，无法合并B站视频。', type: 'error' }); return; }
     try {
         sendMessage('download-status', { message: '开始解析B站链接...', type: 'default' });
@@ -538,7 +590,6 @@ async function downloadBilibiliVideo(videoUrl) {
 }
 
 async function downloadJableVideo(videoUrl) {
-    // ... (Jable 逻辑保持不变，如上次输出所示)
     if (!FFMPEG_PATH) { sendMessage('download-status', { message: '错误: FFmpeg 未找到，无法处理Jable视频。', type: 'error' }); return; }
     try {
         sendMessage('download-status', { message: '正在解析 Jable 视频信息(含Cookies)...', type: 'default' });
@@ -568,8 +619,7 @@ async function downloadJableVideo(videoUrl) {
     } catch (error) { console.error('[Jable Download] Error:', error); sendMessage('download-status', { message: `Jable 下载失败: ${error.message}`, type: 'error' }); }
 }
 
-// 【新增】YouTube 下载主控函数
-async function downloadYoutubeVideo(videoUrl) {
+async function downloadYoutubeVideo(videoUrl, proxy) {
     if (!YT_DLP_PATH || !FFMPEG_PATH) {
         sendMessage('download-status', { message: '错误: yt-dlp 或 FFmpeg 未找到，无法下载 YouTube 视频。', type: 'error' });
         return;
@@ -577,7 +627,7 @@ async function downloadYoutubeVideo(videoUrl) {
 
     try {
         sendMessage('download-status', { message: '正在获取 YouTube 视频信息...', type: 'default' });
-        const info = await youtubeProvider.getVideoInfo(videoUrl, YT_DLP_PATH);
+        const info = await youtubeProvider.getVideoInfo(videoUrl, YT_DLP_PATH, proxy);
 
         const safeFilename = sanitizeFilename(info.title);
         const finalFilename = `${safeFilename}.mp4`;
@@ -599,7 +649,8 @@ async function downloadYoutubeVideo(videoUrl) {
             (progress) => {
                 const percent = (progress * 100).toFixed(1);
                 sendMessage('download-status', { message: `下载进度: ${percent}%`, type: 'default' });
-            }
+            },
+            proxy
         );
 
         sendMessage('download-status', { message: '下载完成！正在更新列表...', type: 'default' });
@@ -625,7 +676,6 @@ async function downloadYoutubeVideo(videoUrl) {
     }
 }
 
-// ... (通用文件操作保持不变)
 export async function getLocalPlaylist() {
     try {
         if (fs.existsSync(CONFIG.PLAYLIST_PATH)) {
