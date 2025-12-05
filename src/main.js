@@ -1,6 +1,6 @@
 // src/main.js
 
-import { app, BrowserWindow, ipcMain, protocol, Menu, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, Menu, dialog, nativeTheme } from 'electron'; // <-- 导入 nativeTheme
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import * as MainApi from './backend/main-api.js';
@@ -18,6 +18,11 @@ const createWindow = () => {
         height: 800,
         minWidth: 940,
         minHeight: 600,
+        // =========================================================================
+        // 【保持】设置 darkTheme 为 true，尝试 Windows 原生支持
+        // =========================================================================
+        darkTheme: true,
+        // =========================================================================
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             // 安全起见，保持沙箱和上下文隔离启用
@@ -50,6 +55,13 @@ const createWindow = () => {
 };
 
 app.whenReady().then(async () => {
+    // =========================================================================
+    // 【核心修改】在应用准备好时，强制 Electron 使用深色主题
+    // 这将覆盖系统的浅色设置，确保标题栏是深色（如果系统和 Electron 版本支持）。
+    // =========================================================================
+    nativeTheme.themeSource = 'dark';
+    // =========================================================================
+
     // 移除默认菜单栏
     Menu.setApplicationMenu(null);
 
