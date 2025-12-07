@@ -1,8 +1,9 @@
 // src/backend/main-api.js
 
-import { app, BrowserWindow, ipcMain, protocol, Menu, nativeTheme } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, Menu, nativeTheme, globalShortcut, shell, dialog } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
+import fs from 'fs';
 
 // --- 导入新的服务模块 ---
 import * as setupService from './services/setup-service.js';
@@ -39,26 +40,21 @@ const createWindow = () => {
         height: 800,
         minWidth: 940,
         minHeight: 600,
-        darkTheme: true, // 尝试在 Windows 上启用原生深色标题栏
+        darkTheme: true,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             sandbox: true,
             contextIsolation: true,
+            webSecurity: false,
         }
     });
 
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
         mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
     } else {
-        mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+        mainWindow.loadFile(path.join(__dirname, '../renderer/main_window/index.html'));
     }
 
-    // 在开发模式下自动打开开发者工具
-    if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
-        mainWindow.webContents.openDevTools();
-    }
-
-    // 监听窗口的全屏事件，并通知渲染进程
     mainWindow.on('enter-full-screen', () => sendMessage('fullscreen-change', true));
     mainWindow.on('leave-full-screen', () => sendMessage('fullscreen-change', false));
 };
@@ -67,27 +63,24 @@ const createWindow = () => {
  * 注册所有 IPC 监听器。
  */
 function registerIpcHandlers() {
-    // --- Library Service ---
     ipcMain.handle('get-local-playlist', () => libraryService.getLocalPlaylist());
     ipcMain.handle('delete-track', (event, trackData) => libraryService.handleDeleteTrack(trackData));
     ipcMain.handle('select-import-directory', () => libraryService.handleSelectDirectory());
     ipcMain.handle('start-local-import', (event, dirPath) => libraryService.handleLocalImport(dirPath, sendMessage));
     ipcMain.on('open-media-folder', () => libraryService.handleOpenMediaFolder());
-
-    // --- Online Service ---
     ipcMain.handle('search-online', (event, { query, page }) => onlineService.handleSearchRequest({ query, page }));
     ipcMain.handle('get-music-url', (event, trackInfo) => onlineService.handleGetMusicUrl(trackInfo));
     ipcMain.handle('get-lrc-content', (event, relativePath) => onlineService.handleGetLrcContent(relativePath));
     ipcMain.on('cache-track', (event, trackData) => onlineService.handleCacheRequest(trackData));
-
-    // --- Download Service ---
     ipcMain.on('download-douyin', (event, data) => downloadService.handleDownloadRequest(data));
-
-    // --- Window Controls ---
     ipcMain.on('toggle-fullscreen', (event, state) => {
         if (mainWindow) {
             mainWindow.setFullScreen(state);
         }
+    });
+    ipcMain.on('show-user-data', () => {
+        const userDataPath = app.getPath('userData');
+        shell.openPath(userDataPath);
     });
 }
 
@@ -95,30 +88,64 @@ function registerIpcHandlers() {
  * 应用主入口点。
  */
 app.whenReady().then(async () => {
-    // 强制 Electron 使用深色主题，以确保标题栏在支持的系统上是深色的
-    nativeTheme.themeSource = 'dark';
+    if (app.isPackaged) {
+        try {
+            const userDataPath = app.getPath('userData');
+            const logDir = path.join(userDataPath, 'logs');
+            if (!fs.existsSync(logDir)){
+                fs.mkdirSync(logDir, { recursive: true });
+            }
+            const logFileName = `main-${new Date().toISOString().replace(/:/g, '-')}.log`;
+            const logFilePath = path.join(logDir, logFileName);
+            const logFile = fs.createWriteStream(logFilePath, { flags: 'w' });
+            process.stdout.write = process.stderr.write = logFile.write.bind(logFile);
+            process.on('uncaughtException', (err) => {
+                console.error('未捕获的异常:', err);
+                console.error(err.stack);
+            });
+            console.log(`日志文件位于: ${logFilePath}`);
+            console.log('主进程日志记录已启动...');
+        } catch (error) {
+            dialog.showErrorBox('日志初始化失败', `无法创建日志文件。\n错误: ${error.message}\n应用将继续运行，但不会记录日志。`);
+        }
+    }
 
-    // 移除默认的应用程序菜单
+    console.log(`[Main API] 应用启动，app.isPackaged = ${app.isPackaged}`);
+
+    nativeTheme.themeSource = 'dark';
     Menu.setApplicationMenu(null);
 
-    // --- 1. 初始化应用和工具 ---
-    const { config, ffmpegPath, ytDlpPath, systemProxy } = await setupService.initializeApp(app);
-    CONFIG = config;
+    // =========================================================================
+    // 【核心修改】将初始化服务放在一个 try-catch 块中
+    // 这样，如果 FFmpeg 或 yt-dlp 下载失败，可以优雅地处理并通知用户。
+    // =========================================================================
+    try {
+        const { config, ffmpegPath, ytDlpPath, systemProxy } = await setupService.initializeApp(app);
+        CONFIG = config;
 
-    // --- 2. 将共享配置和服务注入到各个模块中 ---
-    const serviceInitParams = {
-        config: CONFIG,
-        ffmpegPath,
-        ytDlpPath,
-        systemProxy,
-        sendMessageFunc: sendMessage,
-    };
-    libraryService.init(CONFIG);
-    onlineService.init(CONFIG, sendMessage);
-    downloadService.init(serviceInitParams);
+        console.log(`[Main API] 从 setup-service 接收到的路径:`);
+        console.log(`  - FFmpeg: ${ffmpegPath}`);
+        console.log(`  - yt-dlp: ${ytDlpPath}`);
+        console.log(`  - Proxy: ${systemProxy}`);
 
+        const serviceInitParams = { config, ffmpegPath, ytDlpPath, systemProxy, sendMessageFunc: sendMessage };
+        console.log('[Main API] 准备使用以下参数初始化所有服务:', JSON.stringify(serviceInitParams, null, 2));
 
-    // --- 3. 注册自定义文件协议，用于安全地提供本地媒体文件 ---
+        libraryService.init(CONFIG);
+        onlineService.init(CONFIG, sendMessage);
+        downloadService.init(serviceInitParams);
+
+    } catch (error) {
+        console.error('[Main API] 初始化外部工具和服务时发生严重错误:', error);
+        dialog.showErrorBox(
+            '应用初始化失败',
+            `启动应用所需的核心组件时发生错误。\n\n详情: ${error.message}\n\n应用即将退出。`
+        );
+        app.quit();
+        return;
+    }
+    // =========================================================================
+
     protocol.registerFileProtocol('media', (request, callback) => {
         const url = request.url.substring('media://'.length);
         const decodedUrl = decodeURIComponent(url);
@@ -126,11 +153,29 @@ app.whenReady().then(async () => {
         callback({ path: path.normalize(filePath) });
     });
 
-    // --- 4. 注册所有 IPC 事件处理器 ---
     registerIpcHandlers();
-
-    // --- 5. 创建主窗口 ---
     createWindow();
+
+    globalShortcut.register('CommandOrControl+Shift+I', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            const webContents = mainWindow.webContents;
+            if (webContents.isDevToolsOpened()) {
+                webContents.closeDevTools();
+            } else {
+                webContents.openDevTools({ mode: 'detach' });
+            }
+        }
+    });
+
+    globalShortcut.register('CommandOrControl+Shift+L', () => {
+        const userDataPath = app.getPath('userData');
+        shell.openPath(userDataPath);
+        dialog.showMessageBox(mainWindow, {
+            type: 'info',
+            title: '日志目录',
+            message: `日志文件和下载的工具位于以下目录中的 'logs' 和 'bin' 文件夹内：\n\n${userDataPath}`
+        });
+    });
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
@@ -143,4 +188,8 @@ app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
         app.quit();
     }
+});
+
+app.on('will-quit', () => {
+    globalShortcut.unregisterAll();
 });

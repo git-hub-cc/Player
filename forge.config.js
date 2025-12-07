@@ -6,13 +6,13 @@ const path = require('path');
 
 module.exports = {
     packagerConfig: {
+        // =========================================================================
+        // 【核心修改】恢复 ASAR 默认行为
+        //
+        // 由于 ffmpeg 将在运行时动态下载，不再需要通过 'unpack' 配置
+        // 将其从 asar 归档中提取。将其设置回 'true' 即可。
+        // =========================================================================
         asar: true,
-        // =========================================================================
-        // 【核心修改】更新应用图标路径
-        // 图标已从 'public/assets' 移动到 'src/renderer/assets'。
-        // 使用 path.resolve 确保路径的准确性。
-        // Electron Packager 会根据不同平台自动寻找 .ico 或 .icns 后缀。
-        // =========================================================================
         icon: path.resolve(__dirname, 'src/renderer/assets/app'),
         extraResource: [],
     },
@@ -22,11 +22,6 @@ module.exports = {
             name: '@electron-forge/maker-squirrel',
             config: {
                 name: 'Player',
-                // =========================================================================
-                // 【核心修改】更新 Windows 安装程序的图标路径
-                // 明确指向 'src/renderer/assets' 目录下的 .ico 文件。
-                // 这是修复 "Unable to set icon" 错误的关键。
-                // =========================================================================
                 setupIcon: path.resolve(__dirname, 'src/renderer/assets/app.ico'),
                 iconUrl: 'https://github-production-user-asset-6210df.s3.amazonaws.com/96827876/511516278-b000fda9-25e9-40f4-b299-6e0404f0bb19.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20251107%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251107T210545Z&X-Amz-Expires=300&X-Amz-Signature=df9a5a6d6c7a94243c590795458572875b9887832f4ab20dcd89b81f8dd5b73a&X-Amz-SignedHeaders=host',
             }
