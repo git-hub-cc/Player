@@ -36,6 +36,13 @@ export function init(initParams) {
     YT_DLP_PATH = initParams.ytDlpPath;
     SYSTEM_PROXY = initParams.systemProxy;
     sendMessageCallback = initParams.sendMessageFunc;
+
+    // 【日志】确认 Download Service 已成功初始化并接收到所有参数
+    console.log('[Download Service] 服务已初始化。接收到的参数:');
+    console.log(`  - FFmpeg 路径: ${FFMPEG_PATH}`);
+    console.log(`  - yt-dlp 路径: ${YT_DLP_PATH}`);
+    console.log(`  - 系统代理: ${SYSTEM_PROXY}`);
+    console.log(`  - 配置对象:`, CONFIG);
 }
 
 /**
@@ -296,6 +303,8 @@ async function downloadBilibiliVideo(videoUrl) {
 }
 
 async function downloadJableVideo(videoUrl) {
+    // 【日志】函数被调用，并打印将使用的 FFmpeg 路径
+    console.log(`[Download Service] downloadJableVideo 被调用。将使用 FFmpeg 路径: ${FFMPEG_PATH}`);
     if (!FFMPEG_PATH) {
         sendMessageCallback('download-status', { message: '错误: FFmpeg 未找到，无法处理Jable视频。', type: 'error' });
         return;
@@ -334,6 +343,12 @@ async function downloadJableVideo(videoUrl) {
 }
 
 async function downloadYoutubeVideo(videoUrl) {
+    // 【日志】函数被调用，并打印将使用的工具路径和代理
+    console.log(`[Download Service] downloadYoutubeVideo 被调用。`);
+    console.log(`  - yt-dlp 路径: ${YT_DLP_PATH}`);
+    console.log(`  - FFmpeg 路径: ${FFMPEG_PATH}`);
+    console.log(`  - 系统代理: ${SYSTEM_PROXY}`);
+
     if (!YT_DLP_PATH || !FFMPEG_PATH) {
         sendMessageCallback('download-status', { message: '错误: yt-dlp 或 FFmpeg 未就绪，无法下载 YouTube 视频。', type: 'error' });
         return;

@@ -16,13 +16,9 @@ import YTDlpWrap from 'yt-dlp-wrap-plus';
 export async function getVideoInfo(videoUrl, ytDlpPath, proxy) {
     return new Promise(async (resolve, reject) => {
         try {
-            // 初始化包装器实例
-            // 注意：yt-dlp-wrap-plus 需要 default 导出，视具体打包情况而定，这里假设直接引入类
             const YTDlpClass = YTDlpWrap.default || YTDlpWrap;
             const ytDlpWrap = new YTDlpClass(ytDlpPath);
 
-            // 构建参数数组
-            // 我们手动构建参数以获取元数据，这样可以确保代理设置生效
             const args = [
                 '--dump-json',
                 '--force-ipv4',
@@ -35,26 +31,30 @@ export async function getVideoInfo(videoUrl, ytDlpPath, proxy) {
 
             args.push(videoUrl);
 
-            console.log(`[yt-dlp-wrap GetInfo] Executing with args:`, args);
+            // 【日志】记录执行 yt-dlp 获取信息的完整参数
+            console.log(`[YouTube Provider] 准备执行 yt-dlp (获取信息)，参数:`, args);
 
-            // 使用 execPromise 获取标准输出
             const stdout = await ytDlpWrap.execPromise(args);
 
             try {
                 const info = JSON.parse(stdout);
+                // 【日志】记录成功解析到的视频信息
+                console.log(`[YouTube Provider] 成功解析视频信息:`, { title: info.title, uploader: info.uploader });
                 resolve({
                     title: info.title,
                     uploader: info.uploader,
                     thumbnail: info.thumbnail,
                     duration: info.duration,
-                    // 可以根据需要提取更多字段
                 });
             } catch (parseError) {
+                // 【日志】记录 JSON 解析失败
+                console.error('[YouTube Provider] 解析视频信息 JSON 失败:', parseError);
                 reject(new Error(`解析视频信息JSON失败: ${parseError.message}`));
             }
 
         } catch (error) {
-            console.error('[yt-dlp-wrap GetInfo Error]:', error);
+            // 【日志】记录执行过程中的错误
+            console.error('[YouTube Provider] 执行 yt-dlp (获取信息) 失败:', error);
             reject(new Error(`获取信息失败: ${error.message}`));
         }
     });
@@ -78,20 +78,16 @@ export function downloadVideo(videoUrl, outputDir, filename, ytDlpPath, ffmpegPa
         const outputPath = path.join(outputDir, `${filename}.%(ext)s`);
         const ffmpegDir = path.dirname(ffmpegPath);
 
-        // 初始化包装器
         const YTDlpClass = YTDlpWrap.default || YTDlpWrap;
         const ytDlpWrap = new YTDlpClass(ytDlpPath);
 
-        // 构建下载参数
         const args = [
             '--force-ipv4',
             '--socket-timeout', '60',
-            // 优先下载最佳 mp4 视频 + 最佳 m4a 音频，或者最佳 mp4，或者兜底最佳
             '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             '--ffmpeg-location', ffmpegDir,
             '--output', outputPath,
             '--no-playlist',
-            // 注意：yt-dlp-wrap 会自动解析进度，但我们需要确保输出格式标准
         ];
 
         if (proxy) {
@@ -100,52 +96,44 @@ export function downloadVideo(videoUrl, outputDir, filename, ytDlpPath, ffmpegPa
 
         args.push(videoUrl);
 
-        console.log(`[yt-dlp-wrap Download] Starting: ${videoUrl}`);
+        // 【日志】记录执行 yt-dlp 下载的完整参数
+        console.log(`[YouTube Provider] 准备执行 yt-dlp (下载)，参数:`, args);
 
-        // 执行命令并获取 EventEmitter
         const ytDlpEventEmitter = ytDlpWrap.exec(args);
 
-        // 监听进度事件
         ytDlpEventEmitter.on('progress', (progress) => {
-            // progress 对象包含 percent, totalSize, currentSpeed, eta 等
-            // percent 是 0 到 100 之间的数字
             if (onProgress && progress.percent) {
                 onProgress(progress.percent / 100);
             }
         });
 
-        // 监听 yt-dlp 的原始事件（可选，用于调试）
-        // ytDlpEventEmitter.on('ytDlpEvent', (eventType, eventData) => {
-        //     console.log(eventType, eventData);
-        // });
-
-        // 监听错误
         ytDlpEventEmitter.on('error', (error) => {
-            console.error('[yt-dlp-wrap Error]:', error);
+            // 【日志】记录下载过程中的错误
+            console.error('[YouTube Provider] 执行 yt-dlp (下载) 失败:', error);
             reject(error);
         });
 
-        // 监听完成
         ytDlpEventEmitter.on('close', () => {
-            console.log('[yt-dlp-wrap] Process closed successfully.');
+            // 【日志】记录进程成功关闭
+            console.log('[YouTube Provider] yt-dlp 进程成功关闭。');
 
-            // 预测最终文件路径 (通常是 mp4)
             const finalFilePath = path.join(outputDir, `${filename}.mp4`);
 
-            // 简单检查文件是否存在
-            // 注意：如果 yt-dlp 下载了 webm 等其他格式，这里可能需要更复杂的查找逻辑
-            // 但由于我们在 args 中指定了 ext=mp4 偏好，通常会得到 mp4
             if (fs.existsSync(finalFilePath)) {
+                // 【日志】确认最终文件存在
+                console.log(`[YouTube Provider] 下载完成，最终文件路径: ${finalFilePath}`);
                 resolve(finalFilePath);
             } else {
-                // 尝试查找目录下同名的其他扩展名文件
                 const files = fs.readdirSync(outputDir);
                 const match = files.find(f => f.startsWith(filename) && (f.endsWith('.mp4') || f.endsWith('.mkv') || f.endsWith('.webm')));
                 if (match) {
-                    resolve(path.join(outputDir, match));
+                    const foundPath = path.join(outputDir, match);
+                    // 【日志】找到其他格式的文件
+                    console.log(`[YouTube Provider] 未找到 MP4，但找到匹配文件: ${foundPath}`);
+                    resolve(foundPath);
                 } else {
-                    console.warn(`[yt-dlp-wrap Warning]: 下载似乎成功但未找到预期的 MP4 文件: ${finalFilePath}`);
-                    // 即使没找到文件，只要进程没报错，暂时 resolve，让上层处理
+                    // 【日志】下载完成但找不到文件
+                    console.warn(`[YouTube Provider] 警告: 下载似乎成功但未找到预期的输出文件: ${finalFilePath}`);
                     resolve(finalFilePath);
                 }
             }
