@@ -131,11 +131,6 @@
     gap: 10px;
 }
 
-/* [新增] 默认隐藏插件管理按钮 */
-#plugin-panel-btn {
-    display: none;
-}
-
 .volume-container {
     display: flex;
     align-items: center;
@@ -155,10 +150,6 @@
     color: var(--primary-color);
 }
 .mobile-only-btn { display: none; }
-
-#instrumental-btn.active {
-    color: var(--primary-color);
-}
 
 /* ========================================================================= */
 /* 【新增】空状态下的控制条样式                                              */

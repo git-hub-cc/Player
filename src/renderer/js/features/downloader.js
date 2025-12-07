@@ -63,8 +63,7 @@ function updateInputMode() {
     const isYoutubeUrl = isUrlMode && (inputText.includes('youtube.com/') || inputText.includes('youtu.be/'));
     const isDouyinUserUrl = isUrlMode && (inputText.includes('/user/') || inputText.includes('MS4wLjAB'));
 
-    dom.downloadWorksBtn.style.display = isDouyinUserUrl ? 'flex' : 'none';
-    dom.downloadLikesBtn.style.display = isDouyinUserUrl ? 'flex' : 'none';
+    // 【删除】 移除了 downloadWorksBtn 和 downloadLikesBtn 的显示逻辑
     dom.startDownloadBtn.style.display = (isUrlMode && !isDouyinUserUrl) ? 'flex' : 'none';
     dom.searchNeteaseBtn.style.display = isUrlMode ? 'none' : 'flex';
     document.getElementById('import-local-btn').style.display = 'flex';
@@ -214,7 +213,8 @@ async function performSearch(query, page = 1) {
  * @param {HTMLElement} clickedButton - 被点击的按钮元素。
  * @param {'single' | 'works' | 'likes'} downloadType - 下载类型。
  */
-function sendDownloadRequest(clickedButton, downloadType = 'single') {
+function sendDownloadRequest(clickedButton) {
+    // 【修改】移除了 downloadType 参数，强制默认为单曲下载
     const urlText = dom.urlOrSearchInput.value;
     if (!urlText.trim()) {
         updateStatus('错误：请输入有效的分享文本或URL。', 'error');
@@ -224,13 +224,14 @@ function sendDownloadRequest(clickedButton, downloadType = 'single') {
     clearSearchResults();
     renderPaginationControls(0, 0);
 
-    const allDownloadButtons = [dom.startDownloadBtn, dom.downloadWorksBtn, dom.downloadLikesBtn];
+    // 【修改】移除了 downloadWorksBtn 和 downloadLikesBtn 的禁用逻辑
+    const allDownloadButtons = [dom.startDownloadBtn];
     allDownloadButtons.forEach(btn => btn.disabled = true);
     clickedButton.classList.add('loading');
     updateStatus('已发送请求到主进程，请稍候...', 'default');
 
-    const requestData = (downloadType === 'single') ? urlText : { url: urlText, downloadType };
-    window.electronAPI.startDownload(requestData);
+    // 【修改】直接发送 urlText，因为我们只支持单曲下载
+    window.electronAPI.startDownload(urlText);
 }
 
 /**
@@ -271,7 +272,8 @@ function setupPaginationListener() {
 
 async function handleLocalImportClick(event) {
     const importBtn = event.currentTarget;
-    const allButtons = [importBtn, dom.searchNeteaseBtn, dom.startDownloadBtn, dom.downloadWorksBtn, dom.downloadLikesBtn];
+    // 【修改】移除了 downloadWorksBtn 和 downloadLikesBtn 的禁用逻辑
+    const allButtons = [importBtn, dom.searchNeteaseBtn, dom.startDownloadBtn];
 
     allButtons.forEach(btn => btn.disabled = true);
     importBtn.classList.add('loading');
@@ -323,9 +325,8 @@ export function setupDownloaderListeners() {
         performSearch(query, 1);
     });
 
-    dom.startDownloadBtn.addEventListener('click', (e) => sendDownloadRequest(e.currentTarget, 'single'));
-    dom.downloadWorksBtn.addEventListener('click', (e) => sendDownloadRequest(e.currentTarget, 'works'));
-    dom.downloadLikesBtn.addEventListener('click', (e) => sendDownloadRequest(e.currentTarget, 'likes'));
+    // 【修改】移除了 downloadWorksBtn 和 downloadLikesBtn 的监听器
+    dom.startDownloadBtn.addEventListener('click', (e) => sendDownloadRequest(e.currentTarget));
 
     importLocalBtn.addEventListener('click', handleLocalImportClick);
 
@@ -335,7 +336,8 @@ export function setupDownloaderListeners() {
     window.electronAPI.onDownloadStatus((status) => {
         updateStatus(status.message, status.type);
         if (status.type === 'success' || status.type === 'error') {
-            [dom.startDownloadBtn, dom.downloadWorksBtn, dom.downloadLikesBtn, importLocalBtn].forEach(btn => {
+            // 【修改】移除了 downloadWorksBtn 和 downloadLikesBtn 的启用逻辑
+            [dom.startDownloadBtn, importLocalBtn].forEach(btn => {
                 btn.disabled = false;
                 btn.classList.remove('loading');
             });

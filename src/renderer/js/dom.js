@@ -50,7 +50,6 @@ export let templatesContainer = document.getElementById('templates');
 export let docElement = document.documentElement;
 export let playerControls = document.querySelector('.player-controls'); // 【新增】底部控制栏引用
 
-export let instrumentalBtn = document.getElementById('instrumental-btn');
 export let openMediaFolderBtn = document.getElementById('open-media-folder-btn');
 
 // 故障效果元素
@@ -74,8 +73,6 @@ export let urlOrSearchInput = document.getElementById('url-or-search-input');
 export let downloadStatusEl = document.getElementById('download-status');
 export let downloadActionsContainer = document.getElementById('download-actions-container');
 export let startDownloadBtn = document.getElementById('start-download-btn');
-export let downloadWorksBtn = document.getElementById('download-works-btn');
-export let downloadLikesBtn = document.getElementById('download-likes-btn');
 export let searchNeteaseBtn = document.getElementById('search-netease-btn');
 export let downloaderView = document.getElementById('downloader-view');
 export let panelDescription = downloaderView.querySelector('.panel-description');

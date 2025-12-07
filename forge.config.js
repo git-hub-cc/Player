@@ -9,20 +9,13 @@ module.exports = {
         asar: true,
         icon: './public/assets/app',
         // =========================================================================
-        // 【核心修改】为 yt-dlp 添加 extraResource 配置
+        // 【核心修改】移除 yt-dlp 的 extraResource 配置
         //
-        // 1. 我们不再手动打包 ffmpeg，因为它已由 ffmpeg-static 管理。
-        // 2. 我们需要手动将 `yt-dlp` 目录完整复制到打包后应用的 resources 目录下，
-        //    以便 `main-api.js` 中的路径逻辑能够在生产环境中找到它。
-        //
-        //    - 开发时: C:\...\Player\yt-dlp
-        //    - 打包后: C:\Program Files\Player\resources\yt-dlp
-        //
-        // 【重要】请确保您已在项目根目录创建 `yt-dlp/win32-x64` 文件夹，
-        //         并已将 `yt-dlp.exe` 放置在其中。
+        // 1. 我们不再手动打包 yt-dlp，而是使用 yt-dlp-wrap-plus 在运行时自动下载。
+        // 2. 这样可以减小安装包体积，并确保用户始终可以使用最新版本的下载器。
         // =========================================================================
         extraResource: [
-            path.join(__dirname, 'yt-dlp')
+            // 原有的 yt-dlp 配置已移除
         ],
     },
     rebuildConfig: {},
@@ -64,7 +57,9 @@ module.exports = {
                 ],
                 renderer: [
                     {
+                        // 【核心修改】指定 HTML 入口文件的路径
                         name: 'main_window',
+                        html: 'src/renderer/index.html', // ✨ 指向新的 HTML 路径
                         config: 'vite.renderer.config.mjs',
                     },
                 ],
