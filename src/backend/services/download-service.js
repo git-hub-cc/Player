@@ -5,7 +5,8 @@ import fs from 'fs';
 import { BrowserWindow } from 'electron';
 import axios from 'axios';
 import { pinyin } from 'pinyin-pro';
-import { createHash } from 'crypto';
+// 【核心修改】移除未使用的 createHash 导入，清理日志噪音
+// import { createHash } from 'crypto';
 import { exec } from 'child_process';
 import * as jableProvider from '../providers/jable.js';
 import * as youtubeProvider from '../providers/youtube.js';
@@ -47,7 +48,8 @@ function sanitizeFilename(filename) {
 }
 
 /**
- * 通用文件下载函数，支持重试和空文件校验。
+ * 【核心修改】导出通用的文件下载函数，供 online-service.js 等其他模块使用
+ * 支持重试和空文件校验。
  * @param {string} url - 文件 URL。
  * @param {string} folder - 目标文件夹。
  * @param {string} fileName - 文件名。
@@ -55,7 +57,7 @@ function sanitizeFilename(filename) {
  * @param {number} retries - 重试次数。
  * @returns {Promise<void>}
  */
-async function downloadFile(url, folder, fileName, headers = {}, retries = DOWNLOAD_RETRY_COUNT) {
+export async function downloadFile(url, folder, fileName, headers = {}, retries = DOWNLOAD_RETRY_COUNT) {
     const filePath = path.join(folder, fileName);
     // 如果文件已存在且不为空，则跳过下载
     if (fs.existsSync(filePath)) {
