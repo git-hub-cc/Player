@@ -43,63 +43,83 @@ function loadPlayerState() {
     }
 }
 
-// =========================================================================
-// 【核心修复】重构删除逻辑以允许删除正在播放的文件
-// =========================================================================
+
+/**
+ * =========================================================================
+ * 【核心修复】重构删除逻辑以允许删除正在播放的文件
+ *
+ * 此函数经过重构，以稳健地处理删除曲目的所有情况，特别是删除当前正在播放的曲目。
+ * 1.  先重置播放器UI (`resetPlayerUI`) 来释放文件句柄，这是成功删除文件的关键。
+ * 2.  请求主进程删除文件。
+ * 3.  如果删除成功，则从前端的状态和UI中移除该曲目。
+ * 4.  **关键逻辑**：明确地计算下一个要播放的曲目索引，确保它始终有效，
+ *     即使删除了列表中的最后一项也能正确回绕到第一项。
+ * 5.  最后使用这个计算好的、保证有效的索引来加载下一首曲目，从而修复了之前的 `TypeError`。
+ * =========================================================================
+ * @param {number} index - 要删除的曲目在播放列表中的索引。
+ */
 async function handleDeleteTrackRequest(index) {
     const track = state.playlist[index];
     if (!track) return;
 
     try {
+        // 步骤 1: 弹出确认对话框，等待用户确认
         await showConfirmationModal(`确定要删除 "${track.title}" 吗？\n文件将从磁盘中永久移除。`);
 
         const wasPlaying = state.isPlaying;
         const isDeletingCurrent = state.currentTrackIndex === index;
 
-        // 1. 如果正在删除当前播放的曲目，则先重置播放器UI
-        //    这会暂停播放并清空 src，从而释放操作系统对文件的锁定。
+        // 步骤 2: 如果删除的是当前曲目，先停止播放并清空播放器，以释放文件句柄
         if (isDeletingCurrent) {
             resetPlayerUI();
         }
 
-        // 2. 向主进程发送删除文件的请求
+        // 步骤 3: 请求主进程执行文件删除操作
         const deleted = await requestTrackDeletion(track);
 
-        // 3. 如果文件删除失败（例如，权限问题）
+        // 如果后端删除失败 (例如权限问题)，则中止操作
         if (!deleted) {
-            // 如果之前停止了播放，则尝试恢复播放
+            // 如果之前停止了播放，则尝试恢复播放状态
             if (isDeletingCurrent) {
                 loadTrack(index, { forcePlay: wasPlaying });
             }
-            return;
+            return; // 中断后续流程
         }
 
-        // 4. 文件删除成功，更新前端状态和UI
-        state.removeTrack(index); // 从播放列表状态中移除
+        // 步骤 4: 后端删除成功，更新前端状态和UI
+        const oldIndex = index; // 保存旧索引用于后续计算
+        state.removeTrack(index); // 从播放列表状态数组中移除曲目
+
         renderPlaylist(); // 重新渲染播放列表
         updatePlaylistUI(); // 更新UI高亮等
         backgroundGallery.updatePlaylistData(state.playlist); // 更新背景画廊数据
 
-        // 5. 决定下一步操作：播放下一首或进入空状态
+        // 步骤 5: 决定删除后的下一步操作
         if (state.playlist.length === 0) {
-            // 如果列表空了，显示空状态界面
+            // 如果列表已空，显示空状态界面
             toggleEmptyState(true);
-        } else {
-            // 如果列表不为空，且删除的是当前播放曲目
-            if (isDeletingCurrent) {
-                // 加载新的当前曲目（索引可能已改变），并根据之前的播放状态决定是否自动播放
-                loadTrack(state.currentTrackIndex, { forcePlay: wasPlaying });
+        } else if (isDeletingCurrent) {
+            // 如果删除的是当前曲目且列表不为空
+            // 确定下一个要播放的曲目索引。通常是当前位置的下一首。
+            // 如果删除了最后一首歌，则回绕到第一首。
+            let nextIndexToPlay = oldIndex;
+            if (nextIndexToPlay >= state.playlist.length) {
+                nextIndexToPlay = 0; // 或 state.playlist.length - 1
             }
+            state.setCurrentTrackIndex(nextIndexToPlay);
+
+            // 加载新的当前曲目，并根据之前的状态决定是否自动播放
+            loadTrack(state.currentTrackIndex, { forcePlay: wasPlaying });
         }
 
         showToast(`"${track.title}" 已删除`);
 
     } catch (err) {
-        // 用户在确认对话框中点击了“取消”
-        console.log("删除操作已由用户取消。", err);
+        // 用户在确认对话框中点击了“取消”或发生其他错误
+        console.log("删除操作已取消或失败。", err);
     }
 }
-// =========================================================================
+
 
 /**
  * [修正] 增强 makeTrackPlayable 函数，以正确编码包含特殊字符的文件路径

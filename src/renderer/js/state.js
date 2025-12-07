@@ -97,30 +97,45 @@ export function setPlaylist(newPlaylist) {
     playlist = newPlaylist;
 }
 
+/**
+ * =========================================================================
+ * 【核心修复】简化 removeTrack 函数的职责
+ *
+ * 1.  此函数现在只负责从播放列表数组中移除指定的项。
+ * 2.  它会正确处理当被删除的曲目位于当前播放曲目之前时，对 `currentTrackIndex` 的递减操作。
+ * 3.  **重要**: 它不再负责决定“删除当前曲目后应该播放哪一首”的复杂逻辑。
+ *     这个职责已完全移交给 `renderer.js` 中的 `handleDeleteTrackRequest` 函数，
+ *     使得状态变更的流程更清晰、更可控，从而修复了之前的 bug。
+ * =========================================================================
+ * @param {number} indexToRemove - 要从播放列表中移除的曲目的索引。
+ */
 export function removeTrack(indexToRemove) {
     if (indexToRemove < 0 || indexToRemove >= playlist.length) {
+        // 如果索引无效，则不执行任何操作
         return;
     }
 
+    // 从播放列表中移除曲目
     playlist.splice(indexToRemove, 1);
 
-    if (playlist.length === 0) {
-        currentTrackIndex = -1;
-        return;
-    }
-
+    // 如果删除的是当前播放曲目之前的曲目，需要更新当前索引以指向正确的曲目
     if (indexToRemove < currentTrackIndex) {
         currentTrackIndex--;
     }
-    else if (indexToRemove === currentTrackIndex && currentTrackIndex >= playlist.length) {
-        currentTrackIndex = 0;
+
+    // 如果列表变为空，重置索引
+    if (playlist.length === 0) {
+        currentTrackIndex = -1;
     }
 }
 
+
 export function setCurrentTrackIndex(index) {
+    // 如果索引未变且当前播放的不是临时曲目，则不执行任何操作
     if (currentTrackIndex === index && !temporaryPlayingTrack) {
         return;
     }
+    // 设置新索引，并清除临时曲目信息，确保状态一致性
     currentTrackIndex = index;
     temporaryPlayingTrack = null;
 }
@@ -128,7 +143,7 @@ export function setCurrentTrackIndex(index) {
 export function setTemporaryPlayingTrack(track) {
     if (temporaryPlayingTrack === track) return;
     temporaryPlayingTrack = track;
-    currentTrackIndex = -1;
+    currentTrackIndex = -1; // 播放临时曲目时，取消播放列表的激活索引
 }
 
 export function clearPlayingTrackInfo() {
