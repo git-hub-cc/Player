@@ -5,6 +5,8 @@ import path from 'path';
 import { pinyin } from 'pinyin-pro';
 import * as gdstudio from '../providers/gdstudio.js';
 import { updateLocalPlaylist } from './library-service.js';
+// 【核心修改】从 download-service 导入通用的下载工具函数，而不是错误的 gdstudio
+import { downloadFile } from './download-service.js';
 
 // --- 模块作用域变量 ---
 let CONFIG = {};
@@ -86,13 +88,15 @@ export async function handleCacheRequest(trackData) {
         }
     }
     if (audioUrl) {
-        downloadPromises.push(gdstudio.downloadFile(audioUrl, CONFIG.MUSIC_DIR, `${safeFilename}.mp3`));
+        // 【核心修改】使用从 download-service 导入的 downloadFile 函数
+        downloadPromises.push(downloadFile(audioUrl, CONFIG.MUSIC_DIR, `${safeFilename}.mp3`));
     }
 
     // 获取封面 URL
     const artUrl = trackData.albumArt || trackData.originalAlbumArt;
     if (artUrl) {
-        downloadPromises.push(gdstudio.downloadFile(artUrl, CONFIG.ALBUMART_DIR, `${safeFilename}.jpg`));
+        // 【核心修改】使用 downloadFile
+        downloadPromises.push(downloadFile(artUrl, CONFIG.ALBUMART_DIR, `${safeFilename}.jpg`));
     }
 
     // 获取歌词
@@ -108,7 +112,8 @@ export async function handleCacheRequest(trackData) {
         if (trackData.originalLyrics.startsWith('data:text/plain,')) {
             lyricContent = decodeURIComponent(trackData.originalLyrics.substring('data:text/plain,'.length));
         } else if (trackData.originalLyrics.startsWith('http')) {
-            downloadPromises.push(gdstudio.downloadFile(trackData.originalLyrics, CONFIG.MUSIC_DIR, `${safeFilename}.lrc`));
+            // 【核心修改】使用 downloadFile 下载歌词文件
+            downloadPromises.push(downloadFile(trackData.originalLyrics, CONFIG.MUSIC_DIR, `${safeFilename}.lrc`));
         }
     }
     if (lyricContent) {

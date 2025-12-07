@@ -7,16 +7,14 @@ const path = require('path');
 module.exports = {
     packagerConfig: {
         asar: true,
-        icon: './public/assets/app',
         // =========================================================================
-        // 【核心修改】移除 yt-dlp 的 extraResource 配置
-        //
-        // 1. 我们不再手动打包 yt-dlp，而是使用 yt-dlp-wrap-plus 在运行时自动下载。
-        // 2. 这样可以减小安装包体积，并确保用户始终可以使用最新版本的下载器。
+        // 【核心修改】更新应用图标路径
+        // 图标已从 'public/assets' 移动到 'src/renderer/assets'。
+        // 使用 path.resolve 确保路径的准确性。
+        // Electron Packager 会根据不同平台自动寻找 .ico 或 .icns 后缀。
         // =========================================================================
-        extraResource: [
-            // 原有的 yt-dlp 配置已移除
-        ],
+        icon: path.resolve(__dirname, 'src/renderer/assets/app'),
+        extraResource: [],
     },
     rebuildConfig: {},
     makers: [
@@ -24,7 +22,12 @@ module.exports = {
             name: '@electron-forge/maker-squirrel',
             config: {
                 name: 'Player',
-                setupIcon: './public/assets/app.ico',
+                // =========================================================================
+                // 【核心修改】更新 Windows 安装程序的图标路径
+                // 明确指向 'src/renderer/assets' 目录下的 .ico 文件。
+                // 这是修复 "Unable to set icon" 错误的关键。
+                // =========================================================================
+                setupIcon: path.resolve(__dirname, 'src/renderer/assets/app.ico'),
                 iconUrl: 'https://github-production-user-asset-6210df.s3.amazonaws.com/96827876/511516278-b000fda9-25e9-40f4-b299-6e0404f0bb19.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20251107%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251107T210545Z&X-Amz-Expires=300&X-Amz-Signature=df9a5a6d6c7a94243c590795458572875b9887832f4ab20dcd89b81f8dd5b73a&X-Amz-SignedHeaders=host',
             }
         },
@@ -47,7 +50,7 @@ module.exports = {
             config: {
                 build: [
                     {
-                        entry: 'src/main.js',
+                        entry: 'src/backend/main-api.js',
                         config: 'vite.main.config.mjs',
                     },
                     {
@@ -57,9 +60,8 @@ module.exports = {
                 ],
                 renderer: [
                     {
-                        // 【核心修改】指定 HTML 入口文件的路径
                         name: 'main_window',
-                        html: 'src/renderer/index.html', // ✨ 指向新的 HTML 路径
+                        html: 'src/renderer/index.html',
                         config: 'vite.renderer.config.mjs',
                     },
                 ],
