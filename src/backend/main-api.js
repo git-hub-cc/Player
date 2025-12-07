@@ -14,6 +14,18 @@ import * as jableProvider from './providers/jable.js';
 import * as youtubeProvider from './providers/youtube.js';
 import WinReg from 'winreg';
 
+// =========================================================================
+// 【核心修改】使用 require 引入 ffmpeg-static
+// =========================================================================
+let ffmpegPath;
+try {
+    // 这种方式可以避免 Vite 在构建时静态解析路径，从而在运行时动态获取正确的路径。
+    ffmpegPath = require('ffmpeg-static');
+} catch (e) {
+    console.error('[Error] 无法加载 ffmpeg-static 模块。请确保它已正确安装。');
+    ffmpegPath = ''; // 设置为空字符串，以便后续逻辑可以检测到错误
+}
+
 // --- 核心配置开关 ---
 const PROVIDER_MODE = 'LEGACY';
 // -------------------
@@ -23,6 +35,7 @@ const BACKGROUND_SEARCH_PAGE_DEPTH = 20;
 const ITEMS_PER_PAGE = 10;
 const SEARCH_WAIT_TIMEOUT = 20000;
 const POLLING_INTERVAL = 500;
+const DOWNLOAD_RETRY_COUNT = 3;
 
 const ONGOING_CACHE_BUILDS = new Set();
 const INITIAL_RESPONSE_PROMISES = new Map();
@@ -31,7 +44,7 @@ const REALTIME_SEARCH_BUFFER = new Map();
 let appInstance;
 let getWebContents;
 let CONFIG = {};
-let FFMPEG_PATH = '';
+let FFMPEG_PATH = ffmpegPath; // 直接使用导入的路径
 let YT_DLP_PATH = '';
 let systemProxy = null;
 
@@ -95,52 +108,39 @@ export async function initialize(app, webContentsProvider) {
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     });
 
-    // =========================================================================
-    // 【核心路径修复】 动态、跨平台地定位外部工具
-    // =========================================================================
     console.log('--- [Tools Log] 开始定位外部工具 ---');
 
-    // 1. 确定根目录
-    //    - 开发环境 (`app.isPackaged` 为 false): 根目录是项目文件夹 `process.cwd()`
-    //    - 生产环境 (`app.isPackaged` 为 true): 根目录是应用的 `resources` 文件夹 `process.resourcesPath`
     const basePath = app.isPackaged ? process.resourcesPath : process.cwd();
-    console.log(`[Tools Log] Base path: ${basePath}`);
-
-    // 2. 根据操作系统和架构确定子目录
-    //    这使得代码更具可移植性，未来支持Mac或Linux时无需修改
     let platformSubPath = '';
     if (process.platform === 'win32') {
-        // 假设我们只支持64位Windows
         platformSubPath = 'win32-x64';
-    } else if (process.platform === 'darwin') { // macOS
+    } else if (process.platform === 'darwin') {
         platformSubPath = process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
-    } else { // Linux等
-        // 这里可以添加对Linux的支持
-        console.warn(`[Tools Log] Unsupported platform: ${process.platform}. FFmpeg/yt-dlp may not be found.`);
+    } else {
+        console.warn(`[Tools Log] Unsupported platform for yt-dlp: ${process.platform}.`);
     }
-    console.log(`[Tools Log] Platform sub-path: ${platformSubPath}`);
 
-    // 3. 构造最终路径
-    const ffmpegDir = path.join(basePath, 'ffmpeg', platformSubPath);
-    const ffmpegExe = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+    const ytDlpDir = path.join(basePath, 'yt-dlp', platformSubPath);
     const ytDlpExe = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+    YT_DLP_PATH = path.join(ytDlpDir, ytDlpExe);
 
-    FFMPEG_PATH = path.join(ffmpegDir, ffmpegExe);
-    YT_DLP_PATH = path.join(ffmpegDir, ytDlpExe);
-
+    console.log(`[Tools Log] Base path: ${basePath}`);
     console.log(`[FFmpeg Path]: ${FFMPEG_PATH}`);
     console.log(`[yt-dlp Path]: ${YT_DLP_PATH}`);
 
-    if (!fs.existsSync(FFMPEG_PATH)) console.error(`[Error] FFmpeg not found at the specified path.`);
-    if (!fs.existsSync(YT_DLP_PATH)) console.error(`[Error] yt-dlp not found. YouTube download will fail.`);
+    if (!FFMPEG_PATH || !fs.existsSync(FFMPEG_PATH)) {
+        console.error(`[Error] 未能找到有效的 ffmpeg 路径。`);
+        FFMPEG_PATH = '';
+    }
+    if (!fs.existsSync(YT_DLP_PATH)) {
+        console.error(`[Error] yt-dlp 未在指定路径找到，YouTube 下载功能将失效。`);
+        YT_DLP_PATH = '';
+    }
 
     console.log('--- [Tools Log] 定位结束 ---');
-    // =========================================================================
-
     pluginManager.initialize(CONFIG.PLUGINS_DIR);
 }
 
-// ... (省略所有其他函数，它们保持不变)
 function sendMessage(type, data) {
     const wc = getWebContents();
     if (wc && !wc.isDestroyed()) wc.send(type, data);
@@ -148,11 +148,7 @@ function sendMessage(type, data) {
 
 function sanitizeFilename(filename) {
     if (!filename) return 'untitled';
-    // [增强] 更严格地替换掉所有可能引起问题的字符，包括但不限于：
-    // \ / ? % * : | " < > _ , . # & … ' ’ 和所有空白字符
-    // 将它们全部替换为连字符 '-'
     const sanitized = filename.replace(/[\/\\?%*:|"<>_,\s\.\#\&\…'’]+/g, '-');
-    // 清理多余的连字符
     return sanitized.replace(/-+/g, '-').replace(/^-+|-+$/g, '').trim();
 }
 
@@ -578,7 +574,7 @@ async function downloadBilibiliVideo(videoUrl) {
             downloadBilibiliFile(coverUrl, CONFIG.ALBUMART_DIR, path.basename(coverPath), videoUrl),
         ]);
         sendMessage('download-status', { message: '下载完成，开始使用FFmpeg合并...', type: 'default' });
-        const ffmpegCommand = `"${FFMPEG_PATH}" -i "${videoTempPath}" -i "${audioTempPath}" -c copy "${finalPath}"`;
+        const ffmpegCommand = `"${FFMPEG_PATH}" -y -i "${videoTempPath}" -i "${audioTempPath}" -c copy "${finalPath}"`;
         await new Promise((resolve, reject) => {
             exec(ffmpegCommand, (error, stdout, stderr) => {
                 if (fs.existsSync(videoTempPath)) fs.unlinkSync(videoTempPath);
@@ -694,30 +690,95 @@ export async function getLocalPlaylist() {
     }
 }
 
-async function downloadFile(url, folder, fileName) {
+async function downloadFile(url, folder, fileName, retries = DOWNLOAD_RETRY_COUNT) {
     const filePath = path.join(folder, fileName);
-    if (fs.existsSync(filePath)) return;
-    const writer = fs.createWriteStream(filePath);
-    const response = await axios({ url, method: 'GET', responseType: 'stream', headers: { 'User-Agent': 'Mozilla/5.0' } });
-    response.data.pipe(writer);
-    return new Promise((resolve, reject) => {
-        writer.on('finish', resolve); writer.on('error', reject);
-    });
+    if (fs.existsSync(filePath)) {
+        try { const stats = await fs.promises.stat(filePath); if (stats.size > 0) return; }
+        catch (e) { /* ignore stat error */ }
+    }
+
+    for (let i = 0; i < retries; i++) {
+        try {
+            const writer = fs.createWriteStream(filePath);
+            const response = await axios({ url, method: 'GET', responseType: 'stream', headers: { 'User-Agent': 'Mozilla/5.0' } });
+            response.data.pipe(writer);
+
+            await new Promise((resolve, reject) => {
+                writer.on('finish', resolve);
+                writer.on('error', reject);
+            });
+
+            const stats = await fs.promises.stat(filePath);
+            if (stats.size > 0) return; // 下载成功且文件非空
+            throw new Error('Downloaded file is empty.');
+
+        } catch (error) {
+            console.warn(`[Download] Attempt ${i + 1} failed for ${fileName}: ${error.message}`);
+            if (fs.existsSync(filePath)) await fs.promises.unlink(filePath).catch(e => console.error(e));
+            if (i === retries - 1) throw error;
+            await new Promise(res => setTimeout(res, 1000 * (i + 1))); // 增加等待时间
+        }
+    }
 }
 
-async function downloadBilibiliFile(url, folder, fileName, refererUrl) {
+// =========================================================================
+// 【增强】为 Bilibili 下载增加重试和文件校验
+// =========================================================================
+async function downloadBilibiliFile(url, folder, fileName, refererUrl, retries = DOWNLOAD_RETRY_COUNT) {
     const filePath = path.join(folder, fileName);
-    if (fs.existsSync(filePath)) return;
-    const writer = fs.createWriteStream(filePath);
-    const response = await axios({
-        url, method: 'GET', responseType: 'stream',
-        headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': refererUrl }
-    });
-    response.data.pipe(writer);
-    return new Promise((resolve, reject) => {
-        writer.on('finish', resolve); writer.on('error', reject);
-    });
+    // 如果文件已存在且大小不为0，则跳过下载
+    if (fs.existsSync(filePath)) {
+        try {
+            const stats = await fs.promises.stat(filePath);
+            if (stats.size > 0) {
+                console.log(`[Bilibili Download] File ${fileName} already exists and is not empty. Skipping.`);
+                return;
+            }
+        } catch (e) { /* 忽略 stat 错误，继续下载 */ }
+    }
+
+    for (let i = 0; i < retries; i++) {
+        try {
+            const writer = fs.createWriteStream(filePath);
+            const response = await axios({
+                url, method: 'GET', responseType: 'stream',
+                headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': refererUrl }
+            });
+
+            response.data.pipe(writer);
+
+            await new Promise((resolve, reject) => {
+                writer.on('finish', resolve);
+                writer.on('error', reject);
+            });
+
+            // 【核心校验】下载完成后检查文件大小
+            const stats = await fs.promises.stat(filePath);
+            if (stats.size > 0) {
+                console.log(`[Bilibili Download] Attempt ${i + 1}: Success, downloaded ${fileName} (${stats.size} bytes).`);
+                return; // 下载成功且文件非空，直接返回
+            }
+
+            // 如果文件为空，抛出错误以触发重试
+            throw new Error('Downloaded file is empty.');
+
+        } catch (error) {
+            console.warn(`[Bilibili Download] Attempt ${i + 1} failed for ${fileName}: ${error.message}`);
+            // 删除可能存在的空文件或损坏文件
+            if (fs.existsSync(filePath)) {
+                await fs.promises.unlink(filePath).catch(e => console.error(`Failed to delete temporary file: ${filePath}`, e));
+            }
+
+            if (i === retries - 1) {
+                // 如果是最后一次重试，则向上抛出错误
+                throw new Error(`Failed to download ${fileName} after ${retries} attempts. Last error: ${error.message}`);
+            }
+            // 等待时间随重试次数增加
+            await new Promise(res => setTimeout(res, 1000 * (i + 1)));
+        }
+    }
 }
+
 
 async function updateLocalPlaylist(newTracks) {
     let playlist = [];

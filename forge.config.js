@@ -9,16 +9,20 @@ module.exports = {
         asar: true,
         icon: './public/assets/app',
         // =========================================================================
-        // 【最终确认】 这是确保 ffmpeg 目录被打包的正确配置
+        // 【核心修改】为 yt-dlp 添加 extraResource 配置
         //
-        // 1. 属性名是 `extraResource` (单数)。
-        // 2. 它告诉打包工具将项目根目录下的 'ffmpeg' 文件夹
-        //    完整复制到打包后应用的 resources 目录下。
-        //    - 开发时: C:\...\Player\ffmpeg
-        //    - 打包后: C:\Program Files\Player\resources\ffmpeg
+        // 1. 我们不再手动打包 ffmpeg，因为它已由 ffmpeg-static 管理。
+        // 2. 我们需要手动将 `yt-dlp` 目录完整复制到打包后应用的 resources 目录下，
+        //    以便 `main-api.js` 中的路径逻辑能够在生产环境中找到它。
+        //
+        //    - 开发时: C:\...\Player\yt-dlp
+        //    - 打包后: C:\Program Files\Player\resources\yt-dlp
+        //
+        // 【重要】请确保您已在项目根目录创建 `yt-dlp/win32-x64` 文件夹，
+        //         并已将 `yt-dlp.exe` 放置在其中。
         // =========================================================================
         extraResource: [
-            path.join(__dirname, 'ffmpeg')
+            path.join(__dirname, 'yt-dlp')
         ],
     },
     rebuildConfig: {},
