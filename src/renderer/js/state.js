@@ -90,11 +90,6 @@ export let currentGradientColors = null;
  */
 export let isScreensaverMode = false;
 
-/**
- * @type {boolean} 是否处于伴奏模式（人声消除）。
- */
-export let isInstrumentalMode = false;
-
 
 // --- State Modifying Functions ---
 
@@ -193,9 +188,4 @@ export function setCurrentGradientColors(colors) {
 export function setScreensaverMode(value) {
     if (isScreensaverMode === value) return;
     isScreensaverMode = value;
-}
-
-export function setInstrumentalMode(value) {
-    if (isInstrumentalMode === value) return;
-    isInstrumentalMode = value;
 }

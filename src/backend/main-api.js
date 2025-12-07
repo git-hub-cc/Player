@@ -8,11 +8,12 @@ import { pinyin } from 'pinyin-pro';
 import { Buffer } from 'buffer';
 import { createHash } from 'crypto';
 import { exec } from 'child_process';
-import pluginManager from './plugins/manager.js';
+// 【删除】移除了 pluginManager 的导入
 import * as gdstudio from './providers/gdstudio.js';
 import * as jableProvider from './providers/jable.js';
 import * as youtubeProvider from './providers/youtube.js';
 import WinReg from 'winreg';
+import YTDlpWrap from 'yt-dlp-wrap-plus';
 
 // =========================================================================
 // 【核心修改】使用 require 引入 ffmpeg-static
@@ -26,20 +27,9 @@ try {
     ffmpegPath = ''; // 设置为空字符串，以便后续逻辑可以检测到错误
 }
 
-// --- 核心配置开关 ---
-const PROVIDER_MODE = 'LEGACY';
-// -------------------
+// 【删除】移除了 PROVIDER_MODE 常量
 
-const CACHE_EXPIRATION_DAYS = 7;
-const BACKGROUND_SEARCH_PAGE_DEPTH = 20;
-const ITEMS_PER_PAGE = 10;
-const SEARCH_WAIT_TIMEOUT = 20000;
-const POLLING_INTERVAL = 500;
 const DOWNLOAD_RETRY_COUNT = 3;
-
-const ONGOING_CACHE_BUILDS = new Set();
-const INITIAL_RESPONSE_PROMISES = new Map();
-const REALTIME_SEARCH_BUFFER = new Map();
 
 let appInstance;
 let getWebContents;
@@ -84,6 +74,48 @@ async function detectSystemProxy() {
     }
 }
 
+/**
+ * 确保 yt-dlp 二进制文件存在。
+ * 如果不存在，尝试自动下载。
+ */
+async function ensureYtDlpBinary(userDataPath) {
+    const YTDlpClass = YTDlpWrap.default || YTDlpWrap;
+
+    // 将二进制文件存放在 userData 目录下的 bin 文件夹中
+    const binDir = path.join(userDataPath, 'bin');
+    if (!fs.existsSync(binDir)) {
+        fs.mkdirSync(binDir, { recursive: true });
+    }
+
+    // 根据平台决定文件名
+    const exeName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+    const binaryPath = path.join(binDir, exeName);
+
+    console.log(`[yt-dlp Init] Checking binary at: ${binaryPath}`);
+
+    if (fs.existsSync(binaryPath)) {
+        console.log('[yt-dlp Init] Binary found locally.');
+        return binaryPath;
+    }
+
+    console.log('[yt-dlp Init] Binary not found. Downloading from GitHub...');
+    try {
+        // 使用 yt-dlp-wrap-plus 的内置功能下载最新版本
+        await YTDlpClass.downloadFromGithub(binaryPath);
+        console.log('[yt-dlp Init] Download complete.');
+
+        // 在 Linux/Mac 上赋予执行权限
+        if (process.platform !== 'win32') {
+            fs.chmodSync(binaryPath, '755');
+        }
+
+        return binaryPath;
+    } catch (error) {
+        console.error('[yt-dlp Init] Failed to download binary:', error);
+        return null;
+    }
+}
+
 export async function initialize(app, webContentsProvider) {
     appInstance = app;
     getWebContents = webContentsProvider;
@@ -96,35 +128,25 @@ export async function initialize(app, webContentsProvider) {
         VIDEOS_DIR: path.join(userDataPath, 'media', 'videos'),
         ALBUMART_DIR: path.join(userDataPath, 'media', 'albumArt'),
         MUSIC_DIR: path.join(userDataPath, 'media', 'music'),
-        PLUGINS_DIR: path.join(userDataPath, 'plugins'),
-        SEARCH_CACHE_DIR: path.join(userDataPath, 'search-cache'),
+        // 【删除】移除了 PLUGINS_DIR 和 SEARCH_CACHE_DIR 的配置
         STATE_PATH: path.join(userDataPath, 'state.json'),
         PLAYLIST_PATH: path.join(userDataPath, 'media', 'playlist.json'),
         HEADLESS_MODE: true,
-        ONLINE_SEARCH_API: 'https://www.myfreemp3.com.cn/',
+        // 【删除】移除了 ONLINE_SEARCH_API 的配置
     };
 
-    [CONFIG.VIDEOS_DIR, CONFIG.ALBUMART_DIR, CONFIG.MUSIC_DIR, CONFIG.PLUGINS_DIR, CONFIG.SEARCH_CACHE_DIR].forEach(dir => {
+    // 【修改】移除了 PLUGINS_DIR 和 SEARCH_CACHE_DIR 的目录创建逻辑
+    [CONFIG.VIDEOS_DIR, CONFIG.ALBUMART_DIR, CONFIG.MUSIC_DIR].forEach(dir => {
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     });
 
     console.log('--- [Tools Log] 开始定位外部工具 ---');
 
-    const basePath = app.isPackaged ? process.resourcesPath : process.cwd();
-    let platformSubPath = '';
-    if (process.platform === 'win32') {
-        platformSubPath = 'win32-x64';
-    } else if (process.platform === 'darwin') {
-        platformSubPath = process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
-    } else {
-        console.warn(`[Tools Log] Unsupported platform for yt-dlp: ${process.platform}.`);
-    }
+    // =========================================================================
+    // 【核心修改】初始化 yt-dlp，支持自动下载
+    // =========================================================================
+    YT_DLP_PATH = await ensureYtDlpBinary(userDataPath);
 
-    const ytDlpDir = path.join(basePath, 'yt-dlp', platformSubPath);
-    const ytDlpExe = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
-    YT_DLP_PATH = path.join(ytDlpDir, ytDlpExe);
-
-    console.log(`[Tools Log] Base path: ${basePath}`);
     console.log(`[FFmpeg Path]: ${FFMPEG_PATH}`);
     console.log(`[yt-dlp Path]: ${YT_DLP_PATH}`);
 
@@ -132,13 +154,13 @@ export async function initialize(app, webContentsProvider) {
         console.error(`[Error] 未能找到有效的 ffmpeg 路径。`);
         FFMPEG_PATH = '';
     }
-    if (!fs.existsSync(YT_DLP_PATH)) {
-        console.error(`[Error] yt-dlp 未在指定路径找到，YouTube 下载功能将失效。`);
+    if (!YT_DLP_PATH || !fs.existsSync(YT_DLP_PATH)) {
+        console.error(`[Error] yt-dlp 未就绪，YouTube 下载功能将失效。`);
         YT_DLP_PATH = '';
     }
 
     console.log('--- [Tools Log] 定位结束 ---');
-    pluginManager.initialize(CONFIG.PLUGINS_DIR);
+    // 【删除】移除了 pluginManager.initialize 的调用
 }
 
 function sendMessage(type, data) {
@@ -152,158 +174,38 @@ function sanitizeFilename(filename) {
     return sanitized.replace(/-+/g, '-').replace(/^-+|-+$/g, '').trim();
 }
 
-function getCacheKey(query) {
-    const normalizedQuery = query.trim().toLowerCase();
-    return createHash('md5').update(normalizedQuery).digest('hex');
-}
-
-async function validateUrl(url) {
-    if (!url || !url.startsWith('http')) return false;
-    try {
-        const response = await axios.head(url, { timeout: 5000, maxRedirects: 5, headers: { 'User-Agent': 'Mozilla/5.0' } });
-        return response.status >= 200 && response.status < 300 && response.headers['content-type']?.includes('audio');
-    } catch (error) { return false; }
-}
-
+/**
+ * =========================================================================
+ * 【重构】handleSearchRequest 函数
+ * 移除了所有 Legacy 模式的逻辑，仅保留 GD_STUDIO 模式。
+ * =========================================================================
+ */
 export async function handleSearchRequest({ query, page = 1 }) {
-    if (PROVIDER_MODE === 'GD_STUDIO') {
-        try {
-            const { list, total } = await gdstudio.search(query, page);
-            return { success: true, data: { results: list, total } };
-        } catch (error) { return { success: false, error: error.message }; }
-    }
-    const cacheKey = getCacheKey(query);
-    const cacheFilePath = path.join(CONFIG.SEARCH_CACHE_DIR, `${cacheKey}.json`);
     try {
-        if (fs.existsSync(cacheFilePath)) {
-            const stats = await fs.promises.stat(cacheFilePath);
-            const cacheAgeDays = (Date.now() - stats.mtime.getTime()) / (1000 * 60 * 60 * 24);
-            if (cacheAgeDays < CACHE_EXPIRATION_DAYS) {
-                const cacheContent = await fs.promises.readFile(cacheFilePath, 'utf-8');
-                const cacheData = JSON.parse(cacheContent);
-                const total = cacheData.results.length;
-                const startIndex = (page - 1) * ITEMS_PER_PAGE;
-                const endIndex = startIndex + ITEMS_PER_PAGE;
-                const paginatedResults = cacheData.results.slice(startIndex, endIndex);
-                return { success: true, data: { results: paginatedResults, total } };
-            } else { fs.promises.unlink(cacheFilePath).catch(() => {}); }
-        }
-    } catch (error) {}
-
-    if (page === 1 && !ONGOING_CACHE_BUILDS.has(cacheKey)) {
-        triggerLegacyBackgroundBuild(query, cacheKey, cacheFilePath);
+        const { list, total } = await gdstudio.search(query, page);
+        return { success: true, data: { results: list, total } };
+    } catch (error) {
+        return { success: false, error: error.message };
     }
-
-    if (ONGOING_CACHE_BUILDS.has(cacheKey)) {
-        const startTime = Date.now();
-        const requiredCount = page * ITEMS_PER_PAGE;
-        const startIndex = (page - 1) * ITEMS_PER_PAGE;
-        while (Date.now() - startTime < SEARCH_WAIT_TIMEOUT) {
-            const currentBuffer = REALTIME_SEARCH_BUFFER.get(cacheKey) || [];
-            const isFinished = !ONGOING_CACHE_BUILDS.has(cacheKey);
-            if (currentBuffer.length >= requiredCount || (isFinished && currentBuffer.length > 0)) {
-                const total = currentBuffer.length;
-                if (startIndex >= total) return { success: true, data: { results: [], total } };
-                const results = currentBuffer.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-                return { success: true, data: { results, total: isFinished ? total : 9999 } };
-            }
-            if (isFinished && currentBuffer.length === 0) break;
-            await new Promise(r => setTimeout(r, POLLING_INTERVAL));
-        }
-        const buffer = REALTIME_SEARCH_BUFFER.get(cacheKey) || [];
-        if (buffer.length > 0) {
-            const total = buffer.length;
-            const results = buffer.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-            return { success: true, data: { results, total } };
-        }
-    }
-    if (page === 1) {
-        try {
-            const promiseWrapper = INITIAL_RESPONSE_PROMISES.get(cacheKey);
-            if (!promiseWrapper) {
-                if (fs.existsSync(cacheFilePath)) {
-                    const content = await fs.promises.readFile(cacheFilePath, 'utf-8');
-                    const data = JSON.parse(content);
-                    return { success: true, data: { results: data.results.slice(0, ITEMS_PER_PAGE), total: data.results.length } };
-                }
-                return { success: false, error: "Search initialization failed or no results." };
-            }
-            const { results, total } = await promiseWrapper.promise;
-            return { success: true, data: { results, total } };
-        } catch (error) { return { success: false, error: error.message }; }
-    }
-    return { success: true, data: { results: [], total: 0 } };
 }
 
-function triggerLegacyBackgroundBuild(query, cacheKey, cacheFilePath) {
-    ONGOING_CACHE_BUILDS.add(cacheKey);
-    REALTIME_SEARCH_BUFFER.set(cacheKey, []);
-    let promiseResolver;
-    const initialResponsePromise = new Promise((resolve, reject) => { promiseResolver = { resolve, reject }; });
-    INITIAL_RESPONSE_PROMISES.set(cacheKey, { promise: initialResponsePromise, resolver: promiseResolver });
-    (async () => {
-        const allValidatedResults = [];
-        let firstPageTotal = 0;
-        let initialResponseSent = false;
-        try {
-            for (let currentPage = 1; currentPage <= BACKGROUND_SEARCH_PAGE_DEPTH; currentPage++) {
-                const params = new URLSearchParams({ input: query, filter: 'name', page: currentPage.toString(), type: 'netease' });
-                const response = await axios.post(CONFIG.ONLINE_SEARCH_API, params, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, timeout: 30000 });
-                if (currentPage === 1) firstPageTotal = response.data?.data?.total || 0;
-                const tracks = response.data?.data?.list;
-                if (!tracks || tracks.length === 0) break;
-                const validationPromises = tracks.map(track => validateUrl(track.url));
-                const validationResults = await Promise.allSettled(validationPromises);
-                const newValidTracks = [];
-                validationResults.forEach((result, index) => {
-                    if (result.status === 'fulfilled' && result.value === true) {
-                        newValidTracks.push({ ...tracks[index], source: 'joox' });
-                    }
-                });
-                if (newValidTracks.length > 0) {
-                    allValidatedResults.push(...newValidTracks);
-                    const currentBuffer = REALTIME_SEARCH_BUFFER.get(cacheKey) || [];
-                    currentBuffer.push(...newValidTracks);
-                    REALTIME_SEARCH_BUFFER.set(cacheKey, currentBuffer);
-                }
-                if (!initialResponseSent && allValidatedResults.length >= ITEMS_PER_PAGE) {
-                    INITIAL_RESPONSE_PROMISES.get(cacheKey)?.resolver.resolve({ results: allValidatedResults.slice(0, ITEMS_PER_PAGE), total: firstPageTotal });
-                    initialResponseSent = true;
-                }
-            }
-            if (!initialResponseSent) INITIAL_RESPONSE_PROMISES.get(cacheKey)?.resolver.resolve({ results: allValidatedResults, total: firstPageTotal });
-            if (allValidatedResults.length > 0) {
-                await fs.promises.writeFile(cacheFilePath, JSON.stringify({ timestamp: Date.now(), results: allValidatedResults }));
-            }
-        } catch (err) {
-            if (!initialResponseSent) INITIAL_RESPONSE_PROMISES.get(cacheKey)?.resolver.reject(err);
-        } finally {
-            ONGOING_CACHE_BUILDS.delete(cacheKey);
-            INITIAL_RESPONSE_PROMISES.delete(cacheKey);
-            setTimeout(() => { REALTIME_SEARCH_BUFFER.delete(cacheKey); }, 5000);
-        }
-    })();
-}
+// 【删除】移除了 triggerLegacyBackgroundBuild 函数、validateUrl 辅助函数、getCacheKey 辅助函数
+// 以及 ONGOING_CACHE_BUILDS, INITIAL_RESPONSE_PROMISES, REALTIME_SEARCH_BUFFER 等相关变量
 
 export async function handleGetMusicUrl(trackInfo) {
     if (!trackInfo) return { success: false, error: 'No track info provided.' };
     try {
         if (trackInfo.src && trackInfo.src.startsWith('http')) {
-            if (!trackInfo.id || PROVIDER_MODE === 'LEGACY') {
+            // 如果已有 HTTP 链接且不是 gdstudio 源（或者没有 ID），尝试直接验证链接有效性
+            if (!trackInfo.id || !trackInfo.source) {
                 const response = await axios.head(trackInfo.src, { maxRedirects: 10, timeout: 15000, headers: { 'User-Agent': 'Mozilla/5.0' } });
                 return { success: true, url: response.request.res.responseUrl || trackInfo.src };
             }
         }
-        if (PROVIDER_MODE === 'GD_STUDIO' && trackInfo.id && trackInfo.source) {
+        // 【核心修改】只处理 gdstudio 的 URL 解析，移除了插件处理逻辑
+        if (trackInfo.id && trackInfo.source) {
             const url = await gdstudio.getMusicUrl(trackInfo);
             return { success: true, url };
-        }
-        if (trackInfo.source) {
-            const activePlugin = pluginManager.getActivePlugin();
-            if (activePlugin && activePlugin.supportedSources[trackInfo.source]) {
-                const url = await activePlugin.getMusicUrl(trackInfo, '128k');
-                return { success: true, url };
-            }
         }
         throw new Error('No suitable method to resolve URL.');
     } catch (e) { return { success: false, error: e.message }; }
@@ -316,7 +218,8 @@ export async function handleCacheRequest(trackData) {
     const safeFilename = sanitizeFilename(`${artist} - ${title}`);
     const downloadPromises = [];
     let audioUrl = trackData.originalSrc;
-    if (PROVIDER_MODE === 'GD_STUDIO' && !audioUrl && trackData.id) {
+    // 【核心修改】默认使用 gdstudio 解析下载链接，移除了 PROVIDER_MODE 判断
+    if (!audioUrl && trackData.id) {
         try { audioUrl = await gdstudio.getMusicUrl(trackData); } catch (e) { sendMessage('download-status', { message: `获取音频链接失败: ${e.message}`, type: 'error' }); return; }
     }
     if (audioUrl) downloadPromises.push(downloadFile(audioUrl, CONFIG.MUSIC_DIR, `${safeFilename}.mp3`));
@@ -324,7 +227,8 @@ export async function handleCacheRequest(trackData) {
     if (artUrl) downloadPromises.push(downloadFile(artUrl, CONFIG.ALBUMART_DIR, `${safeFilename}.jpg`));
     const lyricsPath = path.join(CONFIG.MUSIC_DIR, `${safeFilename}.lrc`);
     let lyricContent = '';
-    if (PROVIDER_MODE === 'GD_STUDIO' && trackData.lyricId) {
+    // 【核心修改】默认使用 gdstudio 获取歌词，移除了 PROVIDER_MODE 判断
+    if (trackData.lyricId) {
         try { lyricContent = await gdstudio.getLyric(trackData.lyricId, trackData.source); } catch (e) {}
     } else if (trackData.originalLyrics) {
         if (trackData.originalLyrics.startsWith('data:text/plain,')) lyricContent = decodeURIComponent(trackData.originalLyrics.substring('data:text/plain,'.length));
@@ -446,13 +350,12 @@ export async function handleLocalImport(directoryPath) {
 }
 
 export async function handleDownloadRequest(requestData) {
-    let url, downloadType;
-    if (typeof requestData === 'string') {
-        url = requestData;
-        downloadType = 'single';
-    } else {
+    // 【修改】移除了 downloadType 参数处理，默认为 url 字符串
+    let url = requestData;
+
+    // 容错处理：如果前端传来了对象，提取 url
+    if (typeof requestData === 'object' && requestData.url) {
         url = requestData.url;
-        downloadType = requestData.downloadType;
     }
 
     const match = url.match(/(https?:\/\/[^\s]+)|(MS4wLjABAAAA[^\s]+)/);
@@ -473,11 +376,8 @@ export async function handleDownloadRequest(requestData) {
         }
         sendMessage('download-status', { message: `抖音目标已提取: ${startUrl}` });
 
-        if (downloadType === 'single') {
-            await downloadSingleVideo(startUrl);
-        } else {
-            sendMessage('download-status', { message: `批量下载 (${downloadType}) 功能尚未实现。`, type: 'error' });
-        }
+        // 【修改】直接执行单视频下载，不再判断下载类型
+        await downloadSingleVideo(startUrl);
     }
 }
 
@@ -621,13 +521,15 @@ async function downloadJableVideo(videoUrl) {
 }
 
 async function downloadYoutubeVideo(videoUrl, proxy) {
+    // 检查 yt-dlp 是否就绪
     if (!YT_DLP_PATH || !FFMPEG_PATH) {
-        sendMessage('download-status', { message: '错误: yt-dlp 或 FFmpeg 未找到，无法下载 YouTube 视频。', type: 'error' });
+        sendMessage('download-status', { message: '错误: yt-dlp 或 FFmpeg 未就绪，无法下载 YouTube 视频。', type: 'error' });
         return;
     }
 
     try {
         sendMessage('download-status', { message: '正在获取 YouTube 视频信息...', type: 'default' });
+        // 使用新版的 getVideoInfo
         const info = await youtubeProvider.getVideoInfo(videoUrl, YT_DLP_PATH, proxy);
 
         const safeFilename = sanitizeFilename(info.title);
@@ -641,6 +543,7 @@ async function downloadYoutubeVideo(videoUrl, proxy) {
 
         sendMessage('download-status', { message: '开始调用 yt-dlp 下载...', type: 'default' });
 
+        // 使用新版的 downloadVideo，它内部使用 yt-dlp-wrap-plus
         await youtubeProvider.downloadVideo(
             videoUrl,
             CONFIG.VIDEOS_DIR,

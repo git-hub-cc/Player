@@ -5,7 +5,7 @@ import * as state from './state.js';
 import { PLAY_MODES } from './config.js';
 import { normalizeKey, formatTime } from './utils.js';
 import { pinyin } from 'pinyin-pro';
-import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode, resetBackgroundBeatTimer, resetPlayerUI, consumePendingSeek, playTrack, toggleInstrumentalMode } from './player.js';
+import { loadTrack, togglePlayPause, playNextTrack, playPrevTrack, updateProgress, cyclePlayMode, resetBackgroundBeatTimer, resetPlayerUI, consumePendingSeek, playTrack } from './player.js';
 import { renderPlaylist, filterPlaylist, toggleLyricsPanel, togglePlaylistPanel, toggleInfoPanel, toggleShortcutPanel, updateVolumeBarVisual, showSkeleton, hideSkeleton, hideContextMenu, renderContextMenu, normalizePosition, updateModeButton, updatePlaylistUI, setupLyricsDragHandler, closeActivePanels, toggleDownloadPanel, showToast, showConfirmationModal, toggleEmptyState } from './ui.js';
 import { loadShortcuts, executeShortcut, setupShortcutListeners } from './features/shortcuts.js';
 import * as backgroundGallery from './features/gallery.js';
@@ -166,7 +166,6 @@ function setupEventListeners() {
     dom.prevBtn.addEventListener('click', () => { playPrevTrack(); savePlayerState(); });
     dom.nextBtn.addEventListener('click', () => { playNextTrack(); savePlayerState(); });
     dom.modeBtn.addEventListener('click', () => { cyclePlayMode(); savePlayerState(); });
-    dom.instrumentalBtn.addEventListener('click', toggleInstrumentalMode);
 
     if (dom.openMediaFolderBtn && window.electronAPI?.openMediaFolder) {
         dom.openMediaFolderBtn.addEventListener('click', () => {
