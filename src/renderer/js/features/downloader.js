@@ -48,10 +48,8 @@ function transformApiData(apiTrack) {
 
 
 /**
- * =========================================================================
- * 【修改】 updateInputMode 函数
+ * 更新下载面板的输入模式。
  * 增强了此函数，使其能够识别 B站、Jable 和 YouTube 链接。
- * =========================================================================
  * @param {string} message - 要显示的消息。
  */
 function updateInputMode() {
@@ -63,7 +61,6 @@ function updateInputMode() {
     const isYoutubeUrl = isUrlMode && (inputText.includes('youtube.com/') || inputText.includes('youtu.be/'));
     const isDouyinUserUrl = isUrlMode && (inputText.includes('/user/') || inputText.includes('MS4wLjAB'));
 
-    // 【删除】 移除了 downloadWorksBtn 和 downloadLikesBtn 的显示逻辑
     dom.startDownloadBtn.style.display = (isUrlMode && !isDouyinUserUrl) ? 'flex' : 'none';
     dom.searchNeteaseBtn.style.display = isUrlMode ? 'none' : 'flex';
     document.getElementById('import-local-btn').style.display = 'flex';
@@ -97,23 +94,16 @@ function updateStatus(message, type = 'default') {
 }
 
 /**
- * =========================================================================
- * 【核心修复】修正删除请求的路径，确保与后端 playlist.json 中的路径一致
- * =========================================================================
  * 向主进程请求删除一个已下载的曲目。
  * @param {object} track - 要删除的曲目对象。
  */
 export async function requestTrackDeletion(track) {
-    // 1. 从前端的 track 对象中获取编码后的 src (e.g., "media://music/song%20name.mp3")
     const encodedSrc = track.src;
 
-    // 2. 去掉协议头，得到编码后的相对路径
     const encodedRelativeSrc = encodedSrc.startsWith('media://')
         ? encodedSrc.substring('media://'.length)
         : encodedSrc;
 
-    // 3. 【关键修复】对路径进行解码，还原成原始路径 (e.g., "music/song name.mp3")
-    //    这样才能与 `playlist.json` 中存储的未编码路径匹配
     const decodedRelativeSrc = decodeURIComponent(encodedRelativeSrc);
 
     console.log(`[Deletion] 请求删除 (解码后路径): ${decodedRelativeSrc}`);
@@ -122,15 +112,13 @@ export async function requestTrackDeletion(track) {
     if (result.success) {
         // 成功消息由 main.js 统一处理
     } else {
-        // 失败时显示错误提示
         showToast(result.error, 'error');
     }
     return result.success;
 }
 
 /**
- * 请求主进程解析一个曲目的可播放 URL，以解决 CORS 问题或懒加载。
- * 兼容新 API 的 ID 解析机制。
+ * 请求主进程解析一个曲目的可播放 URL。
  * @param {object} track - 曲目信息对象。
  * @returns {Promise<string>} - 可播放的 URL。
  * @throws {Error} 如果无法获取 URL。
@@ -211,10 +199,8 @@ async function performSearch(query, page = 1) {
 /**
  * 向主进程发送下载请求（通用）。
  * @param {HTMLElement} clickedButton - 被点击的按钮元素。
- * @param {'single' | 'works' | 'likes'} downloadType - 下载类型。
  */
 function sendDownloadRequest(clickedButton) {
-    // 【修改】移除了 downloadType 参数，强制默认为单曲下载
     const urlText = dom.urlOrSearchInput.value;
     if (!urlText.trim()) {
         updateStatus('错误：请输入有效的分享文本或URL。', 'error');
@@ -224,13 +210,11 @@ function sendDownloadRequest(clickedButton) {
     clearSearchResults();
     renderPaginationControls(0, 0);
 
-    // 【修改】移除了 downloadWorksBtn 和 downloadLikesBtn 的禁用逻辑
     const allDownloadButtons = [dom.startDownloadBtn];
     allDownloadButtons.forEach(btn => btn.disabled = true);
     clickedButton.classList.add('loading');
     updateStatus('已发送请求到主进程，请稍候...', 'default');
 
-    // 【修改】直接发送 urlText，因为我们只支持单曲下载
     window.electronAPI.startDownload(urlText);
 }
 
@@ -270,27 +254,33 @@ function setupPaginationListener() {
     });
 }
 
+/**
+ * 处理“导入本地资源”按钮点击事件。
+ * @param {Event} event
+ */
 async function handleLocalImportClick(event) {
     const importBtn = event.currentTarget;
-    // 【修改】移除了 downloadWorksBtn 和 downloadLikesBtn 的禁用逻辑
     const allButtons = [importBtn, dom.searchNeteaseBtn, dom.startDownloadBtn];
 
     allButtons.forEach(btn => btn.disabled = true);
     importBtn.classList.add('loading');
-    updateStatus('等待选择目录...');
+    // 【修改】提示信息更新为“等待选择资源目录...”
+    updateStatus('等待选择资源目录...');
 
     try {
         const result = await window.electronAPI.selectImportDirectory();
 
         if (!result.canceled && result.filePaths.length > 0) {
             const dirPath = result.filePaths[0];
-            updateStatus(`已选择目录，开始导入...`);
+            // 【修改】提示信息更新
+            updateStatus(`已选择目录，开始导入媒体文件...`);
 
             const importResult = await window.electronAPI.startLocalImport(dirPath);
 
             if (importResult.success) {
                 try {
-                    await showConfirmationModal(`成功导入 ${importResult.importedCount} 首歌曲！\n是否立即刷新播放器以加载新歌曲？`);
+                    // 【修改】对话框提示信息更新
+                    await showConfirmationModal(`成功导入 ${importResult.importedCount} 个媒体文件！\n是否立即刷新播放器以加载新内容？`);
                     window.location.reload();
                 } catch (e) {
                     updateStatus('导入完成。请手动刷新以查看新内容。', 'success');
@@ -325,7 +315,6 @@ export function setupDownloaderListeners() {
         performSearch(query, 1);
     });
 
-    // 【修改】移除了 downloadWorksBtn 和 downloadLikesBtn 的监听器
     dom.startDownloadBtn.addEventListener('click', (e) => sendDownloadRequest(e.currentTarget));
 
     importLocalBtn.addEventListener('click', handleLocalImportClick);
@@ -336,7 +325,6 @@ export function setupDownloaderListeners() {
     window.electronAPI.onDownloadStatus((status) => {
         updateStatus(status.message, status.type);
         if (status.type === 'success' || status.type === 'error') {
-            // 【修改】移除了 downloadWorksBtn 和 downloadLikesBtn 的启用逻辑
             [dom.startDownloadBtn, importLocalBtn].forEach(btn => {
                 btn.disabled = false;
                 btn.classList.remove('loading');

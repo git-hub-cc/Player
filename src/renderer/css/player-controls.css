@@ -160,3 +160,28 @@
     filter: grayscale(100%);
 }
 /* ========================================================================= */
+/* ========================================================================= */
+/* 【新增】视频内容全屏按钮的样式                                            */
+/* ========================================================================= */
+#fullscreen-btn {
+    display: none; /* 默认隐藏 */
+}
+/* 当播放器容器有 .video-mode 类时，显示全屏按钮 */
+.player-container.video-mode #fullscreen-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+/* 默认隐藏“退出全屏”图标 */
+#fullscreen-btn .fullscreen-exit-icon {
+    display: none;
+}
+/* 当按钮有 .fullscreen-active 类时，隐藏“进入全屏”图标 */
+#fullscreen-btn.fullscreen-active .fullscreen-enter-icon {
+    display: none;
+}
+/* 当按钮有 .fullscreen-active 类时，显示“退出全屏”图标 */
+#fullscreen-btn.fullscreen-active .fullscreen-exit-icon {
+    display: block;
+}
+/* ========================================================================= */

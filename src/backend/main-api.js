@@ -134,7 +134,12 @@ app.whenReady().then(async () => {
         const serviceInitParams = { config, ffmpegPath, ytDlpPath, systemProxy, sendMessageFunc: sendMessage };
         console.log('[Main API] 准备使用以下参数初始化所有服务:', JSON.stringify(serviceInitParams, null, 2));
 
-        libraryService.init(CONFIG);
+        // =========================================================================
+        // 【核心修改】将 ffmpegPath 传递给 libraryService.init
+        // 这对于本地导入视频时自动截图是必需的。
+        // =========================================================================
+        libraryService.init(CONFIG, ffmpegPath);
+
         onlineService.init(CONFIG, sendMessage);
         downloadService.init(serviceInitParams);
 

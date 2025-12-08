@@ -51,6 +51,11 @@ export let docElement = document.documentElement;
 export let playerControls = document.querySelector('.player-controls'); // 【新增】底部控制栏引用
 
 export let openMediaFolderBtn = document.getElementById('open-media-folder-btn');
+// =========================================================================
+// 【新增】视频内容全屏按钮的 DOM 引用
+// =========================================================================
+export let fullscreenBtn = document.getElementById('fullscreen-btn');
+// =========================================================================
 
 // 故障效果元素
 export let glitchOverlay = document.getElementById('glitch-overlay');
