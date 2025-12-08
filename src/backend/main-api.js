@@ -51,6 +51,13 @@ const createWindow = () => {
 
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
         mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+        // =========================================================================
+        // 【核心修改】在开发模式下自动打开开发者工具
+        // 这行代码利用了 Vite 插件提供的全局变量 `MAIN_WINDOW_VITE_DEV_SERVER_URL`
+        // 来判断当前是否处于开发环境。
+        // { mode: 'detach' } 会将开发者工具作为一个独立的窗口打开，避免挤占应用界面。
+        // =========================================================================
+        mainWindow.webContents.openDevTools({ mode: 'detach' });
     } else {
         mainWindow.loadFile(path.join(__dirname, '../renderer/main_window/index.html'));
     }
@@ -115,10 +122,6 @@ app.whenReady().then(async () => {
     nativeTheme.themeSource = 'dark';
     Menu.setApplicationMenu(null);
 
-    // =========================================================================
-    // 【核心修改】将初始化服务放在一个 try-catch 块中
-    // 这样，如果 FFmpeg 或 yt-dlp 下载失败，可以优雅地处理并通知用户。
-    // =========================================================================
     try {
         const { config, ffmpegPath, ytDlpPath, systemProxy } = await setupService.initializeApp(app);
         CONFIG = config;
@@ -144,7 +147,6 @@ app.whenReady().then(async () => {
         app.quit();
         return;
     }
-    // =========================================================================
 
     protocol.registerFileProtocol('media', (request, callback) => {
         const url = request.url.substring('media://'.length);

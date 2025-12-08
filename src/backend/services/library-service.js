@@ -4,6 +4,19 @@ import path from 'path';
 import fs from 'fs';
 import { dialog, shell, BrowserWindow } from 'electron';
 import { pinyin } from 'pinyin-pro';
+import { createRequire } from 'node:module';
+
+// --- 动态加载 Canvas ---
+// 使用 createRequire 是为了规避 Vite 打包时对 canvas 二进制文件(.node)解析产生的
+// "Unexpected character" 错误。这种方式强制在运行时加载原生模块，而不是在构建时打包。
+const require = createRequire(import.meta.url);
+let createCanvas;
+try {
+    const canvasModule = require('canvas');
+    createCanvas = canvasModule.createCanvas;
+} catch (e) {
+    console.warn('[Library] Canvas 模块未安装或加载失败，将跳过自动封面生成功能:', e.message);
+}
 
 // --- 模块作用域变量 ---
 let CONFIG = {};
@@ -17,7 +30,7 @@ export function init(sharedConfig) {
 }
 
 /**
- *  sanitzeFilename 的一个副本，用于本地导入
+ * sanitzeFilename 的一个副本，用于本地导入
  */
 function sanitizeFilename(filename) {
     if (!filename) return 'untitled';
@@ -25,6 +38,91 @@ function sanitizeFilename(filename) {
     return sanitized.replace(/-+/g, '-').replace(/^-+|-+$/g, '').trim();
 }
 
+/**
+ * 辅助函数：将 HSL 颜色转换为 RGB 十六进制字符串
+ * @param {number} h - 色相 (0-360)
+ * @param {number} s - 饱和度 (0-100)
+ * @param {number} l - 亮度 (0-100)
+ * @returns {string} - 十六进制颜色代码 (例如 "#RRGGBB")
+ */
+function hslToHex(h, s, l) {
+    l /= 100;
+    const a = s * Math.min(l, 1 - l) / 100;
+    const f = n => {
+        const k = (n + h / 30) % 12;
+        const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+        return Math.round(255 * color).toString(16).padStart(2, '0');
+    };
+    return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+/**
+ * 辅助函数：根据字符串生成确定性的颜色
+ * 使用简单的哈希算法将字符串映射到 HSL 色彩空间。
+ * @param {string} str - 输入字符串
+ * @returns {string} - 十六进制背景颜色
+ */
+function stringToColor(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    // 色相：利用哈希值在 0-360 之间循环
+    const h = Math.abs(hash) % 360;
+    // 饱和度：固定在 60-75% 之间，保持色彩鲜艳但不刺眼
+    const s = 65 + (Math.abs(hash) % 10);
+    // 亮度：固定在 40-50% 之间，确保白色文字可读
+    const l = 45 + (Math.abs(hash) % 10);
+    return hslToHex(h, s, l);
+}
+
+/**
+ * =========================================================================
+ * 【核心修改】调整从标题中提取的字符数量
+ * =========================================================================
+ * 辅助函数：从标题中提取用于展示的缩写字符
+ * @param {string} title - 歌曲标题
+ * @returns {string} - 最多10个字符的展示文本
+ */
+function getDisplayChars(title) {
+    if (!title) return '';
+    // 直接截取前10个字符作为展示文本
+    return title.trim().substring(0, 10);
+}
+
+/**
+ * =========================================================================
+ * 【核心修改】调整字体大小以适应更长的文本
+ * =========================================================================
+ * 核心功能：生成占位封面图片
+ * @param {string} title - 歌曲标题
+ * @returns {string} - Base64 格式的 Data URI
+ */
+function generatePlaceholderArt(title) {
+    if (!createCanvas) return ''; // 如果 Canvas 未加载，返回空
+
+    const size = 1024;
+    const canvas = createCanvas(size, size);
+    const ctx = canvas.getContext('2d');
+
+    // 1. 绘制背景
+    const bgColor = stringToColor(title);
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, size, size);
+
+    // 2. 绘制文字
+    const text = getDisplayChars(title);
+    // 减小字体大小以适应更长的文本（最多10个字符）
+    ctx.font = 'bold 90px "Microsoft YaHei", "Segoe UI", Arial, sans-serif';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // 调整垂直位置以在视觉上居中
+    ctx.fillText(text, size / 2, size / 2);
+
+    return canvas.toDataURL('image/png');
+}
 
 /**
  * 读取本地 playlist.json 文件内容。
@@ -73,12 +171,15 @@ export async function handleDeleteTrack({ src: relativeSrc }) {
         // 2. 删除关联文件
         ['src', 'albumArt', 'lyrics'].forEach(key => {
             if (trackToDelete[key]) {
+                // 注意：对于动态生成的 Data URI 封面，这里不会删除任何文件，因为路径不是文件路径
+                if (key === 'albumArt' && trackToDelete[key].startsWith('data:')) {
+                    return;
+                }
                 const filePath = path.join(CONFIG.MEDIA_ROOT, trackToDelete[key]);
                 if (fs.existsSync(filePath)) {
                     try {
                         fs.unlinkSync(filePath);
                     } catch (unlinkError) {
-                        // 即使删除失败也继续，只记录错误
                         console.error(`[Library] 删除文件失败: ${filePath}`, unlinkError);
                     }
                 }
@@ -106,7 +207,6 @@ export async function updateLocalPlaylist(newTracks) {
         }
     } catch (e) {
         console.error(`[Library] 更新播放列表时读取旧文件失败:`, e);
-        // 如果读取失败，将创建一个新的播放列表，而不是中止操作
     }
 
     const existingSrcs = new Set(playlist.map(track => track.src));
@@ -184,30 +284,47 @@ export async function handleLocalImport(directoryPath, sendMessage) {
 
         let importedCount = 0;
         const newPlaylistTracks = [];
+
         for (const group of audioTracks) {
             const title = path.basename(group.audio, path.extname(group.audio));
             const safeFilename = sanitizeFilename(title);
 
             try {
-                // 复制音频文件
+                // 1. 复制音频文件
                 const newAudioPath = path.join(CONFIG.MUSIC_DIR, `${safeFilename}${path.extname(group.audio)}`);
                 await fs.promises.copyFile(group.audio, newAudioPath);
 
                 const newTrack = {
-                    title: title, artist: '本地导入', src: `music/${path.basename(newAudioPath)}`,
-                    albumArt: '', lyrics: '', type: 'audio',
+                    title: title,
+                    artist: '本地导入',
+                    src: `music/${path.basename(newAudioPath)}`,
+                    albumArt: '',
+                    lyrics: '',
+                    type: 'audio',
                     pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
                     initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, ''),
                 };
 
-                // 复制封面文件 (如果存在)
+                // 2. 处理封面
                 if (group.art) {
+                    // 如果存在本地封面文件，复制它
                     const newArtPath = path.join(CONFIG.ALBUMART_DIR, `${safeFilename}${path.extname(group.art)}`);
                     await fs.promises.copyFile(group.art, newArtPath);
                     newTrack.albumArt = `albumArt/${path.basename(newArtPath)}`;
+                } else {
+                    // 【核心新增】如果不存在封面，动态生成基于标题的占位图
+                    try {
+                        const generatedDataUrl = generatePlaceholderArt(title);
+                        if (generatedDataUrl) {
+                            newTrack.albumArt = generatedDataUrl;
+                        }
+                    } catch (artError) {
+                        console.warn(`[Library] 为 "${title}" 生成封面失败:`, artError);
+                        // 生成失败不影响导入，保持 albumArt 为空即可
+                    }
                 }
 
-                // 复制歌词文件 (如果存在)
+                // 3. 处理歌词
                 if (group.lrc) {
                     const newLrcPath = path.join(CONFIG.MUSIC_DIR, `${safeFilename}.lrc`);
                     await fs.promises.copyFile(group.lrc, newLrcPath);
