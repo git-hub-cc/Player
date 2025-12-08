@@ -79,6 +79,11 @@ export function resetPlayerUI() {
     // 清除播放信息并更新UI以移除高亮
     state.clearPlayingTrackInfo();
     updatePlaylistUI();
+    // =========================================================================
+    // 【新增】重置UI时，移除 video-mode 类，确保全屏按钮被隐藏
+    // =========================================================================
+    dom.playerContainer.classList.remove('video-mode');
+    // =========================================================================
 }
 
 /**
@@ -128,6 +133,12 @@ export async function playTemporaryTrack(track) {
     dom.mediaPlayer.style.display = 'none';
     dom.albumArtEl.onload = () => extractAndApplyGradient(dom.albumArtEl);
     if (dom.albumArtEl.complete) extractAndApplyGradient(dom.albumArtEl);
+
+    // =========================================================================
+    // 【新增】播放临时在线音频时，移除 video-mode 类，隐藏全屏按钮
+    // =========================================================================
+    dom.playerContainer.classList.remove('video-mode');
+    // =========================================================================
 
     // 【修改】直接设置 src 并加载，不再克隆或附加事件监听器
     setPendingSeek(0); // 临时播放在线曲目从头开始
@@ -195,12 +206,22 @@ export async function loadTrack(trackIndex, options = {}) {
         if (dom.albumArtEl.complete && dom.albumArtEl.naturalWidth > 0) {
             extractAndApplyGradient(dom.albumArtEl);
         } else { dom.mainView.style.background = ''; }
+        // =========================================================================
+        // 【新增】播放音频时，移除 video-mode 类，隐藏全屏按钮
+        // =========================================================================
+        dom.playerContainer.classList.remove('video-mode');
+        // =========================================================================
     } else {
         dom.albumArtContainer.style.display = 'none';
         dom.mediaPlayer.style.display = 'block';
         dom.mainView.style.background = '';
         dom.mediaPlayer.addEventListener('canplay', () => extractAndApplyGradient(dom.mediaPlayer), { once: true });
         clearVisualizer();
+        // =========================================================================
+        // 【新增】播放视频时，添加 video-mode 类，显示全屏按钮
+        // =========================================================================
+        dom.playerContainer.classList.add('video-mode');
+        // =========================================================================
     }
 
     // 【修改】直接设置 src 并加载，事件监听由 main.js 处理

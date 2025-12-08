@@ -193,6 +193,38 @@ function setupEventListeners() {
         });
     }
 
+    // =========================================================================
+    // 【新增】视频内容全屏功能的核心事件监听
+    // =========================================================================
+    // 1. 监听全屏按钮的点击事件
+    if (dom.fullscreenBtn) {
+        dom.fullscreenBtn.addEventListener('click', () => {
+            // 检查当前是否有元素处于全屏状态
+            if (!dom.getFullscreenElement()) {
+                // 如果没有，则请求视频元素进入全屏
+                if (dom.mediaPlayer && typeof dom.mediaPlayer.requestFullscreen === 'function') {
+                    dom.mediaPlayer.requestFullscreen().catch(err => {
+                        console.error(`进入全屏失败: ${err.message} (${err.name})`);
+                    });
+                }
+            } else {
+                // 如果已处于全屏，则退出全屏
+                if (typeof dom.exitFullscreen === 'function') {
+                    dom.exitFullscreen();
+                }
+            }
+        });
+    }
+
+    // 2. 监听全屏状态变化事件（例如用户按 ESC 退出），以同步按钮状态
+    document.addEventListener('fullscreenchange', () => {
+        const isFullscreen = !!dom.getFullscreenElement();
+        if (dom.fullscreenBtn) {
+            dom.fullscreenBtn.classList.toggle('fullscreen-active', isFullscreen);
+        }
+    });
+    // =========================================================================
+
     dom.mediaPlayer.addEventListener('loadedmetadata', () => {
         updateProgress();
         const seekTime = consumePendingSeek();

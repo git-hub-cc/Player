@@ -47,7 +47,8 @@ export function toggleEmptyState(isEmpty) {
 
         // 清空播放信息
         dom.trackTitleEl.textContent = '等待播放';
-        dom.trackArtistEl.textContent = '请添加歌曲';
+        // 【修改】将提示文案改为通用描述
+        dom.trackArtistEl.textContent = '请添加媒体资源';
         dom.currentTimeEl.textContent = '0:00';
         dom.durationEl.textContent = '0:00';
         dom.progressBar.value = 0;
