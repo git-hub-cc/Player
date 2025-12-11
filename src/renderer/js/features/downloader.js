@@ -12,10 +12,14 @@ let totalPages = 1;
 const ITEMS_PER_PAGE = 10;
 
 /**
+ * =========================================================================
+ * 【核心修改】增强此函数以缓存 pic_id 和 source
+ *
  * 将后端返回的统一数据转换为前端播放器使用的曲目对象。
  * 兼容新旧两种 API 的数据结构。
  * @param {object} apiTrack - 后端返回的标准化曲目数据。
  * @returns {object} - 转换后的曲目对象。
+ * =========================================================================
  */
 function transformApiData(apiTrack) {
     const title = apiTrack.title || '未知标题';
@@ -28,6 +32,11 @@ function transformApiData(apiTrack) {
         id: apiTrack.id,
         source: apiTrack.source || 'joox',
         lyricId: apiTrack.lyricId,
+        // =========================================================================
+        // 【新增】缓存 pic_id 以便在播放或下载时按需获取封面
+        // =========================================================================
+        pic_id: apiTrack.pic_id,
+        // =========================================================================
         originalSrc: apiTrack.url,
         originalAlbumArt: apiTrack.pic,
         originalLyrics: apiTrack.lrc,
@@ -118,14 +127,19 @@ export async function requestTrackDeletion(track) {
 }
 
 /**
+ * =========================================================================
+ * 【核心修改】增强此函数以处理包含封面 URL 的新响应格式
+ *
  * 请求主进程解析一个曲目的可播放 URL。
  * @param {object} track - 曲目信息对象。
- * @returns {Promise<string>} - 可播放的 URL。
+ * @returns {Promise<object>} - 包含可播放 URL 和封面 URL 的对象。
  * @throws {Error} 如果无法获取 URL。
+ * =========================================================================
  */
 export async function resolvePlayableUrl(track) {
+    // 如果是本地媒体，直接返回
     if (track.src && track.src.startsWith('media://')) {
-        return track.src;
+        return { playableSrc: track.src, albumArtUrl: track.albumArt };
     }
 
     console.log(`[Resolver] 请求主进程解析URL: ${track.title} (ID: ${track.id})`);
@@ -134,13 +148,18 @@ export async function resolvePlayableUrl(track) {
 
     if (result.success && result.url) {
         console.log(`[Resolver] 成功获取可播放URL: ${result.url.substring(0, 50)}...`);
+        // 更新传入的 track 对象的属性，以便后续操作（如下载）可以利用这些已获取的数据
         track.src = result.url;
-        return result.url;
+        if (result.albumArtUrl) {
+            track.albumArt = result.albumArtUrl;
+        }
+        return { playableSrc: result.url, albumArtUrl: result.albumArtUrl || track.albumArt };
     } else {
         console.error(`[Resolver] 主进程解析URL失败:`, result.error);
         throw new Error(result.error || '未能获取播放链接');
     }
 }
+
 
 /**
  * 请求主进程缓存（下载）一个在线曲目。

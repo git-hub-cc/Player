@@ -87,8 +87,12 @@ export function resetPlayerUI() {
 }
 
 /**
+ * =========================================================================
+ * 【核心修改】调整此函数以处理按需获取的封面 URL
+ *
  * 播放一个临时的、不属于下载列表的在线曲目。
  * @param {object} track - 要播放的曲目对象。
+ * =========================================================================
  */
 export async function playTemporaryTrack(track) {
     if (!track) return;
@@ -102,13 +106,18 @@ export async function playTemporaryTrack(track) {
 
     dom.trackTitleEl.textContent = track.title || "未知标题";
     dom.trackArtistEl.textContent = track.artist || "未知艺术家";
-    const artUrl = track.albumArt || DEFAULT_ART;
-    dom.albumArtEl.src = artUrl;
-    dom.controlAlbumArtEl.src = artUrl;
 
-    let playableSrc;
+    // 【修改】初始时，封面可能为空，使用默认图占位
+    dom.albumArtEl.src = DEFAULT_ART;
+    dom.controlAlbumArtEl.src = DEFAULT_ART;
+    dom.mainView.style.background = ''; // 重置背景
+
+    let playableSrc, albumArtUrl;
     try {
-        playableSrc = await resolvePlayableUrl(track);
+        // 【修改】resolvePlayableUrl 现在返回一个包含播放链接和封面链接的对象
+        const resolvedData = await resolvePlayableUrl(track);
+        playableSrc = resolvedData.playableSrc;
+        albumArtUrl = resolvedData.albumArtUrl;
     } catch (error) {
         console.error(`无法获取临时曲目 '${track.title}' 的播放链接:`, error);
         showToast(`无法播放在线曲目: "${track.title}"`, 'error');
@@ -116,6 +125,15 @@ export async function playTemporaryTrack(track) {
         state.clearPlayingTrackInfo();
         updatePlaylistUI();
         return;
+    }
+
+    // 【修改】获取到真实的封面 URL 后再更新 UI
+    if (albumArtUrl) {
+        dom.albumArtEl.src = albumArtUrl;
+        dom.controlAlbumArtEl.src = albumArtUrl;
+        // 确保 onload 事件能触发背景渐变提取
+        dom.albumArtEl.onload = () => extractAndApplyGradient(dom.albumArtEl);
+        if (dom.albumArtEl.complete) extractAndApplyGradient(dom.albumArtEl);
     }
 
     state.setParsedLyrics([]);
@@ -131,14 +149,8 @@ export async function playTemporaryTrack(track) {
 
     dom.albumArtContainer.style.display = 'flex';
     dom.mediaPlayer.style.display = 'none';
-    dom.albumArtEl.onload = () => extractAndApplyGradient(dom.albumArtEl);
-    if (dom.albumArtEl.complete) extractAndApplyGradient(dom.albumArtEl);
 
-    // =========================================================================
-    // 【新增】播放临时在线音频时，移除 video-mode 类，隐藏全屏按钮
-    // =========================================================================
     dom.playerContainer.classList.remove('video-mode');
-    // =========================================================================
 
     // 【修改】直接设置 src 并加载，不再克隆或附加事件监听器
     setPendingSeek(0); // 临时播放在线曲目从头开始
@@ -146,6 +158,7 @@ export async function playTemporaryTrack(track) {
     dom.mediaPlayer.src = playableSrc;
     dom.mediaPlayer.load();
 }
+
 
 /**
  * 加载并准备播放指定的轨道。
@@ -206,22 +219,14 @@ export async function loadTrack(trackIndex, options = {}) {
         if (dom.albumArtEl.complete && dom.albumArtEl.naturalWidth > 0) {
             extractAndApplyGradient(dom.albumArtEl);
         } else { dom.mainView.style.background = ''; }
-        // =========================================================================
-        // 【新增】播放音频时，移除 video-mode 类，隐藏全屏按钮
-        // =========================================================================
         dom.playerContainer.classList.remove('video-mode');
-        // =========================================================================
     } else {
         dom.albumArtContainer.style.display = 'none';
         dom.mediaPlayer.style.display = 'block';
         dom.mainView.style.background = '';
         dom.mediaPlayer.addEventListener('canplay', () => extractAndApplyGradient(dom.mediaPlayer), { once: true });
         clearVisualizer();
-        // =========================================================================
-        // 【新增】播放视频时，添加 video-mode 类，显示全屏按钮
-        // =========================================================================
         dom.playerContainer.classList.add('video-mode');
-        // =========================================================================
     }
 
     // 【修改】直接设置 src 并加载，事件监听由 main.js 处理

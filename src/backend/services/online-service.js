@@ -3,9 +3,11 @@
 import fs from 'fs';
 import path from 'path';
 import { pinyin } from 'pinyin-pro';
+// =========================================================================
+// 【核心修改】从 gdstudio 导入 resolvePicUrl 函数，用于按需获取封面
+// =========================================================================
 import * as gdstudio from '../providers/gdstudio.js';
 import { updateLocalPlaylist } from './library-service.js';
-// 【核心修改】从 download-service 导入通用的下载工具函数，而不是错误的 gdstudio
 import { downloadFile } from './download-service.js';
 
 // --- 模块作用域变量 ---
@@ -38,6 +40,7 @@ function sanitizeFilename(filename) {
  */
 export async function handleSearchRequest({ query, page = 1 }) {
     try {
+        // 【鲁棒性】现在 search 函数仅返回基础信息，不再包含耗时的封面请求
         const { list, total } = await gdstudio.search(query, page);
         return { success: true, data: { results: list, total } };
     } catch (error) {
@@ -47,9 +50,12 @@ export async function handleSearchRequest({ query, page = 1 }) {
 }
 
 /**
- * 获取在线音乐的可播放 URL。
- * @param {object} trackInfo - 曲目信息对象。
- * @returns {Promise<object>} - 包含 success 和 url/error 的结果对象。
+ * =========================================================================
+ * 【核心修改】增强此函数，使其在获取播放链接的同时，也按需获取封面 URL
+ * =========================================================================
+ * 获取在线音乐的可播放 URL 和封面 URL。
+ * @param {object} trackInfo - 曲目信息对象，应包含 id, source, pic_id。
+ * @returns {Promise<object>} - 包含 success 和 url, albumArtUrl, error 的结果对象。
  */
 export async function handleGetMusicUrl(trackInfo) {
     if (!trackInfo || !trackInfo.id || !trackInfo.source) {
@@ -57,8 +63,13 @@ export async function handleGetMusicUrl(trackInfo) {
     }
 
     try {
-        const url = await gdstudio.getMusicUrl(trackInfo);
-        return { success: true, url };
+        // 并行获取音乐 URL 和封面 URL，提高效率
+        const [musicUrl, albumArtUrl] = await Promise.all([
+            gdstudio.getMusicUrl(trackInfo),
+            gdstudio.resolvePicUrl(trackInfo.pic_id, trackInfo.source) // 按需获取封面
+        ]);
+
+        return { success: true, url: musicUrl, albumArtUrl };
     } catch (e) {
         console.error(`[Online] 获取音乐 URL 失败: ${e.message}`);
         return { success: false, error: e.message };
@@ -77,51 +88,49 @@ export async function handleCacheRequest(trackData) {
     const safeFilename = sanitizeFilename(`${artist} - ${title}`);
     const downloadPromises = [];
 
-    // 获取音频 URL
-    let audioUrl = trackData.originalSrc;
-    if (!audioUrl && trackData.id) {
-        try {
-            audioUrl = await gdstudio.getMusicUrl(trackData);
-        } catch (e) {
-            sendMessageCallback('download-status', { message: `获取音频链接失败: ${e.message}`, type: 'error' });
-            return;
-        }
-    }
-    if (audioUrl) {
-        // 【核心修改】使用从 download-service 导入的 downloadFile 函数
-        downloadPromises.push(downloadFile(audioUrl, CONFIG.MUSIC_DIR, `${safeFilename}.mp3`));
-    }
-
-    // 获取封面 URL
-    const artUrl = trackData.albumArt || trackData.originalAlbumArt;
-    if (artUrl) {
-        // 【核心修改】使用 downloadFile
-        downloadPromises.push(downloadFile(artUrl, CONFIG.ALBUMART_DIR, `${safeFilename}.jpg`));
-    }
-
-    // 获取歌词
-    const lyricsPath = path.join(CONFIG.MUSIC_DIR, `${safeFilename}.lrc`);
-    let lyricContent = '';
-    if (trackData.lyricId) {
-        try {
-            lyricContent = await gdstudio.getLyric(trackData.lyricId, trackData.source);
-        } catch (e) {
-            console.warn(`[Online Cache] 获取歌词失败 (ID: ${trackData.lyricId}): ${e.message}`);
-        }
-    } else if (trackData.originalLyrics) {
-        if (trackData.originalLyrics.startsWith('data:text/plain,')) {
-            lyricContent = decodeURIComponent(trackData.originalLyrics.substring('data:text/plain,'.length));
-        } else if (trackData.originalLyrics.startsWith('http')) {
-            // 【核心修改】使用 downloadFile 下载歌词文件
-            downloadPromises.push(downloadFile(trackData.originalLyrics, CONFIG.MUSIC_DIR, `${safeFilename}.lrc`));
-        }
-    }
-    if (lyricContent) {
-        fs.writeFileSync(lyricsPath, lyricContent, 'utf-8');
-    }
-
-    // 等待所有下载完成
     try {
+        // --- 音频下载 ---
+        let audioUrl = trackData.originalSrc;
+        if (!audioUrl && trackData.id) {
+            audioUrl = await gdstudio.getMusicUrl(trackData);
+        }
+        if (audioUrl) {
+            downloadPromises.push(downloadFile(audioUrl, CONFIG.MUSIC_DIR, `${safeFilename}.mp3`));
+        } else {
+            throw new Error('无法获取音频下载链接。');
+        }
+
+        // =========================================================================
+        // 【核心修改】按需获取封面 URL 进行下载
+        // 1. 优先使用 trackData 中已有的 albumArt (可能在播放时已获取)。
+        // 2. 如果没有，则使用 pic_id 实时获取。
+        // =========================================================================
+        let artUrl = trackData.albumArt || trackData.originalAlbumArt;
+        if (!artUrl && trackData.pic_id) {
+            artUrl = await gdstudio.resolvePicUrl(trackData.pic_id, trackData.source);
+        }
+        if (artUrl) {
+            downloadPromises.push(downloadFile(artUrl, CONFIG.ALBUMART_DIR, `${safeFilename}.jpg`));
+        }
+
+        // --- 歌词处理 ---
+        const lyricsPath = path.join(CONFIG.MUSIC_DIR, `${safeFilename}.lrc`);
+        let lyricContent = '';
+        if (trackData.lyricId) {
+            lyricContent = await gdstudio.getLyric(trackData.lyricId, trackData.source);
+        } else if (trackData.originalLyrics) {
+            if (trackData.originalLyrics.startsWith('data:text/plain,')) {
+                lyricContent = decodeURIComponent(trackData.originalLyrics.substring('data:text/plain,'.length));
+            } else if (trackData.originalLyrics.startsWith('http')) {
+                downloadPromises.push(downloadFile(trackData.originalLyrics, CONFIG.MUSIC_DIR, `${safeFilename}.lrc`));
+            }
+        }
+        if (lyricContent) {
+            // 使用 a+ 标志，如果文件已由 downloadFile 创建，则不会覆盖
+            fs.writeFileSync(lyricsPath, lyricContent, { encoding: 'utf-8', flag: 'a+' });
+        }
+
+        // 等待所有下载完成
         await Promise.all(downloadPromises);
 
         const newTrack = {
@@ -139,10 +148,12 @@ export async function handleCacheRequest(trackData) {
         await updateLocalPlaylist([newTrack]);
         sendMessageCallback('new-track-added', newTrack);
         sendMessageCallback('download-status', { message: `下载完成: ${title}`, type: 'success' });
+
     } catch (error) {
-        sendMessageCallback('download-status', { message: `下载失败: ${error.message}`, type: 'error' });
+        sendMessageCallback('download-status', { message: `下载 "${title}" 失败: ${error.message}`, type: 'error' });
     }
 }
+
 
 /**
  * 从本地文件系统读取 LRC 歌词文件的内容。
