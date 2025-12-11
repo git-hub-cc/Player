@@ -5,7 +5,7 @@ import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import fs from 'fs';
 
-// --- 导入新的服务模块 ---
+// --- 导入服务模块 ---
 import * as setupService from './services/setup-service.js';
 import * as libraryService from './services/library-service.js';
 import * as onlineService from './services/online-service.js';
@@ -15,15 +15,7 @@ import * as downloadService from './services/download-service.js';
 let mainWindow;
 let CONFIG = {};
 
-// =========================================================================
-// 【核心修复】将自定义的 'media' 协议注册为特权协议
-//
-// 1.  此操作必须在 'app.ready' 事件触发前完成。
-// 2.  这是为了让 'webSecurity: true' 能够正常工作。
-// 3.  'secure: true' 表示该协议被视为安全的。
-// 4.  'supportFetch: true' 允许在渲染进程中使用 fetch API 请求此协议的资源。
-// 5.  'corsEnabled: true' 允许此协议下的资源被跨域请求。
-// =========================================================================
+// 将自定义的 'media' 协议注册为特权协议
 protocol.registerSchemesAsPrivileged([
     { scheme: 'media', privileges: { standard: true, secure: true, supportFetch: true, corsEnabled: true } }
 ]);
@@ -59,24 +51,12 @@ const createWindow = () => {
             preload: path.join(__dirname, 'preload.js'),
             sandbox: true,
             contextIsolation: true,
-            // =========================================================================
-            // 【核心修复】恢复 webSecurity 的默认安全设置
-            //
-            // 将此值设为 true (或直接移除此行) 是 Electron 安全的最佳实践。
-            // 它会启用同源策略，防止潜在的跨站脚本攻击。
-            // 之前的 `registerSchemesAsPrivileged` 调用确保了我们的自定义协议
-            // 在此安全设置下依然能够正常工作。
-            // =========================================================================
-            webSecurity: true,
+            webSecurity: true, // 保持默认的安全设置
         }
     });
 
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
         mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-        // 【核心修改】在开发模式下自动打开开发者工具
-        // 这行代码利用了 Vite 插件提供的全局变量 `MAIN_WINDOW_VITE_DEV_SERVER_URL`
-        // 来判断当前是否处于开发环境。
-        // { mode: 'detach' } 会将开发者工具作为一个独立的窗口打开，避免挤占应用界面。
         mainWindow.webContents.openDevTools({ mode: 'detach' });
     } else {
         mainWindow.loadFile(path.join(__dirname, '../renderer/main_window/index.html'));
@@ -115,6 +95,7 @@ function registerIpcHandlers() {
  * 应用主入口点。
  */
 app.whenReady().then(async () => {
+    // 生产环境下设置日志记录
     if (app.isPackaged) {
         try {
             const userDataPath = app.getPath('userData');
@@ -137,34 +118,22 @@ app.whenReady().then(async () => {
         }
     }
 
-    // =========================================================================
-    // 【核心修复】设置内容安全策略 (CSP)
-    //
-    // 这是一个额外的安全层，用于精确控制可以加载哪些资源。
-    // 它通过白名单机制，阻止了未授权的外部脚本、图片等的加载，有效防御 XSS 攻击。
-    // =========================================================================
+    // 设置内容安全策略 (CSP)
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
         callback({
             responseHeaders: {
                 ...details.responseHeaders,
                 'Content-Security-Policy': [
-                    // 默认只允许加载同源 ('self') 的资源
                     "default-src 'self'",
-                    // 脚本来源: 同源。在开发中可能需要 'unsafe-eval' 用于 Vite HMR
                     `script-src 'self' ${MAIN_WINDOW_VITE_DEV_SERVER_URL ? "'unsafe-eval'" : ""}`,
-                    // 样式来源: 同源和内联样式 ('unsafe-inline')
                     "style-src 'self' 'unsafe-inline'",
-                    // 图片来源: 同源, 自定义 media:// 协议, data: URI, 以及所有 http/https 来源
                     "img-src 'self' media: data: http: https:",
-                    // 媒体 (音视频) 来源: 同源, media://, 以及所有 http/https 来源
                     "media-src 'self' media: http: https:",
-                    // API 连接来源: 同源, 以及 gdstudio 的 API
                     "connect-src 'self' https://music-api.gdstudio.xyz"
                 ].join('; ')
             }
         });
     });
-
 
     console.log(`[Main API] 应用启动，app.isPackaged = ${app.isPackaged}`);
 
@@ -172,21 +141,33 @@ app.whenReady().then(async () => {
     Menu.setApplicationMenu(null);
 
     try {
-        const { config, ffmpegPath, ytDlpPath, systemProxy } = await setupService.initializeApp(app);
+        // =========================================================================
+        // 【核心修改】处理 setupService 的新返回结构
+        //
+        // 1. 调用 initializeApp 并获取包含 shouldContinue 标志的结果。
+        // 2. 如果 shouldContinue 为 false，说明用户选择了退出或发生了无法恢复的错误，
+        //    此时应直接退出应用，不执行后续的初始化。
+        // =========================================================================
+        const setupResult = await setupService.initializeApp(app);
+
+        if (!setupResult.shouldContinue) {
+            console.log('[Main API] 初始化流程被用户或系统中止，应用即将退出。');
+            app.quit();
+            return;
+        }
+
+        const { config, ffmpegPath, ytDlpPath, systemProxy } = setupResult;
         CONFIG = config;
 
-        console.log(`[Main API] 从 setup-service 接收到的路径:`);
+        console.log(`[Main API] 成功接收到初始化参数:`);
         console.log(`  - FFmpeg: ${ffmpegPath}`);
         console.log(`  - yt-dlp: ${ytDlpPath}`);
         console.log(`  - Proxy: ${systemProxy}`);
 
         const serviceInitParams = { config, ffmpegPath, ytDlpPath, systemProxy, sendMessageFunc: sendMessage };
-        console.log('[Main API] 准备使用以下参数初始化所有服务:', JSON.stringify(serviceInitParams, null, 2));
 
-        // 【核心修改】将 ffmpegPath 传递给 libraryService.init
-        // 这对于本地导入视频时自动截图是必需的。
+        // 使用获取到的参数初始化所有服务
         libraryService.init(CONFIG, ffmpegPath);
-
         onlineService.init(CONFIG, sendMessage);
         downloadService.init(serviceInitParams);
 
@@ -200,6 +181,7 @@ app.whenReady().then(async () => {
         return;
     }
 
+    // 注册 'media://' 协议
     protocol.registerFileProtocol('media', (request, callback) => {
         const url = request.url.substring('media://'.length);
         const decodedUrl = decodeURIComponent(url);
@@ -207,9 +189,11 @@ app.whenReady().then(async () => {
         callback({ path: path.normalize(filePath) });
     });
 
+    // 注册 IPC 事件和创建窗口
     registerIpcHandlers();
     createWindow();
 
+    // 注册全局快捷键
     globalShortcut.register('CommandOrControl+Shift+I', () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
             const webContents = mainWindow.webContents;
@@ -226,8 +210,8 @@ app.whenReady().then(async () => {
         shell.openPath(userDataPath);
         dialog.showMessageBox(mainWindow, {
             type: 'info',
-            title: '日志目录',
-            message: `日志文件和下载的工具位于以下目录中的 'logs' 和 'bin' 文件夹内：\n\n${userDataPath}`
+            title: '日志与工具目录',
+            message: `日志文件、配置文件和下载的工具位于以下目录中：\n\n${userDataPath}`
         });
     });
 

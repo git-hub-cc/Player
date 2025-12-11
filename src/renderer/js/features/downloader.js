@@ -1,4 +1,4 @@
-// js/features/downloader.js
+// src/renderer/js/features/downloader.js
 
 import * as dom from '../dom.js';
 import { showToast, clearSearchResults, renderSearchResults, updateSearchResultItemStatus, renderPaginationControls, showConfirmationModal } from '../ui.js';
@@ -58,31 +58,38 @@ function transformApiData(apiTrack) {
 
 /**
  * 更新下载面板的输入模式。
- * 增强了此函数，使其能够识别 B站、Jable 和 YouTube 链接。
+ * 增强了此函数，使其能够明确识别所有支持的链接类型。
  * @param {string} message - 要显示的消息。
  */
 function updateInputMode() {
     const inputText = dom.urlOrSearchInput.value.trim();
-    const isUrlMode = inputText.toLowerCase().includes('http');
+    const isUrlMode = inputText.toLowerCase().startsWith('http');
 
+    // [修改] 为所有支持的链接类型创建明确的布尔标志
     const isBilibiliUrl = isUrlMode && inputText.includes('bilibili.com/video/');
     const isJableUrl = isUrlMode && inputText.includes('jable.tv/videos/');
     const isYoutubeUrl = isUrlMode && (inputText.includes('youtube.com/') || inputText.includes('youtu.be/'));
-    const isDouyinUserUrl = isUrlMode && (inputText.includes('/user/') || inputText.includes('MS4wLjAB'));
+    const isDouyinUrl = isUrlMode && (inputText.includes('douyin.com') || inputText.includes('iesdouyin.com'));
 
-    dom.startDownloadBtn.style.display = (isUrlMode && !isDouyinUserUrl) ? 'flex' : 'none';
+    // [修改] 根据是否是URL，统一控制下载/搜索按钮的显隐
+    dom.startDownloadBtn.style.display = isUrlMode ? 'flex' : 'none';
     dom.searchNeteaseBtn.style.display = isUrlMode ? 'none' : 'flex';
     document.getElementById('import-local-btn').style.display = 'flex';
 
+    // [修改] 使用更严谨的 if-else 链来设置提示文本
     if (isBilibiliUrl) {
         dom.panelDescription.textContent = '检测到B站链接，点击“开始下载”进行处理。';
     } else if (isJableUrl) {
         dom.panelDescription.textContent = '检测到Jable链接，点击“开始下载”进行处理。';
     } else if (isYoutubeUrl) {
         dom.panelDescription.textContent = '检测到YouTube链接，点击“开始下载”进行处理。';
+    } else if (isDouyinUrl) {
+        dom.panelDescription.textContent = '检测到抖音链接，点击“开始下载”进行处理。';
     } else if (isUrlMode) {
-        dom.panelDescription.textContent = '检测到抖音链接，已切换至下载模式。';
+        // [修改] 为无法识别的URL提供通用提示
+        dom.panelDescription.textContent = '检测到未知链接，将尝试作为抖音视频处理...';
     } else {
+        // 默认的搜索模式提示
         dom.panelDescription.textContent = '输入歌曲名进行在线搜索，或粘贴视频分享链接进行本地下载。';
     }
 }
@@ -283,7 +290,6 @@ async function handleLocalImportClick(event) {
 
     allButtons.forEach(btn => btn.disabled = true);
     importBtn.classList.add('loading');
-    // 【修改】提示信息更新为“等待选择资源目录...”
     updateStatus('等待选择资源目录...');
 
     try {
@@ -291,14 +297,12 @@ async function handleLocalImportClick(event) {
 
         if (!result.canceled && result.filePaths.length > 0) {
             const dirPath = result.filePaths[0];
-            // 【修改】提示信息更新
             updateStatus(`已选择目录，开始导入媒体文件...`);
 
             const importResult = await window.electronAPI.startLocalImport(dirPath);
 
             if (importResult.success) {
                 try {
-                    // 【修改】对话框提示信息更新
                     await showConfirmationModal(`成功导入 ${importResult.importedCount} 个媒体文件！\n是否立即刷新播放器以加载新内容？`);
                     window.location.reload();
                 } catch (e) {

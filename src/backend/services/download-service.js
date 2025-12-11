@@ -2,14 +2,13 @@
 
 import path from 'path';
 import fs from 'fs';
-import { BrowserWindow } from 'electron';
 import axios from 'axios';
 import { pinyin } from 'pinyin-pro';
-// 【核心修改】移除未使用的 createHash 导入，清理日志噪音
-// import { createHash } from 'crypto';
 import { exec } from 'child_process';
 import * as jableProvider from '../providers/jable.js';
 import * as youtubeProvider from '../providers/youtube.js';
+// 【核心修改】导入新的抖音服务提供者
+import * as douyinProvider from '../providers/douyin.js';
 import { updateLocalPlaylist } from './library-service.js';
 
 // --- 模块作用域变量 ---
@@ -24,11 +23,6 @@ const DOWNLOAD_RETRY_COUNT = 3;
 /**
  * 初始化下载服务。
  * @param {object} initParams - 初始化参数对象。
- * @param {object} initParams.config - 应用配置对象。
- * @param {string} initParams.ffmpegPath - FFmpeg 可执行文件路径。
- * @param {string} initParams.ytDlpPath - yt-dlp 可执行文件路径。
- * @param {string|null} initParams.systemProxy - 系统代理 URL。
- * @param {function} initParams.sendMessageFunc - 发送消息到渲染进程的函数。
  */
 export function init(initParams) {
     CONFIG = initParams.config;
@@ -37,16 +31,16 @@ export function init(initParams) {
     SYSTEM_PROXY = initParams.systemProxy;
     sendMessageCallback = initParams.sendMessageFunc;
 
-    // 【日志】确认 Download Service 已成功初始化并接收到所有参数
-    console.log('[Download Service] 服务已初始化。接收到的参数:');
-    console.log(`  - FFmpeg 路径: ${FFMPEG_PATH}`);
-    console.log(`  - yt-dlp 路径: ${YT_DLP_PATH}`);
-    console.log(`  - 系统代理: ${SYSTEM_PROXY}`);
-    console.log(`  - 配置对象:`, CONFIG);
+    // 【核心修改】初始化所有下载提供者
+    douyinProvider.init({ config: CONFIG, sendMessageFunc: sendMessageCallback });
+
+    console.log('[Download Service] 服务已初始化。');
 }
 
 /**
- *  sanitzeFilename 的一个副本，用于下载
+ * 清理文件名，移除不安全字符。
+ * @param {string} filename - 原始文件名。
+ * @returns {string} - 清理后的文件名。
  */
 function sanitizeFilename(filename) {
     if (!filename) return 'untitled';
@@ -55,18 +49,16 @@ function sanitizeFilename(filename) {
 }
 
 /**
- * 【核心修改】导出通用的文件下载函数，供 online-service.js 等其他模块使用
+ * 【核心修改】导出此通用文件下载函数，供其他模块（如 provider）使用。
  * 支持重试和空文件校验。
  * @param {string} url - 文件 URL。
  * @param {string} folder - 目标文件夹。
  * @param {string} fileName - 文件名。
  * @param {object} headers - 请求头。
  * @param {number} retries - 重试次数。
- * @returns {Promise<void>}
  */
 export async function downloadFile(url, folder, fileName, headers = {}, retries = DOWNLOAD_RETRY_COUNT) {
     const filePath = path.join(folder, fileName);
-    // 如果文件已存在且不为空，则跳过下载
     if (fs.existsSync(filePath)) {
         try {
             const stats = await fs.promises.stat(filePath);
@@ -92,27 +84,25 @@ export async function downloadFile(url, folder, fileName, headers = {}, retries 
                 writer.on('error', reject);
             });
 
-            // 下载完成后检查文件大小
             const stats = await fs.promises.stat(filePath);
             if (stats.size > 0) return;
 
             throw new Error('下载的文件为空。');
         } catch (error) {
             console.warn(`[Download] 下载 ${fileName} 第 ${i + 1} 次尝试失败: ${error.message}`);
-            // 删除可能已创建的空文件
             if (fs.existsSync(filePath)) {
                 await fs.promises.unlink(filePath).catch(e => console.error(e));
             }
-            if (i === retries - 1) throw error; // 最后一次重试失败则抛出错误
-            await new Promise(res => setTimeout(res, 1000 * (i + 1))); // 增加等待时间
+            if (i === retries - 1) throw error;
+            await new Promise(res => setTimeout(res, 1000 * (i + 1)));
         }
     }
 }
 
-
 /**
  * 处理来自渲染进程的所有下载请求。
- * @param {string|object} requestData - 下载请求数据，通常是 URL 字符串。
+ * 这是一个路由函数，根据 URL 类型分发给不同的提供者。
+ * @param {string|object} requestData - 下载请求数据。
  */
 export async function handleDownloadRequest(requestData) {
     let url = typeof requestData === 'object' ? requestData.url : requestData;
@@ -121,132 +111,43 @@ export async function handleDownloadRequest(requestData) {
         return;
     }
 
-    const match = url.match(/(https?:\/\/[^\s]+)|(MS4wLjABAAAA[^\s]+)/);
+    const match = url.match(/https?:\/\/[^\s]+/);
     if (!match) {
-        sendMessageCallback('download-status', { message: '未找到有效的URL或用户ID。', type: 'error' });
+        sendMessageCallback('download-status', { message: '输入内容不是一个有效的URL链接。', type: 'error' });
         return;
     }
 
     const matchedContent = match[0];
 
-    if (matchedContent.includes('bilibili.com/video/')) {
+    // [修改] 为所有支持的链接创建明确的布尔标志
+    const isBiliUrl = matchedContent.includes('bilibili.com/video/');
+    const isJableUrl = matchedContent.includes('jable.tv/videos/');
+    const isYoutubeUrl = matchedContent.includes('youtube.com/') || matchedContent.includes('youtu.be/');
+    const isDouyinUrl = matchedContent.includes('douyin.com') || matchedContent.includes('iesdouyin.com');
+
+
+    // [修改] 使用更严谨的 if-else 链进行任务分发
+    if (isBiliUrl) {
         await downloadBilibiliVideo(matchedContent);
-    } else if (matchedContent.includes('jable.tv/videos/')) {
+    } else if (isJableUrl) {
         await downloadJableVideo(matchedContent);
-    } else if (matchedContent.includes('youtube.com/') || matchedContent.includes('youtu.be/')) {
+    } else if (isYoutubeUrl) {
         await downloadYoutubeVideo(matchedContent);
+    } else if (isDouyinUrl) {
+        // 明确处理抖音链接
+        sendMessageCallback('download-status', { message: `抖音目标已提取: ${matchedContent}` });
+        await douyinProvider.handleDouyinDownload(matchedContent);
     } else {
-        let startUrl = matchedContent.startsWith('MS4wLjAB')
-            ? `https://www.douyin.com/user/${matchedContent}`
-            : matchedContent;
-
-        sendMessageCallback('download-status', { message: `抖音目标已提取: ${startUrl}` });
-        await downloadDouyinVideo(startUrl);
+        // [修改] 将其他所有URL都尝试用抖音解析器处理，并给出明确提示
+        sendMessageCallback('download-status', { message: `未知链接，尝试作为抖音视频处理: ${matchedContent}` });
+        await douyinProvider.handleDouyinDownload(matchedContent);
     }
 }
 
-
-async function processAndDownloadItem(awemeDetail) {
-    const awemeId = awemeDetail?.aweme_id;
-    if (!awemeId) return;
-
-    try {
-        const videoUri = awemeDetail?.video?.play_addr?.uri;
-        const coverUrl = awemeDetail?.video?.cover?.url_list?.[0];
-
-        if (videoUri) {
-            await downloadFile(`https://www.douyin.com/aweme/v1/play/?video_id=${videoUri}`, CONFIG.VIDEOS_DIR, `${awemeId}.mp4`);
-        }
-        if (coverUrl) {
-            await downloadFile(coverUrl, CONFIG.ALBUMART_DIR, `${awemeId}.jpg`);
-        }
-
-        const title = awemeDetail.desc || "无标题视频";
-        const newTrack = {
-            title, artist: awemeDetail.author?.nickname || "未知作者",
-            src: `videos/${awemeId}.mp4`, albumArt: `albumArt/${awemeId}.jpg`,
-            type: "video", lyrics: "",
-            pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
-            initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '')
-        };
-        await updateLocalPlaylist([newTrack]);
-        sendMessageCallback('new-track-added', newTrack);
-
-    } catch (e) {
-        sendMessageCallback('download-status', { message: `下载抖音作品 ${awemeId} 失败: ${e.message}`, type: 'error' });
-    }
-}
-
-
-async function downloadDouyinVideo(videoUrl) {
-    sendMessageCallback('download-status', { message: '正在启动无头浏览器...' });
-    const win = new BrowserWindow({
-        show: false,
-        webPreferences: {
-            partition: `persist:douyin_session_${Date.now()}`,
-            preload: path.join(__dirname, '..', 'backend', 'douyin-preload.js'),
-            contextIsolation: true, sandbox: true
-        }
-    });
-    win.webContents.setAudioMuted(true);
-
-    try {
-        const apiResponsePromise = new Promise(async (resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error('API 响应超时')), 60000);
-            let debuggerAttached = false;
-
-            win.webContents.on('did-finish-load', async () => {
-                if (debuggerAttached || win.isDestroyed()) return;
-                debuggerAttached = true;
-                try {
-                    const debuggerApi = win.webContents.debugger;
-                    await debuggerApi.attach('1.3');
-                    await debuggerApi.sendCommand('Network.enable');
-
-                    sendMessageCallback('download-status', { message: '页面已加载，正在监听网络数据...' });
-
-                    debuggerApi.on('message', async (event, method, params) => {
-                        if (method === 'Network.responseReceived' && params.response.url.includes('aweme/v1/web/aweme/detail/')) {
-                            try {
-                                const { body } = await debuggerApi.sendCommand('Network.getResponseBody', { requestId: params.requestId });
-                                clearTimeout(timeout);
-                                resolve(JSON.parse(body));
-                            } catch (err) {
-                                if (!err.message.includes('No resource with given identifier found')) {
-                                    reject(err);
-                                }
-                            }
-                        }
-                    });
-                } catch (attachError) {
-                    reject(new Error(`附加调试器失败: ${attachError.message}`));
-                }
-            });
-        });
-
-        await win.loadURL(videoUrl, { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' });
-        sendMessageCallback('download-status', { message: '正在导航页面，等待 API 响应...' });
-
-        const apiResponseJson = await apiResponsePromise;
-        if (!apiResponseJson?.aweme_detail) {
-            throw new Error('未能拦截到有效的 API 响应。');
-        }
-
-        await processAndDownloadItem(apiResponseJson.aweme_detail);
-        sendMessageCallback('download-status', { message: '视频下载完成！', type: 'success' });
-
-    } catch (error) {
-        sendMessageCallback('download-status', { message: `浏览器操作失败: ${error.message}`, type: 'error' });
-    } finally {
-        if (win && !win.isDestroyed()) {
-            if (win.webContents.debugger.isAttached()) {
-                await win.webContents.debugger.detach();
-            }
-            win.close();
-        }
-    }
-}
-
+/**
+ * 下载 Bilibili 视频。
+ * @param {string} videoUrl - Bilibili 视频 URL。
+ */
 async function downloadBilibiliVideo(videoUrl) {
     if (!FFMPEG_PATH) {
         sendMessageCallback('download-status', { message: '错误: FFmpeg 未找到，无法合并B站视频。', type: 'error' });
@@ -302,9 +203,11 @@ async function downloadBilibiliVideo(videoUrl) {
     }
 }
 
+/**
+ * 下载 Jable 视频。
+ * @param {string} videoUrl - Jable 视频 URL。
+ */
 async function downloadJableVideo(videoUrl) {
-    // 【日志】函数被调用，并打印将使用的 FFmpeg 路径
-    console.log(`[Download Service] downloadJableVideo 被调用。将使用 FFmpeg 路径: ${FFMPEG_PATH}`);
     if (!FFMPEG_PATH) {
         sendMessageCallback('download-status', { message: '错误: FFmpeg 未找到，无法处理Jable视频。', type: 'error' });
         return;
@@ -326,13 +229,7 @@ async function downloadJableVideo(videoUrl) {
             FFMPEG_PATH, info.cookieString
         );
 
-        const newTrack = {
-            title: info.title, artist: 'Jable TV',
-            src: `videos/${safeFilename}.mp4`, albumArt: `albumArt/${safeFilename}.jpg`,
-            type: "video", lyrics: "",
-            pinyin: pinyin(info.title, { toneType: 'none' }).replace(/\s/g, ''),
-            initials: pinyin(info.title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '')
-        };
+        const newTrack = { title: info.title, artist: 'Jable TV', src: `videos/${safeFilename}.mp4`, albumArt: `albumArt/${safeFilename}.jpg`, type: "video", lyrics: "", pinyin: pinyin(info.title, { toneType: 'none' }).replace(/\s/g, ''), initials: pinyin(info.title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '') };
         await updateLocalPlaylist([newTrack]);
         sendMessageCallback('new-track-added', newTrack);
         sendMessageCallback('download-status', { message: `"${info.title}" 下载成功！`, type: 'success' });
@@ -342,13 +239,11 @@ async function downloadJableVideo(videoUrl) {
     }
 }
 
+/**
+ * 下载 YouTube 视频。
+ * @param {string} videoUrl - YouTube 视频 URL。
+ */
 async function downloadYoutubeVideo(videoUrl) {
-    // 【日志】函数被调用，并打印将使用的工具路径和代理
-    console.log(`[Download Service] downloadYoutubeVideo 被调用。`);
-    console.log(`  - yt-dlp 路径: ${YT_DLP_PATH}`);
-    console.log(`  - FFmpeg 路径: ${FFMPEG_PATH}`);
-    console.log(`  - 系统代理: ${SYSTEM_PROXY}`);
-
     if (!YT_DLP_PATH || !FFMPEG_PATH) {
         sendMessageCallback('download-status', { message: '错误: yt-dlp 或 FFmpeg 未就绪，无法下载 YouTube 视频。', type: 'error' });
         return;
@@ -369,13 +264,7 @@ async function downloadYoutubeVideo(videoUrl) {
             SYSTEM_PROXY
         );
 
-        const newTrack = {
-            title: info.title, artist: info.uploader || 'YouTube',
-            src: `videos/${safeFilename}.mp4`, albumArt: `albumArt/${safeFilename}.jpg`,
-            type: "video", lyrics: "",
-            pinyin: pinyin(info.title, { toneType: 'none' }).replace(/\s/g, ''),
-            initials: pinyin(info.title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '')
-        };
+        const newTrack = { title: info.title, artist: info.uploader || 'YouTube', src: `videos/${safeFilename}.mp4`, albumArt: `albumArt/${safeFilename}.jpg`, type: "video", lyrics: "", pinyin: pinyin(info.title, { toneType: 'none' }).replace(/\s/g, ''), initials: pinyin(info.title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '') };
         await updateLocalPlaylist([newTrack]);
         sendMessageCallback('new-track-added', newTrack);
         sendMessageCallback('download-status', { message: `"${info.title}" 下载成功！`, type: 'success' });
