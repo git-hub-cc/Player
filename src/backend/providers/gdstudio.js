@@ -27,11 +27,18 @@ function makeParams(types, extra = {}) {
 }
 
 /**
+ * =========================================================================
+ * 【核心修改】导出此函数，以便 online-service 可以按需调用
+ *
  * 内部辅助函数：获取真实的图片链接
  * 因为该 API 的图片接口返回的是 JSON {"url": "...", "from": "..."}，
  * 而不是直接的图片流，所以必须先请求一次以获取 URL。
+ * =========================================================================
+ * @param {string|number} picId - 图片 ID
+ * @param {string} source - 音乐源
+ * @returns {Promise<string>} - 解析后的图片 URL 或空字符串
  */
-async function resolvePicUrl(picId, source) {
+export async function resolvePicUrl(picId, source) {
     if (!picId) return '';
     try {
         const response = await apiClient.get(API_BASE_URL, {
@@ -70,30 +77,24 @@ export async function search(query, page = 1, count = 20, source = DEFAULT_SOURC
             return { list: [], total: 0 };
         }
 
-        // 2. 预处理列表结构
-        // 注意：此时 albumArt 还是空的，需要下一步异步填充
+        // =========================================================================
+        // 【核心修改】移除对每首歌封面的二次请求，直接返回原始数据
+        //
+        // 1. 不再在搜索时立即获取所有封面图，显著减少 API 请求次数。
+        // 2. 直接将 `pic_id`, `lyric_id`, 和 `source` 返回给上层服务。
+        // 3. 封面图的 URL 将在用户播放或下载时按需获取。
+        // =========================================================================
         const rawList = data.map(item => ({
-            id: item.id, // 原始 ID
-            source: item.source, // 来源
+            id: item.id,
+            source: item.source,
             title: item.name,
-            artist: (item.artist || []).join(' / '), // 歌手数组转字符串
+            artist: (item.artist || []).join(' / '),
             album: item.album,
-            pic_id: item.pic_id, // 暂存图片ID用于后续请求
-            lyricId: item.lyric_id,
-            albumArt: '' // 占位
+            pic_id: item.pic_id, // 保留图片 ID
+            lyricId: item.lyric_id, // 保留歌词 ID
+            albumArt: '' // 封面图 URL 初始为空
         }));
-
-        // 3. 并行获取所有真实的图片链接
-        // 这是一个妥协方案：虽然会增加 HTTP 请求数，但为了兼容前端 <img src> 直接渲染，
-        // 必须在后端解析出真实的图片 URL。
-        // 使用 Promise.all 并行处理以减少等待时间。
-        await Promise.all(rawList.map(async (track) => {
-            if (track.pic_id) {
-                track.albumArt = await resolvePicUrl(track.pic_id, track.source);
-            }
-            // 删除临时字段，保持对象整洁
-            delete track.pic_id;
-        }));
+        // =========================================================================
 
         // 注意：该 API 分页信息不全，通常无法准确获取 total，
         // 这里模拟一个 total，确保分页控件能显示下一页
