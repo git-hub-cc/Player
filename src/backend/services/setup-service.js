@@ -7,11 +7,11 @@ import AdmZip from 'adm-zip';
 import WinReg from 'winreg';
 import YTDlpWrap from 'yt-dlp-wrap-plus';
 import { arch } from 'node:process';
-import { dialog } from 'electron';
+import { dialog, shell } from 'electron';
 
 /**
  * 在 Windows 平台上检测系统代理设置。
- * (此函数保持不变)
+ * @returns {Promise<string|null>} 代理服务器地址或 null。
  */
 async function detectSystemProxy() {
     console.log('[Proxy Detector] 开始检测系统代理...');
@@ -51,42 +51,7 @@ async function detectSystemProxy() {
     }
 }
 
-/**
- * 确保 yt-dlp 二进制文件存在，如果不存在则下载。
- * (此函数保持不变)
- */
-async function ensureYtDlpBinary(userDataPath) {
-    const YTDlpClass = YTDlpWrap.default || YTDlpWrap;
-    const binDir = path.join(userDataPath, 'bin');
-    if (!fs.existsSync(binDir)) {
-        fs.mkdirSync(binDir, { recursive: true });
-    }
-    const exeName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
-    const binaryPath = path.join(binDir, exeName);
-    console.log(`[yt-dlp Init] 检查二进制文件路径: ${binaryPath}`);
-    if (fs.existsSync(binaryPath)) {
-        console.log('[yt-dlp Init] 本地已存在二进制文件。');
-        return binaryPath;
-    }
-    console.log('[yt-dlp Init] 二进制文件不存在，正在从 GitHub 下载...');
-    try {
-        await YTDlpClass.downloadFromGithub(binaryPath);
-        console.log('[yt-dlp Init] 下载完成。');
-        if (process.platform !== 'win32') {
-            fs.chmodSync(binaryPath, '755');
-        }
-        console.log(`[yt-dlp Init] 返回最终路径: ${binaryPath}`);
-        return binaryPath;
-    } catch (error) {
-        console.error('[yt-dlp Init] 下载二进制文件失败:', error);
-        return null;
-    }
-}
 
-
-// =========================================================================
-// 【核心新增】确保 ffmpeg 二进制文件存在，如果不存在则下载和解压
-// =========================================================================
 /**
  * 下载文件并返回 Buffer。
  * @param {string} url - 要下载的文件的 URL。
@@ -110,134 +75,201 @@ function downloadToBuffer(url) {
     });
 }
 
+
 /**
- * 检查 ffmpeg 是否存在，如果不存在，则从 GitHub 下载并解压。
- * @param {string} userDataPath - 用户数据目录路径。
- * @returns {Promise<string|null>} - ffmpeg 可执行文件的路径，或在失败时返回 null。
+ * 下载并准备 yt-dlp 二进制文件。
+ * @param {string} binDir - 二进制文件存放目录。
+ * @returns {Promise<string>} - 成功则返回二进制文件路径。
  */
-async function ensureFfmpegBinary(userDataPath) {
-    const binDir = path.join(userDataPath, 'bin');
-    if (!fs.existsSync(binDir)) {
-        fs.mkdirSync(binDir, { recursive: true });
+async function downloadYtDlp(binDir) {
+    const YTDlpClass = YTDlpWrap.default || YTDlpWrap;
+    const exeName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+    const binaryPath = path.join(binDir, exeName);
+    console.log('[yt-dlp Downloader] 开始从 GitHub 下载...');
+    await YTDlpClass.downloadFromGithub(binaryPath);
+    console.log('[yt-dlp Downloader] 下载完成。');
+    if (process.platform !== 'win32') {
+        fs.chmodSync(binaryPath, '755');
     }
+    return binaryPath;
+}
+
+
+/**
+ * 下载并准备 ffmpeg 二进制文件。
+ * @param {string} binDir - 二进制文件存放目录。
+ * @returns {Promise<string>} - 成功则返回二进制文件路径。
+ */
+async function downloadFfmpeg(binDir) {
     const exeName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
     const binaryPath = path.join(binDir, exeName);
 
-    console.log(`[FFmpeg Init] 检查二进制文件路径: ${binaryPath}`);
-    if (fs.existsSync(binaryPath)) {
-        console.log('[FFmpeg Init] 本地已存在二进制文件。');
-        return binaryPath;
-    }
-
-    console.log('[FFmpeg Init] 二进制文件不存在，准备下载...');
     // BtbN/FFmpeg-Builds 提供的 gpl-6.0 版本，体积较小且功能齐全
     const downloadUrl = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.0-latest-win64-gpl-8.0.zip';
     if (process.platform !== 'win32' || arch !== 'x64') {
-        console.error('[FFmpeg Init] 错误：自动下载目前仅支持 Windows x64 平台。');
-        // 此处可以为其他平台添加下载链接
-        return null;
+        throw new Error('FFmpeg 自动下载目前仅支持 Windows x64 平台。');
     }
 
-    try {
-        console.log(`[FFmpeg Init] 正在从以下地址下载: ${downloadUrl}`);
-        const zipBuffer = await downloadToBuffer(downloadUrl);
-        console.log('[FFmpeg Init] 下载完成，正在解压...');
+    console.log(`[FFmpeg Downloader] 正在从以下地址下载: ${downloadUrl}`);
+    const zipBuffer = await downloadToBuffer(downloadUrl);
+    console.log('[FFmpeg Downloader] 下载完成，正在解压...');
 
-        const zip = new AdmZip(zipBuffer);
-        const zipEntries = zip.getEntries();
+    const zip = new AdmZip(zipBuffer);
+    const ffmpegEntry = zip.getEntries().find(entry =>
+        entry.entryName.endsWith('ffmpeg.exe') && !entry.isDirectory
+    );
 
-        // 查找压缩包内的 ffmpeg.exe 文件
-        const ffmpegEntry = zipEntries.find(entry =>
-            entry.entryName.endsWith('ffmpeg.exe') && !entry.isDirectory
-        );
-
-        if (!ffmpegEntry) {
-            throw new Error('在下载的压缩包中未找到 ffmpeg.exe。');
-        }
-
-        // 将 ffmpeg.exe 解压到目标路径
-        const ffmpegData = ffmpegEntry.getData();
-        fs.writeFileSync(binaryPath, ffmpegData);
-
-        console.log(`[FFmpeg Init] 解压成功，ffmpeg 已保存至: ${binaryPath}`);
-        return binaryPath;
-
-    } catch (error) {
-        console.error('[FFmpeg Init] 下载或解压 ffmpeg 失败:', error);
-        dialog.showErrorBox(
-            'FFmpeg 初始化失败',
-            `无法自动下载核心组件 FFmpeg。\n\n错误详情: ${error.message}\n\n视频下载和合并功能可能无法正常工作。请检查您的网络连接并重启应用。`
-        );
-        return null;
+    if (!ffmpegEntry) {
+        throw new Error('在下载的压缩包中未找到 ffmpeg.exe。');
     }
+
+    fs.writeFileSync(binaryPath, ffmpegEntry.getData());
+    console.log(`[FFmpeg Downloader] 解压成功，ffmpeg 已保存至: ${binaryPath}`);
+    return binaryPath;
 }
-// =========================================================================
+
+
+/**
+ * 检查指定工具的二进制文件是否存在。
+ * @param {('ffmpeg'|'yt-dlp')} toolName - 工具名称。
+ * @param {string} binDir - 二进制文件存放目录。
+ * @returns {string|null} - 如果存在，返回完整路径；否则返回 null。
+ */
+function checkBinaryExists(toolName, binDir) {
+    let exeName;
+    if (toolName === 'ffmpeg') {
+        exeName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+    } else if (toolName === 'yt-dlp') {
+        exeName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+    } else {
+        return null;
+    }
+
+    const binaryPath = path.join(binDir, exeName);
+    return fs.existsSync(binaryPath) ? binaryPath : null;
+}
 
 
 /**
  * 初始化应用配置和外部工具。
  * @param {Electron.App} app - Electron 的 app 实例。
- * @returns {Promise<object>} 包含配置和工具路径的对象 { config, ffmpegPath, ytDlpPath, systemProxy }。
+ * @returns {Promise<object>} 包含配置、工具路径和是否应继续运行标志的对象。
  */
 export async function initializeApp(app) {
     console.log('[Setup] Electron App 实例已就绪，开始初始化...');
     const userDataPath = app.getPath('userData');
-    console.log(`[Setup] UserData 路径: ${userDataPath}`);
+    const binDir = path.join(userDataPath, 'bin');
+    if (!fs.existsSync(binDir)) fs.mkdirSync(binDir, { recursive: true });
 
+    console.log(`[Setup] UserData 路径: ${userDataPath}`);
+    console.log(`[Setup] 二进制工具目录: ${binDir}`);
+
+    // --- 1. 检查所有必需的二进制文件 ---
+    let ffmpegPath = null;
+    if (app.isPackaged) {
+        ffmpegPath = checkBinaryExists('ffmpeg', binDir);
+    } else {
+        // 开发环境下，保持原有方式，方便调试
+        try {
+            ffmpegPath = require('ffmpeg-static');
+            console.log('[Setup] 开发环境：使用 require("ffmpeg-static") 定位 FFmpeg。');
+        } catch (e) {
+            console.error('[Setup] 开发环境无法加载 ffmpeg-static 模块:', e);
+            ffmpegPath = null;
+        }
+    }
+    let ytDlpPath = checkBinaryExists('yt-dlp', binDir);
+
+    const missingTools = [];
+    if (!ffmpegPath) missingTools.push('FFmpeg');
+    if (!ytDlpPath) missingTools.push('yt-dlp');
+
+    // --- 2. 如果有文件缺失，则与用户交互 ---
+    if (missingTools.length > 0) {
+        const choice = dialog.showMessageBoxSync({
+            type: 'info',
+            title: '缺少核心组件',
+            message: `应用需要以下组件来支持视频下载和格式转换：\n\n- ${missingTools.join('\n- ')}`,
+            detail: '您可以选择自动下载，或查看手动说明。如果选择退出，应用将关闭。',
+            buttons: ['自动下载', '手动下载说明', '退出应用'],
+            defaultId: 0,
+            cancelId: 2,
+        });
+
+        switch (choice) {
+            // --- Case 0: 自动下载 ---
+            case 0:
+                try {
+                    const downloadPromises = [];
+                    if (missingTools.includes('FFmpeg')) {
+                        downloadPromises.push(downloadFfmpeg(binDir));
+                    }
+                    if (missingTools.includes('yt-dlp')) {
+                        downloadPromises.push(downloadYtDlp(binDir));
+                    }
+                    const results = await Promise.all(downloadPromises);
+                    // 下载后重新获取路径
+                    ffmpegPath = checkBinaryExists('ffmpeg', binDir);
+                    ytDlpPath = checkBinaryExists('yt-dlp', binDir);
+
+                    if (!ffmpegPath || !ytDlpPath) {
+                        throw new Error("部分组件下载后仍未找到，请尝试手动下载。");
+                    }
+
+                    dialog.showMessageBoxSync({
+                        title: '下载完成',
+                        message: '所有核心组件已准备就绪！应用将继续启动。'
+                    });
+                } catch (error) {
+                    dialog.showErrorBox('自动下载失败', `下载组件时发生错误：\n\n${error.message}\n\n请检查您的网络连接，或尝试手动下载。应用即将退出。`);
+                    return { shouldContinue: false };
+                }
+                break;
+
+            // --- Case 1: 手动下载说明 ---
+            case 1:
+                dialog.showMessageBoxSync({
+                    type: 'info',
+                    title: '手动下载说明',
+                    message: '请按以下步骤操作，完成后重启应用：',
+                    detail: `1. 打开以下链接下载文件：\n   - FFmpeg: github.com/BtbN/FFmpeg-Builds/releases\n   - yt-dlp: github.com/yt-dlp/yt-dlp/releases\n\n2. 将下载的 "ffmpeg.exe" 和 "yt-dlp.exe" 两个文件，放置到下面的文件夹中 (点击“打开目录”可直接访问)：\n\n${binDir}`,
+                    buttons: ['打开目录并退出', '仅退出']
+                });
+                // 即使用户不点，也打开目录方便操作
+                shell.openPath(binDir);
+                return { shouldContinue: false };
+
+            // --- Case 2: 退出应用 ---
+            case 2:
+            default:
+                return { shouldContinue: false };
+        }
+    }
+
+    // --- 3. 所有组件就绪，继续初始化流程 ---
     const config = {
         MEDIA_ROOT: path.join(userDataPath, 'media'),
         VIDEOS_DIR: path.join(userDataPath, 'media', 'videos'),
         ALBUMART_DIR: path.join(userDataPath, 'media', 'albumArt'),
         MUSIC_DIR: path.join(userDataPath, 'media', 'music'),
-        STATE_PATH: path.join(userDataPath, 'state.json'),
         PLAYLIST_PATH: path.join(userDataPath, 'media', 'playlist.json'),
     };
     [config.VIDEOS_DIR, config.ALBUMART_DIR, config.MUSIC_DIR].forEach(dir => {
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     });
 
-    console.log('--- [Tools Log] 开始定位外部工具 ---');
-
-    let ffmpegPath = '';
-
-    // =========================================================================
-    // 【核心修改】区分开发和生产环境，采用不同的方式获取 FFmpeg
-    // =========================================================================
-    if (app.isPackaged) {
-        // --- 生产环境 ---
-        // 运行时检查并下载 ffmpeg
-        console.log('[Setup] 生产环境：调用 ensureFfmpegBinary 检查并准备 FFmpeg。');
-        ffmpegPath = await ensureFfmpegBinary(userDataPath);
-    } else {
-        // --- 开发环境 ---
-        // 保持原有的 `require` 方式，因为它在开发时是可靠且方便的。
-        console.log('[Setup] 开发环境：使用 require("ffmpeg-static") 定位 FFmpeg。');
-        try {
-            ffmpegPath = require('ffmpeg-static');
-        } catch (e) {
-            console.error('[Error] 开发环境无法加载 ffmpeg-static 模块:', e);
-            ffmpegPath = '';
-        }
-    }
-    // =========================================================================
-
-    const ytDlpPath = await ensureYtDlpBinary(userDataPath);
-
-    const ffmpegExists = ffmpegPath ? fs.existsSync(ffmpegPath) : false;
-    const ytDlpExists = ytDlpPath ? fs.existsSync(ytDlpPath) : false;
-    console.log(`[Setup] 最终确定的 FFmpeg 路径: ${ffmpegPath}`);
-    console.log(`[Setup] 文件存在性检查 - FFmpeg: ${ffmpegExists}`);
-    if (!ffmpegExists) console.error(`[Error] 未能找到有效的 FFmpeg 文件。`);
-
-    console.log(`[Setup] 最终确定的 yt-dlp 路径: ${ytDlpPath}`);
-    console.log(`[Setup] 文件存在性检查 - yt-dlp: ${ytDlpExists}`);
-    if (!ytDlpExists) console.error(`[Error] yt-dlp 未就绪，YouTube 下载功能将失效。`);
-
-    console.log('--- [Tools Log] 定位结束 ---');
-
     const systemProxy = await detectSystemProxy();
-    const finalResult = { config, ffmpegPath, ytDlpPath, systemProxy };
-    console.log('[Setup] initializeApp 即将返回:', JSON.stringify(finalResult, null, 2));
 
-    return finalResult;
+    console.log('[Setup] 所有组件已就绪。');
+    console.log(`[Setup] - FFmpeg 路径: ${ffmpegPath}`);
+    console.log(`[Setup] - yt-dlp 路径: ${ytDlpPath}`);
+    console.log(`[Setup] - 系统代理: ${systemProxy || '无'}`);
+
+    return {
+        config,
+        ffmpegPath,
+        ytDlpPath,
+        systemProxy,
+        shouldContinue: true,
+    };
 }

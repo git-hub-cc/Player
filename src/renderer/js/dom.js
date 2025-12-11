@@ -1,78 +1,69 @@
-// js/dom.js
+// src/renderer/js/dom.js
 
+// --- 播放器核心元素 ---
 export let playerContainer = document.querySelector('.player-container');
 export let mainView = document.querySelector('.main-view');
 export let mediaPlayer = document.getElementById('media-player');
+export let playerControls = document.querySelector('.player-controls');
+
+// --- 专辑封面与可视化 ---
+export let albumArtContainer = document.getElementById('album-art-container');
+export let albumArtEl = document.getElementById('album-art');
+export let controlAlbumArtEl = document.getElementById('control-album-art');
+export let audioVisualizer = document.getElementById('audio-visualizer');
+
+// --- 播放控制按钮 ---
 export let playPauseBtn = document.getElementById('play-pause-btn');
 export let prevBtn = document.getElementById('prev-btn');
 export let nextBtn = document.getElementById('next-btn');
+export let modeBtn = document.getElementById('mode-btn');
+
+// --- 进度条与时间显示 ---
 export let progressBar = document.getElementById('progress-bar');
 export let currentTimeEl = document.getElementById('current-time');
 export let durationEl = document.getElementById('duration');
+
+// --- 曲目信息 ---
 export let trackTitleEl = document.getElementById('track-title');
 export let trackArtistEl = document.getElementById('track-artist');
-export let albumArtEl = document.getElementById('album-art');
-export let controlAlbumArtEl = document.getElementById('control-album-art');
-export let albumArtContainer = document.getElementById('album-art-container');
-export let audioVisualizer = document.getElementById('audio-visualizer');
+
+// --- 音量控制 ---
+export let volumeBtn = document.getElementById('volume-btn');
+export let volumeBar = document.getElementById('volume-bar');
+
+// --- 歌词相关 ---
 export let lyricsBtn = document.getElementById('lyrics-btn');
+export let mobileLyricsBtn = document.getElementById('mobile-lyrics-btn');
 export let lyricsContainer = document.getElementById('lyrics-container');
 export let lyricsList = document.getElementById('lyrics-list');
 export let lyricsListWrapper = document.getElementById('lyrics-list-wrapper');
 export let lyricsDragIndicator = document.getElementById('lyrics-drag-indicator');
 export let lyricsDragTime = document.getElementById('lyrics-drag-time');
-export let volumeBtn = document.getElementById('volume-btn');
-export let volumeBar = document.getElementById('volume-bar');
-export let playlistEl = document.getElementById('playlist');
+
+// --- 播放列表面板 ---
 export let playlistPanel = document.getElementById('playlist-panel');
 export let playlistBtn = document.getElementById('playlist-btn');
-export let closePlaylistBtn = document.getElementById('close-playlist-btn');
-export let infoBtn = document.getElementById('info-btn');
-export let infoPanel = document.getElementById('info-panel');
-export let closeInfoBtn = document.getElementById('close-info-btn');
 export let mobilePlaylistBtn = document.getElementById('mobile-playlist-btn');
-export let mobileLyricsBtn = document.getElementById('mobile-lyrics-btn');
-export let skeletonOverlay = document.getElementById('skeleton-overlay');
-export let shortcutBtn = document.getElementById('shortcut-btn');
-export let shortcutPanel = document.getElementById('shortcut-panel');
-export let closeShortcutBtn = document.getElementById('close-shortcut-btn');
-export let shortcutListEl = document.getElementById('shortcut-list');
-export let shortcutModalOverlayEl = document.getElementById('shortcut-modal-overlay');
-export let shortcutKeyPreviewEl = document.getElementById('shortcut-key-preview');
-export let toastEl = document.getElementById('toast-notification');
-export let modeBtn = document.getElementById('mode-btn');
+export let closePlaylistBtn = document.getElementById('close-playlist-btn');
+export let playlistEl = document.getElementById('playlist');
 export let playlistSearchInput = document.getElementById('playlist-search');
 export let playlistNoResultsEl = document.getElementById('playlist-no-results');
-export let galleryContainer = document.getElementById('gallery-container');
-export let galleryWrapper = document.getElementById('gallery-wrapper');
-export let contextMenu = document.getElementById('custom-context-menu');
-export let templatesContainer = document.getElementById('templates');
-export let docElement = document.documentElement;
-export let playerControls = document.querySelector('.player-controls'); // 【新增】底部控制栏引用
-
 export let openMediaFolderBtn = document.getElementById('open-media-folder-btn');
-// =========================================================================
-// 【新增】视频内容全屏按钮的 DOM 引用
-// =========================================================================
-export let fullscreenBtn = document.getElementById('fullscreen-btn');
-// =========================================================================
 
-// 故障效果元素
-export let glitchOverlay = document.getElementById('glitch-overlay');
-export let glitchLinesGroup = document.getElementById('glitch-lines');
-export let glitchSpotifyShapesGroup = document.getElementById('glitch-spotify-shapes');
-export let feTurbulence = document.querySelector('#glitch-filter-spotify feTurbulence');
-export let feDisplacementMap = document.querySelector('#glitch-filter-spotify feDisplacementMap');
-export let feOffsetR = document.querySelector('#glitch-filter-spotify [result="red_offset"]');
-export let feOffsetB = document.querySelector('#glitch-filter-spotify [result="blue_offset"]');
+// --- 信息面板 ---
+export let infoPanel = document.getElementById('info-panel');
+export let infoBtn = document.getElementById('info-btn');
+export let closeInfoBtn = document.getElementById('close-info-btn');
 
-// Canvas for gradient extraction
-export let bgCanvas = document.createElement('canvas');
-export let bgCtx = bgCanvas.getContext('2d', { willReadFrequently: true });
+// --- 快捷键面板 ---
+export let shortcutPanel = document.getElementById('shortcut-panel');
+export let shortcutBtn = document.getElementById('shortcut-btn');
+export let closeShortcutBtn = document.getElementById('close-shortcut-btn');
+export let shortcutListEl = document.getElementById('shortcut-list');
 
-// --- 下载/搜索面板相关元素 ---
-export let downloadPanelBtn = document.getElementById('download-panel-btn');
+// --- 下载/搜索面板 ---
 export let downloadPanel = document.getElementById('download-panel');
+export let downloadPanelBtn = document.getElementById('download-panel-btn');
 export let closeDownloadBtn = document.getElementById('close-download-btn');
 export let urlOrSearchInput = document.getElementById('url-or-search-input');
 export let downloadStatusEl = document.getElementById('download-status');
@@ -84,23 +75,52 @@ export let panelDescription = downloaderView.querySelector('.panel-description')
 export let searchResultsContainer = document.getElementById('search-results-container');
 export let searchResultsList = document.getElementById('search-results-list');
 export let paginationControls = document.getElementById('pagination-controls');
-export let importLocalBtn = document.getElementById('import-local-btn'); // 【新增】方便引用
+export let importLocalBtn = document.getElementById('import-local-btn');
 
-// --- 通用确认模态框元素 ---
+// --- 空状态与骨架屏 ---
+export let emptyStateView = document.getElementById('empty-state-view');
+export let emptyStateSearchBtn = document.getElementById('empty-state-search-btn');
+export let emptyStateImportBtn = document.getElementById('empty-state-import-btn');
+export let skeletonOverlay = document.getElementById('skeleton-overlay');
+
+// --- 背景画廊 ---
+export let galleryContainer = document.getElementById('gallery-container');
+export let galleryWrapper = document.getElementById('gallery-wrapper');
+
+// --- 模态框与上下文菜单 ---
+export let shortcutModalOverlayEl = document.getElementById('shortcut-modal-overlay');
+export let shortcutKeyPreviewEl = document.getElementById('shortcut-key-preview');
 export let confirmationModal = document.getElementById('confirmation-modal-overlay');
 export let confirmationMessage = document.getElementById('confirmation-message');
 export let confirmBtn = document.getElementById('confirm-btn');
 export let cancelBtn = document.getElementById('cancel-btn');
+export let contextMenu = document.getElementById('custom-context-menu');
+export let toastEl = document.getElementById('toast-notification');
+
+// --- 视频与故障效果 ---
+export let fullscreenBtn = document.getElementById('fullscreen-btn');
+export let glitchOverlay = document.getElementById('glitch-overlay');
+export let glitchLinesGroup = document.getElementById('glitch-lines');
+export let glitchSpotifyShapesGroup = document.getElementById('glitch-spotify-shapes');
+export let feTurbulence = document.querySelector('#glitch-filter-spotify feTurbulence');
+export let feDisplacementMap = document.querySelector('#glitch-filter-spotify feDisplacementMap');
+export let feOffsetR = document.querySelector('#glitch-filter-spotify [result="red_offset"]');
+export let feOffsetB = document.querySelector('#glitch-filter-spotify [result="blue_offset"]');
+
+// --- 动态创建与底层元素 ---
+export let bgCanvas = document.createElement('canvas');
+export let bgCtx = bgCanvas.getContext('2d', { willReadFrequently: true });
+export let templatesContainer = document.getElementById('templates');
+export let docElement = document.documentElement;
 
 // =========================================================================
-// 【新增】空状态视图相关元素引用
+// 【修复】将侧边面板集合的定义移至此处并导出，以解决 "is not iterable" 错误。
+// 这样可以确保其他模块（如 ui.js 和 renderer.js）能通过 dom 模块统一访问这个数组。
 // =========================================================================
-export let emptyStateView = document.getElementById('empty-state-view');
-export let emptyStateSearchBtn = document.getElementById('empty-state-search-btn');
-export let emptyStateImportBtn = document.getElementById('empty-state-import-btn');
+export const allSidePanels = [playlistPanel, infoPanel, shortcutPanel, downloadPanel];
 // =========================================================================
 
-// DOM Query/Creation Functions
+// --- DOM 查询/创建辅助函数 ---
 export const getTemplateElementById = (id) => document.getElementById(id);
 export const createFragment = () => document.createDocumentFragment();
 export const createListItem = () => document.createElement('li');
