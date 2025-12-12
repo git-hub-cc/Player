@@ -12,14 +12,10 @@ let totalPages = 1;
 const ITEMS_PER_PAGE = 10;
 
 /**
- * =========================================================================
- * 【核心修改】增强此函数以缓存 pic_id 和 source
- *
  * 将后端返回的统一数据转换为前端播放器使用的曲目对象。
- * 兼容新旧两种 API 的数据结构。
+ * 兼容新旧两种 API 的数据结构，并缓存 pic_id 和 source 以便按需获取封面。
  * @param {object} apiTrack - 后端返回的标准化曲目数据。
  * @returns {object} - 转换后的曲目对象。
- * =========================================================================
  */
 function transformApiData(apiTrack) {
     const title = apiTrack.title || '未知标题';
@@ -32,11 +28,8 @@ function transformApiData(apiTrack) {
         id: apiTrack.id,
         source: apiTrack.source || 'joox',
         lyricId: apiTrack.lyricId,
-        // =========================================================================
-        // 【新增】缓存 pic_id 以便在播放或下载时按需获取封面
-        // =========================================================================
+        // 缓存 pic_id 以便在播放或下载时按需获取封面
         pic_id: apiTrack.pic_id,
-        // =========================================================================
         originalSrc: apiTrack.url,
         originalAlbumArt: apiTrack.pic,
         originalLyrics: apiTrack.lrc,
@@ -57,26 +50,38 @@ function transformApiData(apiTrack) {
 
 
 /**
- * 更新下载面板的输入模式。
- * 增强了此函数，使其能够明确识别所有支持的链接类型。
- * @param {string} message - 要显示的消息。
+ * 根据输入内容更新下载面板的模式（URL下载或关键词搜索）。
+ * 此函数会自动从粘贴的文本中提取第一个有效的 URL。
  */
 function updateInputMode() {
-    const inputText = dom.urlOrSearchInput.value.trim();
-    const isUrlMode = inputText.toLowerCase().startsWith('http');
+    const originalText = dom.urlOrSearchInput.value;
+    let processedText = originalText.trim();
 
-    // [修改] 为所有支持的链接类型创建明确的布尔标志
-    const isBilibiliUrl = isUrlMode && inputText.includes('bilibili.com/video/');
-    const isJableUrl = isUrlMode && inputText.includes('jable.tv/videos/');
-    const isYoutubeUrl = isUrlMode && (inputText.includes('youtube.com/') || inputText.includes('youtu.be/'));
-    const isDouyinUrl = isUrlMode && (inputText.includes('douyin.com') || inputText.includes('iesdouyin.com'));
+    // 使用正则表达式从输入文本中提取第一个有效的 URL
+    // 这允许用户粘贴包含额外文字的分享内容，系统会自动处理。
+    const urlMatch = processedText.match(/https?:\/\/[^\s]+/);
+    if (urlMatch) {
+        processedText = urlMatch[0]; // 仅使用匹配到的 URL 部分
+        // 如果提取出的 URL 与输入框内容不一致，则更新输入框，为用户提供清晰的反馈
+        if (dom.urlOrSearchInput.value.trim() !== processedText) {
+            dom.urlOrSearchInput.value = processedText;
+        }
+    }
 
-    // [修改] 根据是否是URL，统一控制下载/搜索按钮的显隐
+    const isUrlMode = processedText.toLowerCase().startsWith('http');
+
+    // 为所有支持的链接类型创建明确的布尔标志
+    const isBilibiliUrl = isUrlMode && processedText.includes('bilibili.com/video/');
+    const isJableUrl = isUrlMode && processedText.includes('jable.tv/videos/');
+    const isYoutubeUrl = isUrlMode && (processedText.includes('youtube.com/') || processedText.includes('youtu.be/'));
+    const isDouyinUrl = isUrlMode && (processedText.includes('douyin.com') || processedText.includes('iesdouyin.com'));
+
+    // 根据是否是URL，统一控制下载/搜索按钮的显隐
     dom.startDownloadBtn.style.display = isUrlMode ? 'flex' : 'none';
     dom.searchNeteaseBtn.style.display = isUrlMode ? 'none' : 'flex';
     document.getElementById('import-local-btn').style.display = 'flex';
 
-    // [修改] 使用更严谨的 if-else 链来设置提示文本
+    // 使用更严谨的 if-else 链来设置提示文本
     if (isBilibiliUrl) {
         dom.panelDescription.textContent = '检测到B站链接，点击“开始下载”进行处理。';
     } else if (isJableUrl) {
@@ -86,7 +91,7 @@ function updateInputMode() {
     } else if (isDouyinUrl) {
         dom.panelDescription.textContent = '检测到抖音链接，点击“开始下载”进行处理。';
     } else if (isUrlMode) {
-        // [修改] 为无法识别的URL提供通用提示
+        // 为无法识别的URL提供通用提示
         dom.panelDescription.textContent = '检测到未知链接，将尝试作为抖音视频处理...';
     } else {
         // 默认的搜索模式提示
@@ -134,14 +139,10 @@ export async function requestTrackDeletion(track) {
 }
 
 /**
- * =========================================================================
- * 【核心修改】增强此函数以处理包含封面 URL 的新响应格式
- *
- * 请求主进程解析一个曲目的可播放 URL。
+ * 请求主进程解析一个曲目的可播放 URL 和封面 URL。
  * @param {object} track - 曲目信息对象。
  * @returns {Promise<object>} - 包含可播放 URL 和封面 URL 的对象。
  * @throws {Error} 如果无法获取 URL。
- * =========================================================================
  */
 export async function resolvePlayableUrl(track) {
     // 如果是本地媒体，直接返回
@@ -356,7 +357,14 @@ export function setupDownloaderListeners() {
     });
 
     window.electronAPI.onNewTrack((newTrack) => {
-        document.dispatchEvent(new CustomEvent('new-track-added', { detail: newTrack }));
+        // =========================================================================
+        // 【核心修复】移除重复的事件分发。
+        // 添加新曲目到播放列表的逻辑由 renderer.js 中的主监听器统一处理。
+        // 此处仅负责更新本模块（下载面板）内的UI状态。
+        // =========================================================================
+        // document.dispatchEvent(new CustomEvent('new-track-added', { detail: newTrack }));
+
+        // 此监听器的唯一职责是更新搜索结果列表中的UI状态
         if (dom.searchResultsList) {
             const items = dom.searchResultsList.querySelectorAll('.playlist-item');
             items.forEach(item => {

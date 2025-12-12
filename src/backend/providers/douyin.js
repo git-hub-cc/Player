@@ -1,7 +1,8 @@
 // src/backend/providers/douyin.js
 
 import path from 'path';
-import { BrowserWindow } from 'electron';
+// 【核心修改】从 'electron' 中导入 session 模块
+import { BrowserWindow, session } from 'electron';
 import { pinyin } from 'pinyin-pro';
 import { updateLocalPlaylist } from '../services/library-service.js';
 import { downloadFile } from '../services/download-service.js';
@@ -74,12 +75,15 @@ async function processAndDownloadItem(awemeDetail) {
 export async function handleDouyinDownload(videoUrl) {
     sendMessageCallback('download-status', { message: '正在启动无头浏览器以解析抖音链接...' });
 
+    // 1. 定义一个唯一的会话分区名称，确保网络设置隔离
+    const partitionName = `persist:douyin_session_${Date.now()}`;
+
     // 创建一个不显示的浏览器窗口来加载页面
     const win = new BrowserWindow({
         show: false,
         webPreferences: {
-            // 使用独立的会话分区，避免与其他浏览器实例冲突
-            partition: `persist:douyin_session_${Date.now()}`,
+            // 2. 使用该分区名称来隔离会话
+            partition: partitionName,
             // 注入 preload 脚本以绕过自动化检测
             preload: path.join(__dirname, '..', 'backend', 'douyin-preload.js'),
             contextIsolation: true,
@@ -87,6 +91,23 @@ export async function handleDouyinDownload(videoUrl) {
         }
     });
     win.webContents.setAudioMuted(true);
+
+    // =========================================================================
+    // 【核心修改】在加载 URL 之前，强制为该会话设置直连代理
+    // =========================================================================
+    try {
+        // 获取专属于此窗口的会话对象
+        const douyinSession = session.fromPartition(partitionName);
+        // 设置代理规则为 'direct://'，强制绕过所有系统代理
+        await douyinSession.setProxy({ proxyRules: 'direct://' });
+        console.log('[Douyin Provider] 抖音下载会话已强制设置为直连模式。');
+    } catch (proxyError) {
+        console.error('[Douyin Provider] 设置直连代理失败:', proxyError);
+        sendMessageCallback('download-status', { message: `网络配置失败: ${proxyError.message}`, type: 'error' });
+        if (win && !win.isDestroyed()) win.close();
+        return; // 配置失败，中止后续操作
+    }
+    // =========================================================================
 
     try {
         // 创建一个 Promise 来等待 API 响应，并设置超时
