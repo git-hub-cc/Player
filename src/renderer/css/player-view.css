@@ -24,7 +24,7 @@
 }
 
 /* ========================================================================= */
-/* 【新增】音频可视化画布样式                                                   */
+/* 音频可视化画布样式                                                        */
 /* ========================================================================= */
 #audio-visualizer {
     position: absolute;
@@ -47,7 +47,7 @@
     background-color: #000;
     border-radius: 8px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-    /* 【修改】确保封面在可视化之上 */
+    /* 确保封面在可视化之上 */
     z-index: 2;
     position: relative; /* 确保 z-index 生效 */
 }
@@ -164,7 +164,7 @@
 }
 
 /* ========================================================================= */
-/* 【新增】空状态视图样式                                                    */
+/* 空状态视图样式                                                            */
 /* ========================================================================= */
 .empty-state-view {
     position: absolute;
@@ -254,4 +254,49 @@
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(20px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+/* ========================================================================= */
+/* 【新增】沉浸式全屏模式 (双击触发)                                           */
+/* ========================================================================= */
+.main-view {
+    /* 为进入/退出全屏添加平滑过渡 */
+    transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.main-view.main-view-fullscreen {
+    /* 核心样式：脱离文档流并置顶 */
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 3000;
+
+    /* 核心样式：占满整个屏幕 */
+    width: 100vw;
+    height: 100vh;
+
+    /* 视觉调整：移除圆角和内边距，实现真正的边缘到边缘 */
+    border-radius: 0;
+    padding: 0;
+}
+
+/* 调整全屏模式下媒体容器的内边距 */
+.main-view.main-view-fullscreen .media-visualizer {
+    padding: 0;
+}
+
+/* 确保视频和封面在全屏模式下正确缩放 */
+.main-view.main-view-fullscreen #media-player,
+.main-view.main-view-fullscreen .album-art-container {
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 0; /* 移除圆角 */
+}
+
+/* 鲁棒性：确保媒体内容保持宽高比，避免拉伸变形 */
+.main-view.main-view-fullscreen #media-player,
+.main-view.main-view-fullscreen #album-art {
+    object-fit: contain;
 }
