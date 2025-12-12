@@ -3,11 +3,15 @@
 import path from 'path';
 import fs from 'fs';
 import https from 'https';
+import axios from 'axios'; // 【新增】使用 axios 进行更稳健的流式下载
 import AdmZip from 'adm-zip';
 import WinReg from 'winreg';
 import YTDlpWrap from 'yt-dlp-wrap-plus';
 import { arch } from 'node:process';
 import { dialog, shell } from 'electron';
+
+// --- 全局变量 ---
+let mainWindow; // 用于发送 IPC 消息
 
 /**
  * 在 Windows 平台上检测系统代理设置。
@@ -51,30 +55,92 @@ async function detectSystemProxy() {
     }
 }
 
-
 /**
- * 下载文件并返回 Buffer。
+ * 【核心优化】使用流式下载文件，支持进度报告和重试。
  * @param {string} url - 要下载的文件的 URL。
- * @returns {Promise<Buffer>} - 包含文件数据的 Buffer。
+ * @param {string} destPath - 文件保存的完整路径。
+ * @param {string} displayName - 用于在UI中显示的文件名。
+ * @returns {Promise<void>} - 下载成功时 resolve，失败时 reject。
  */
-function downloadToBuffer(url) {
-    return new Promise((resolve, reject) => {
-        https.get(url, (response) => {
-            // 处理重定向
-            if (response.statusCode === 302 || response.statusCode === 301) {
-                console.log(`[Downloader] 重定向到: ${response.headers.location}`);
-                return downloadToBuffer(response.headers.location).then(resolve).catch(reject);
-            }
-            if (response.statusCode !== 200) {
-                return reject(new Error(`下载失败，状态码: ${response.statusCode}`));
-            }
-            const chunks = [];
-            response.on('data', (chunk) => chunks.push(chunk));
-            response.on('end', () => resolve(Buffer.concat(chunks)));
-        }).on('error', (err) => reject(err));
-    });
-}
+function downloadFileWithProgress(url, destPath, displayName) {
+    const MAX_RETRIES = 3;
+    let attempts = 0;
 
+    // 向渲染进程发送进度更新的节流函数
+    let lastProgress = -1;
+    const sendProgress = (progress) => {
+        if (progress > lastProgress) {
+            lastProgress = progress;
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('download-progress', { file: displayName, progress });
+            }
+        }
+    };
+
+    async function attemptDownload() {
+        attempts++;
+        try {
+            console.log(`[Downloader] 开始下载 ${displayName} (第 ${attempts} 次尝试)...`);
+            sendProgress(0); // 开始下载时发送 0% 进度
+
+            const response = await axios({
+                url,
+                method: 'GET',
+                responseType: 'stream',
+                // 跟随重定向
+                httpsAgent: new https.Agent({ keepAlive: true }),
+                // 设置超时
+                timeout: 60000, // 60秒超时
+            });
+
+            // 处理重定向后的最终 URL
+            const finalUrl = response.request.res.responseUrl || url;
+            if (finalUrl !== url) {
+                console.log(`[Downloader] 重定向到: ${finalUrl}`);
+            }
+
+            const totalLength = parseInt(response.headers['content-length'], 10);
+            const writer = fs.createWriteStream(destPath);
+            let downloadedLength = 0;
+
+            response.data.on('data', (chunk) => {
+                downloadedLength += chunk.length;
+                if (totalLength) {
+                    const progress = Math.round((downloadedLength / totalLength) * 100);
+                    sendProgress(progress);
+                }
+            });
+
+            response.data.pipe(writer);
+
+            return new Promise((resolve, reject) => {
+                writer.on('finish', () => {
+                    sendProgress(100); // 确保完成时发送 100%
+                    console.log(`[Downloader] ${displayName} 下载完成。`);
+                    resolve();
+                });
+                writer.on('error', (err) => {
+                    console.error(`[Downloader] 写入文件 ${displayName} 时出错:`, err);
+                    // 清理不完整的文件
+                    if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+                    reject(err);
+                });
+            });
+        } catch (error) {
+            console.error(`[Downloader] 下载 ${displayName} (第 ${attempts} 次尝试) 失败:`, error.message);
+            if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+
+            if (attempts < MAX_RETRIES) {
+                console.log(`[Downloader] ${MAX_RETRIES - attempts} 次重试剩余，将在 2 秒后重试...`);
+                await new Promise(res => setTimeout(res, 2000));
+                return attemptDownload(); // 递归调用进行重试
+            } else {
+                throw new Error(`下载 ${displayName} 失败，已达最大重试次数。`);
+            }
+        }
+    }
+    return attemptDownload();
+}
 
 /**
  * 下载并准备 yt-dlp 二进制文件。
@@ -85,15 +151,22 @@ async function downloadYtDlp(binDir) {
     const YTDlpClass = YTDlpWrap.default || YTDlpWrap;
     const exeName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
     const binaryPath = path.join(binDir, exeName);
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('download-started', { file: 'yt-dlp.exe' });
+    }
     console.log('[yt-dlp Downloader] 开始从 GitHub 下载...');
-    await YTDlpClass.downloadFromGithub(binaryPath);
+
+    // YTDlpWrap v2+ 需要不同的下载方式
+    const downloadUrl = await YTDlpClass.getGithubReleaseUrl();
+    await downloadFileWithProgress(downloadUrl, binaryPath, 'yt-dlp.exe');
+
     console.log('[yt-dlp Downloader] 下载完成。');
     if (process.platform !== 'win32') {
         fs.chmodSync(binaryPath, '755');
     }
     return binaryPath;
 }
-
 
 /**
  * 下载并准备 ffmpeg 二进制文件。
@@ -103,6 +176,7 @@ async function downloadYtDlp(binDir) {
 async function downloadFfmpeg(binDir) {
     const exeName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
     const binaryPath = path.join(binDir, exeName);
+    const zipPath = path.join(binDir, 'ffmpeg.zip');
 
     // BtbN/FFmpeg-Builds 提供的 gpl-6.0 版本，体积较小且功能齐全
     const downloadUrl = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.0-latest-win64-gpl-8.0.zip';
@@ -110,11 +184,18 @@ async function downloadFfmpeg(binDir) {
         throw new Error('FFmpeg 自动下载目前仅支持 Windows x64 平台。');
     }
 
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('download-started', { file: 'FFmpeg' });
+    }
     console.log(`[FFmpeg Downloader] 正在从以下地址下载: ${downloadUrl}`);
-    const zipBuffer = await downloadToBuffer(downloadUrl);
-    console.log('[FFmpeg Downloader] 下载完成，正在解压...');
+    await downloadFileWithProgress(downloadUrl, zipPath, 'FFmpeg');
 
-    const zip = new AdmZip(zipBuffer);
+    console.log('[FFmpeg Downloader] 下载完成，正在解压...');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('download-progress', { file: 'FFmpeg', progress: -1, status: '正在解压...' }); // -1 表示不确定进度
+    }
+
+    const zip = new AdmZip(zipPath);
     const ffmpegEntry = zip.getEntries().find(entry =>
         entry.entryName.endsWith('ffmpeg.exe') && !entry.isDirectory
     );
@@ -124,10 +205,10 @@ async function downloadFfmpeg(binDir) {
     }
 
     fs.writeFileSync(binaryPath, ffmpegEntry.getData());
+    fs.unlinkSync(zipPath); // 解压成功后删除zip包
     console.log(`[FFmpeg Downloader] 解压成功，ffmpeg 已保存至: ${binaryPath}`);
     return binaryPath;
 }
-
 
 /**
  * 检查指定工具的二进制文件是否存在。
@@ -149,13 +230,14 @@ function checkBinaryExists(toolName, binDir) {
     return fs.existsSync(binaryPath) ? binaryPath : null;
 }
 
-
 /**
  * 初始化应用配置和外部工具。
  * @param {Electron.App} app - Electron 的 app 实例。
+ * @param {BrowserWindow} mainWin - 主窗口实例。
  * @returns {Promise<object>} 包含配置、工具路径和是否应继续运行标志的对象。
  */
-export async function initializeApp(app) {
+export async function initializeApp(app, mainWin) {
+    mainWindow = mainWin; // 保存主窗口引用以供IPC通信
     console.log('[Setup] Electron App 实例已就绪，开始初始化...');
     const userDataPath = app.getPath('userData');
     const binDir = path.join(userDataPath, 'bin');
@@ -164,27 +246,13 @@ export async function initializeApp(app) {
     console.log(`[Setup] UserData 路径: ${userDataPath}`);
     console.log(`[Setup] 二进制工具目录: ${binDir}`);
 
-    // --- 1. 检查所有必需的二进制文件 ---
-    let ffmpegPath = null;
-    if (app.isPackaged) {
-        ffmpegPath = checkBinaryExists('ffmpeg', binDir);
-    } else {
-        // 开发环境下，保持原有方式，方便调试
-        try {
-            ffmpegPath = require('ffmpeg-static');
-            console.log('[Setup] 开发环境：使用 require("ffmpeg-static") 定位 FFmpeg。');
-        } catch (e) {
-            console.error('[Setup] 开发环境无法加载 ffmpeg-static 模块:', e);
-            ffmpegPath = null;
-        }
-    }
+    let ffmpegPath = checkBinaryExists('ffmpeg', binDir);
     let ytDlpPath = checkBinaryExists('yt-dlp', binDir);
 
     const missingTools = [];
     if (!ffmpegPath) missingTools.push('FFmpeg');
     if (!ytDlpPath) missingTools.push('yt-dlp');
 
-    // --- 2. 如果有文件缺失，则与用户交互 ---
     if (missingTools.length > 0) {
         const choice = dialog.showMessageBoxSync({
             type: 'info',
@@ -197,17 +265,20 @@ export async function initializeApp(app) {
         });
 
         switch (choice) {
-            // --- Case 0: 自动下载 ---
-            case 0:
+            case 0: // 自动下载
                 try {
-                    const downloadPromises = [];
+                    // 【优化】改为顺序下载，先下载大的、易失败的
                     if (missingTools.includes('FFmpeg')) {
-                        downloadPromises.push(downloadFfmpeg(binDir));
+                        await downloadFfmpeg(binDir);
                     }
                     if (missingTools.includes('yt-dlp')) {
-                        downloadPromises.push(downloadYtDlp(binDir));
+                        await downloadYtDlp(binDir);
                     }
-                    const results = await Promise.all(downloadPromises);
+
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('download-finished', { success: true });
+                    }
+
                     // 下载后重新获取路径
                     ffmpegPath = checkBinaryExists('ffmpeg', binDir);
                     ytDlpPath = checkBinaryExists('yt-dlp', binDir);
@@ -221,13 +292,15 @@ export async function initializeApp(app) {
                         message: '所有核心组件已准备就绪！应用将继续启动。'
                     });
                 } catch (error) {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('download-finished', { success: false, error: error.message });
+                    }
                     dialog.showErrorBox('自动下载失败', `下载组件时发生错误：\n\n${error.message}\n\n请检查您的网络连接，或尝试手动下载。应用即将退出。`);
                     return { shouldContinue: false };
                 }
                 break;
 
-            // --- Case 1: 手动下载说明 ---
-            case 1:
+            case 1: // 手动下载说明
                 dialog.showMessageBoxSync({
                     type: 'info',
                     title: '手动下载说明',
@@ -235,18 +308,15 @@ export async function initializeApp(app) {
                     detail: `1. 打开以下链接下载文件：\n   - FFmpeg: github.com/BtbN/FFmpeg-Builds/releases\n   - yt-dlp: github.com/yt-dlp/yt-dlp/releases\n\n2. 将下载的 "ffmpeg.exe" 和 "yt-dlp.exe" 两个文件，放置到下面的文件夹中 (点击“打开目录”可直接访问)：\n\n${binDir}`,
                     buttons: ['打开目录并退出', '仅退出']
                 });
-                // 即使用户不点，也打开目录方便操作
                 shell.openPath(binDir);
                 return { shouldContinue: false };
 
-            // --- Case 2: 退出应用 ---
-            case 2:
+            case 2: // 退出应用
             default:
                 return { shouldContinue: false };
         }
     }
 
-    // --- 3. 所有组件就绪，继续初始化流程 ---
     const config = {
         MEDIA_ROOT: path.join(userDataPath, 'media'),
         VIDEOS_DIR: path.join(userDataPath, 'media', 'videos'),

@@ -117,7 +117,6 @@
                         </button>
                         <button id="empty-state-import-btn" class="action-btn secondary-btn">
                             <svg viewBox="0 0 24 24" width="18" height="18"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg>
-                            <!-- 【修改】按钮文案变更为“导入本地资源” -->
                             导入本地资源
                         </button>
                     </div>
@@ -231,16 +230,13 @@
                         <textarea id="url-or-search-input" placeholder="粘贴链接 或 输入歌曲/歌手名..."></textarea>
                         <div id="download-actions-container" class="download-actions-container">
                             <button id="import-local-btn" class="action-btn">
-                                <!-- 【修改】按钮文案变更为“导入本地资源” -->
                                 <span class="btn-text">导入本地资源</span>
                                 <span class="btn-loader"></span>
                             </button>
-                            <!-- 下载按钮 -->
                             <button id="start-download-btn" class="action-btn" style="display: none;">
                                 <span class="btn-text">开始下载</span>
                                 <span class="btn-loader"></span>
                             </button>
-                            <!-- 在线音乐搜索按钮 -->
                             <button id="search-netease-btn" class="action-btn">
                                 <span class="btn-text">搜索</span>
                                 <span class="btn-loader"></span>
@@ -249,12 +245,8 @@
                         <div id="download-status" class="download-status"></div>
                     </div>
                     <div id="search-results-container" class="search-results-container">
-                        <ul id="search-results-list" class="playlist">
-                            <!-- 搜索/下载结果将显示在这里 -->
-                        </ul>
-                        <div id="pagination-controls" class="pagination-controls">
-                            <!-- 分页按钮由 JS 动态生成 -->
-                        </div>
+                        <ul id="search-results-list" class="playlist"></ul>
+                        <div id="pagination-controls" class="pagination-controls"></div>
                     </div>
                 </div>
             </div>
@@ -271,22 +263,14 @@
             </div>
             <div class="main-controls">
                 <div class="control-buttons">
-                    <button id="mobile-lyrics-btn" class="control-btn mobile-only-btn" title="显示/隐藏歌词">
-                        <svg viewBox="0 0 24 24"><path d="M6 4h12v2H6V4zm0 4h12v2H6V8zm0 4h8v2H6v-2zm0 4h6v2H6v-2zM4 2h2v20H4V2zm14 0h2v20h-2V2z"/></svg>
-                    </button>
-                    <button id="prev-btn" class="control-btn" title="上一首">
-                        <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"></path></svg>
-                    </button>
+                    <button id="mobile-lyrics-btn" class="control-btn mobile-only-btn" title="显示/隐藏歌词"><svg viewBox="0 0 24 24"><path d="M6 4h12v2H6V4zm0 4h12v2H6V8zm0 4h8v2H6v-2zm0 4h6v2H6v-2zM4 2h2v20H4V2zm14 0h2v20h-2V2z"/></svg></button>
+                    <button id="prev-btn" class="control-btn" title="上一首"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"></path></svg></button>
                     <button id="play-pause-btn" class="control-btn play-btn" title="播放">
                         <svg class="play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>
                         <svg class="pause-icon" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>
                     </button>
-                    <button id="next-btn" class="control-btn" title="下一首">
-                        <svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zm-3.5 6l-8.5 6V6z"></path></svg>
-                    </button>
-                    <button id="mobile-playlist-btn" class="control-btn mobile-only-btn" title="下载列表">
-                        <svg viewBox="0 0 24 24"><path d="M3 6h14v2H3V6zm0 5h14v2H3v-2zm0 5h10v2H3v-2zM17 10v8l5-4-5-4z"></path></svg>
-                    </button>
+                    <button id="next-btn" class="control-btn" title="下一首"><svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zm-3.5 6l-8.5 6V6z"></path></svg></button>
+                    <button id="mobile-playlist-btn" class="control-btn mobile-only-btn" title="下载列表"><svg viewBox="0 0 24 24"><path d="M3 6h14v2H3V6zm0 5h14v2H3v-2zm0 5h10v2H3v-2zM17 10v8l5-4-5-4z"></path></svg></button>
                 </div>
                 <div class="progress-container">
                     <span id="current-time">0:00</span>
@@ -303,16 +287,12 @@
                     <svg class="mode-icon shuffle-icon" viewBox="0 0 24 24"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"></path></svg>
                 </button>
                 <button id="lyrics-btn" class="control-btn" title="显示/隐藏歌词"><svg viewBox="0 0 24 24"><path d="M6 4h12v2H6V4zm0 4h12v2H6V8zm0 4h8v2H6v-2zm0 4h6v2H6v-2zM4 2h2v20H4V2zm14 0h2v20h-2V2z"/></svg></button>
-                <!-- 视频内容全屏按钮 -->
                 <button id="fullscreen-btn" class="control-btn" title="全屏">
                     <svg class="fullscreen-enter-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"></path></svg>
                     <svg class="fullscreen-exit-icon" viewBox="0 0 24 24"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"></path></svg>
                 </button>
-                <button id="download-panel-btn" class="control-btn" title="添加资源">
-                    <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path></svg>
-                </button>
+                <button id="download-panel-btn" class="control-btn" title="添加资源"><svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path></svg></button>
                 <button id="playlist-btn" class="control-btn" title="下载列表"><svg viewBox="0 0 24 24"><path d="M3 6h14v2H3V6zm0 5h14v2H3v-2zm0 5h10v2H3v-2zM17 10v8l5-4-5-4z"></path></svg></button>
-
                 <div class="volume-container">
                     <button id="volume-btn" class="control-btn" title="静音">
                         <svg class="volume-icon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"></path></svg>
@@ -325,11 +305,7 @@
     </div>
 
     <!-- Custom Context Menu -->
-    <div id="custom-context-menu" class="custom-context-menu">
-        <ul>
-            <!-- Dynamically populated by script.js -->
-        </ul>
-    </div>
+    <div id="custom-context-menu" class="custom-context-menu"><ul></ul></div>
 
     <!-- 快捷键录制模态框 -->
     <div class="modal-overlay" id="shortcut-modal-overlay">
@@ -351,98 +327,36 @@
         </div>
     </div>
 
+    <!-- ========================================================================= -->
+    <!-- 【新增】核心组件下载进度模态框                                          -->
+    <!-- ========================================================================= -->
+    <div class="modal-overlay" id="download-progress-modal">
+        <div class="modal-content download-progress-content">
+            <h3 id="download-progress-title">正在准备核心组件...</h3>
+            <p id="download-progress-file">请稍候</p>
+            <div class="progress-bar-container">
+                <div id="download-progress-bar" class="progress-bar-inner"></div>
+            </div>
+            <p id="download-progress-percent">0%</p>
+        </div>
+    </div>
+    <!-- ========================================================================= -->
+
     <!-- 提示消息元素 -->
     <div id="toast-notification" class="toast"></div>
 
     <!-- Container for HTML templates -->
     <div id="templates" style="display: none;">
-        <!-- 单个歌词行模板 -->
-        <template id="template-lyric-line">
-            <p></p>
-        </template>
-
-        <!-- 无歌词提示模板 -->
-        <template id="template-no-lyrics">
-            <p class="no-lyrics">暂无歌词</p>
-        </template>
-
-        <!-- 播放列表项模板 -->
-        <template id="template-playlist-item">
-            <li class="playlist-item">
-                <div class="playlist-item-main-content">
-                    <div class="playlist-icon"></div>
-                    <div class="playlist-details">
-                        <div class="playlist-title"></div>
-                        <div class="playlist-artist"></div>
-                    </div>
-                </div>
-            </li>
-        </template>
-
-        <!-- 搜索结果项模板 -->
-        <template id="template-search-result-item">
-            <li class="playlist-item">
-                <div class="playlist-item-main-content">
-                    <div class="playlist-icon"></div>
-                    <div class="playlist-details">
-                        <div class="playlist-title"></div>
-                        <div class="playlist-artist"></div>
-                    </div>
-                </div>
-                <button class="playlist-download-btn" title="下载到本地">
-                    <svg class="download-icon" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path></svg>
-                    <svg class="spinner-icon" viewBox="0 0 24 24"><path d="M12,4a8,8,0,0,1,7.89,6.7A1.53,1.53,0,0,0,21.38,12h0a1.5,1.5,0,0,0,1.48-1.75,11,11,0,0,0-21.72,0A1.5,1.5,0,0,0,2.62,12h0a1.53,1.53,0,0,0,1.49-1.3A8,8,0,0,1,12,4Z"></path></svg>
-                    <svg class="cached-icon" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg>
-                </button>
-            </li>
-        </template>
-
-        <!-- 播放列表无搜索结果模板 -->
-        <template id="template-playlist-no-results">
-            <li id="playlist-no-results" class="no-results-message">未找到结果</li>
-        </template>
-
-        <!-- 快捷键设置项模板 -->
-        <template id="template-shortcut-item">
-            <li class="shortcut-item">
-                <span class="action-label"></span>
-                <div class="shortcut-display"></div>
-                <div class="actions">
-                    <button class="set-btn">设置</button>
-                    <button class="clear-btn">清除</button>
-                </div>
-            </li>
-        </template>
-
-        <!-- 单个快捷键按键显示模板 -->
-        <template id="template-key-kbd">
-            <kbd></kbd>
-        </template>
-
-        <!-- 未设置快捷键占位符模板 -->
-        <template id="template-key-placeholder">
-            <span class="placeholder">未设置</span>
-        </template>
-
-        <!-- 录制快捷键时等待输入占位符模板 -->
-        <template id="template-recording-placeholder">
-            <span class="placeholder">等待输入...</span>
-        </template>
-
-        <template id="template-gallery-item">
-            <div class="gallery-item">
-                <img class="gallery-item-art" alt="" loading="lazy" crossorigin="anonymous">
-                <div class="gallery-item-overlay">
-                    <div class="gallery-item-play-icon">
-                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
-                    </div>
-                    <div class="gallery-item-details">
-                        <h4 class="gallery-item-title"></h4>
-                        <p class="gallery-item-artist"></p>
-                    </div>
-                </div>
-            </div>
-        </template>
+        <template id="template-lyric-line"><p></p></template>
+        <template id="template-no-lyrics"><p class="no-lyrics">暂无歌词</p></template>
+        <template id="template-playlist-item"><li class="playlist-item"><div class="playlist-item-main-content"><div class="playlist-icon"></div><div class="playlist-details"><div class="playlist-title"></div><div class="playlist-artist"></div></div></div></li></template>
+        <template id="template-search-result-item"><li class="playlist-item"><div class="playlist-item-main-content"><div class="playlist-icon"></div><div class="playlist-details"><div class="playlist-title"></div><div class="playlist-artist"></div></div></div><button class="playlist-download-btn" title="下载到本地"><svg class="download-icon" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path></svg><svg class="spinner-icon" viewBox="0 0 24 24"><path d="M12,4a8,8,0,0,1,7.89,6.7A1.53,1.53,0,0,0,21.38,12h0a1.5,1.5,0,0,0,1.48-1.75,11,11,0,0,0-21.72,0A1.5,1.5,0,0,0,2.62,12h0a1.53,1.53,0,0,0,1.49-1.3A8,8,0,0,1,12,4Z"></path></svg><svg class="cached-icon" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg></button></li></template>
+        <template id="template-playlist-no-results"><li id="playlist-no-results" class="no-results-message">未找到结果</li></template>
+        <template id="template-shortcut-item"><li class="shortcut-item"><span class="action-label"></span><div class="shortcut-display"></div><div class="actions"><button class="set-btn">设置</button><button class="clear-btn">清除</button></div></li></template>
+        <template id="template-key-kbd"><kbd></kbd></template>
+        <template id="template-key-placeholder"><span class="placeholder">未设置</span></template>
+        <template id="template-recording-placeholder"><span class="placeholder">等待输入...</span></template>
+        <template id="template-gallery-item"><div class="gallery-item"><img class="gallery-item-art" alt="" loading="lazy" crossorigin="anonymous"><div class="gallery-item-overlay"><div class="gallery-item-play-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg></div><div class="gallery-item-details"><h4 class="gallery-item-title"></h4><p class="gallery-item-artist"></p></div></div></div></template>
     </div>
 
 </div>

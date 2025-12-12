@@ -1,6 +1,6 @@
-/* components.css */
+/* css/components.css */
 
-/* --- [修改] 通用模态框样式 --- */
+/* --- 通用模态框样式 --- */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -40,74 +40,65 @@
 .shortcut-modal-content .shortcut-key-preview { min-height: 40px; display: flex; justify-content: center; align-items: center; gap: 8px; margin-bottom: 20px; }
 .shortcut-modal-content small { color: var(--text-secondary); }
 
-/* --- [新增] 确认模态框特定样式 --- */
-.confirmation-modal-content {
-    padding: 30px;
-    width: 400px;
-}
-.confirmation-modal-content p {
-    font-size: 16px;
-    color: var(--text-primary);
-    line-height: 1.6;
-    margin-bottom: 24px;
-}
-.confirmation-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-}
-.confirmation-actions .action-btn {
-    padding: 10px 24px;
-    font-size: 14px;
-}
-.action-btn.secondary-btn {
-    background-color: var(--slider-track-color);
-    color: var(--text-primary);
-}
-.action-btn.secondary-btn:hover {
-    background-color: #6a6a6a;
-}
+/* --- 确认模态框特定样式 --- */
+.confirmation-modal-content { padding: 30px; width: 400px; }
+.confirmation-modal-content p { font-size: 16px; color: var(--text-primary); line-height: 1.6; margin-bottom: 24px; }
+.confirmation-actions { display: flex; justify-content: flex-end; gap: 12px; }
+.confirmation-actions .action-btn { padding: 10px 24px; font-size: 14px; }
+.action-btn.secondary-btn { background-color: var(--slider-track-color); color: var(--text-primary); }
+.action-btn.secondary-btn:hover { background-color: #6a6a6a; }
 
-/* [修改] 移除了所有 Tour Tooltip 相关的样式 */
+/* ========================================================================= */
+/* 【新增】下载进度模态框样式                                                  */
+/* ========================================================================= */
+.download-progress-content {
+    width: 450px;
+    max-width: 90vw;
+    padding: 30px;
+    text-align: left;
+}
+.download-progress-content h3 {
+    font-size: 18px;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+}
+.download-progress-content #download-progress-file {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    height: 20px; /* 保证高度，防止抖动 */
+}
+.progress-bar-container {
+    width: 100%;
+    height: 8px;
+    background-color: var(--highlight-bg);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+.progress-bar-inner {
+    width: 0;
+    height: 100%;
+    background-color: var(--primary-color);
+    border-radius: 4px;
+    transition: width 0.2s ease-out;
+}
+.download-progress-content #download-progress-percent {
+    text-align: right;
+    font-size: 14px;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums; /* 数字等宽，防止跳动 */
+}
+/* ========================================================================= */
 
 /* --- Toast Notification --- */
 .toast { visibility: hidden; opacity: 0; position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%); min-width: 250px; background-color: var(--highlight-bg); color: var(--text-primary); text-align: center; border-radius: 4px; padding: 16px; z-index: 10001; box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: opacity 0.5s, visibility 0.5s; font-size: 14px; }
 .toast.show { visibility: visible; opacity: 1; }
+.toast.error { background-color: #d32f2f; color: white; }
+.toast.success { background-color: #388e3c; color: white; }
 
 /* --- Custom Context Menu --- */
-.custom-context-menu {
-    display: none;
-    position: fixed;
-    z-index: 4000;
-    background-color: var(--panel-bg);
-    border-radius: 6px;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-    padding: 6px;
-    min-width: 180px;
-    border: 1px solid var(--highlight-bg);
-}
-.custom-context-menu ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-}
-.custom-context-menu li {
-    padding: 10px 15px;
-    font-size: 14px;
-    color: var(--text-secondary);
-    cursor: pointer;
-    border-radius: 4px;
-    transition: background-color 0.2s ease, color 0.2s ease;
-}
-.custom-context-menu li:hover {
-    background-color: var(--highlight-bg);
-    color: var(--text-primary);
-}
-.step-content p code {
-    background-color: var(--highlight-bg);
-    padding: 2px 5px;
-    border-radius: 4px;
-    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
-    font-size: 0.9em;
-    color: var(--text-primary);
-}
+.custom-context-menu { display: none; position: fixed; z-index: 4000; background-color: var(--panel-bg); border-radius: 6px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); padding: 6px; min-width: 180px; border: 1px solid var(--highlight-bg); }
+.custom-context-menu ul { list-style: none; margin: 0; padding: 0; }
+.custom-context-menu li { padding: 10px 15px; font-size: 14px; color: var(--text-secondary); cursor: pointer; border-radius: 4px; transition: background-color 0.2s ease, color 0.2s ease; }
+.custom-context-menu li:hover { background-color: var(--highlight-bg); color: var(--text-primary); }
