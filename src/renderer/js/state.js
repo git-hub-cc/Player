@@ -30,6 +30,15 @@ export let parsedLyrics = [];
  */
 export let currentModeIndex = 0;
 
+// =========================================================================
+// 【新增】用于存储当前播放速率的状态变量
+// =========================================================================
+/**
+ * @type {number} 当前的播放速率。1.0 为正常速度。
+ */
+export let playbackRate = 1.0;
+// =========================================================================
+
 /**
  * @type {Object} 用户的快捷键设置。
  */
@@ -163,6 +172,14 @@ export function setParsedLyrics(lyrics) {
 export function setCurrentModeIndex(index) {
     currentModeIndex = index;
 }
+
+// =========================================================================
+// 【新增】用于更新播放速率状态的函数
+// =========================================================================
+export function setPlaybackRate(newRate) {
+    playbackRate = newRate;
+}
+// =========================================================================
 
 export function setShortcutSettings(settings) {
     shortcutSettings = settings;

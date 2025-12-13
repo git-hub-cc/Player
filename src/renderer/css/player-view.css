@@ -1,128 +1,152 @@
 /* player-view.css */
+
 /* --- 媒体与歌词视图 --- */
 .media-visualizer, .lyrics-container {
+    /* 使用绝对定位将媒体、封面和歌词层叠在主视图区域 */
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
+    /* 使用 flex 布局使其子元素居中 */
     display: flex;
     justify-content: center;
     align-items: center;
 }
+
 .media-visualizer {
+    /* 为媒体内容提供一些内边距，使其与边缘有呼吸空间 */
     padding: 24px;
 }
 
 /* --- 视频元素自适应 --- */
 #media-player {
+    /* 确保视频元素不会超出其容器 */
     max-width: 100%;
     max-height: 100%;
-    background-color: #000;
-    border-radius: 12px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    background-color: #000; /* 视频未加载或有黑边时的背景色 */
+    border-radius: 12px; /* 与播放器容器保持一致的圆角 */
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2); /* 添加轻微阴影以增强立体感 */
 }
 
+/* --- 音频可视化 Canvas --- */
 #audio-visualizer {
+    /* 绝对定位，使其可以覆盖在背景之上，专辑封面之下 */
     position: absolute;
+    /* 设定一个基础尺寸 */
     width: 600px;
     height: 600px;
+    /* 限制最大尺寸，以适应较小的窗口 */
     max-width: 90vw;
     max-height: 90vw;
-    pointer-events: none;
-    z-index: 1;
+    pointer-events: none; /* 确保 Canvas 不会捕获鼠标事件 */
+    z-index: 1; /* 层级低于专辑封面 */
 }
 
+/* --- 专辑封面容器 --- */
 .album-art-container {
-    display: none;
+    display: none; /* 默认隐藏，在音频播放时由 JS 控制显示 */
     width: 100%;
     height: auto;
-    max-width: 400px;
-    max-height: 80%;
-    aspect-ratio: 1 / 1;
-    background-color: #000;
+    max-width: 400px; /* 限制最大宽度 */
+    max-height: 80%; /* 限制最大高度 */
+    aspect-ratio: 1 / 1; /* 强制保持正方形比例 */
+    background-color: #000; /* 图片加载失败时的底色 */
     border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-    z-index: 2;
-    position: relative;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5); /* 更强的阴影，使其突出 */
+    z-index: 2; /* 层级高于音频可视化 */
+    position: relative; /* 确保 z-index 生效 */
+    /* 【核心修复】使用 CSS 属性禁止元素的拖拽行为 */
+    -webkit-user-drag: none;
+    user-drag: none;
 }
-
 
 #album-art {
     width: 100%;
     height: 100%;
-    object-fit: cover;
-    border-radius: inherit;
+    object-fit: cover; /* 裁剪图片以填充容器，保持宽高比 */
+    border-radius: inherit; /* 继承父容器的圆角 */
 }
 
 /* --- 故障效果样式 --- */
 .main-view.glitching .media-visualizer {
+    /* 应用 SVG 滤镜实现故障效果 */
     filter: url(#glitch-filter-spotify);
 }
+
 .glitch-overlay {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    pointer-events: none;
-    z-index: 1500;
+    pointer-events: none; /* 确保不影响交互 */
+    z-index: 1500; /* 确保在最顶层（歌词之下） */
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.1s ease-out, visibility 0s 0.1s;
-    mix-blend-mode: screen;
+    mix-blend-mode: screen; /* 混合模式，产生更佳的视觉效果 */
 }
+
 .glitch-overlay.active {
     opacity: 1;
     visibility: visible;
     transition: opacity 0.05s ease-in, visibility 0s;
 }
+
 .glitch-overlay rect {
+    /* 确保 SVG 矩形边缘清晰 */
     shape-rendering: crispEdges;
 }
 
 /* --- 歌词样式 --- */
 .lyrics-container {
-    z-index: 1000;
-    background-color: rgba(0,0,0,0.7);
-    backdrop-filter: blur(15px);
+    z-index: 1000; /* 高 z-index，确保在顶层 */
+    background-color: rgba(0,0,0,0.7); /* 半透明背景 */
+    backdrop-filter: blur(15px); /* 毛玻璃效果 */
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.3s ease, visibility 0.3s ease;
-    cursor: pointer;
+    cursor: pointer; /* 提示用户可以点击关闭 */
 }
+
 .lyrics-container.active {
     opacity: 1;
     visibility: visible;
 }
+
 #lyrics-list-wrapper {
     width: 100%;
     height: 80%;
     max-height: 500px;
-    overflow: hidden;
-    touch-action: none;
+    overflow: hidden; /* 隐藏滚动条，通过 transform 控制滚动 */
+    touch-action: none; /* 禁用触摸默认行为，用于自定义拖拽 */
     position: relative;
-    cursor: default;
+    cursor: default; /* 内部内容使用默认光标 */
+    /* 使用遮罩创建上下两端的渐变透明效果 */
     -webkit-mask-image: linear-gradient(transparent 0%, black 15%, black 85%, transparent 100%);
     mask-image: linear-gradient(transparent 0%, black 15%, black 85%, transparent 100%);
 }
 
 .lyrics-list {
+    /* 使用 clamp 函数实现响应式字体大小 */
     font-size: clamp(18px, 2.5vw, 24px);
     font-weight: bold;
     color: var(--text-secondary);
     text-align: center;
+    /* 平滑的滚动过渡效果 */
     transition: transform 0.6s cubic-bezier(0.645, 0.045, 0.355, 1);
 }
+
 .lyrics-list.dragging {
-    cursor: grabbing;
-    transition: none;
+    cursor: grabbing; /* 拖拽时显示抓取手势 */
+    transition: none; /* 拖拽时禁用过渡，以获得即时响应 */
 }
 
 /* --- 歌词拖拽指示器样式 --- */
 .lyrics-drag-indicator {
     position: absolute;
-    top: 50%;
+    top: 50%; /* 垂直居中 */
     left: 20px;
     right: 20px;
     transform: translateY(-50%);
@@ -130,10 +154,11 @@
     align-items: center;
     gap: 15px;
     pointer-events: none;
-    opacity: 0;
+    opacity: 0; /* 默认隐藏 */
     transition: opacity 0.2s ease;
     z-index: 1002;
 }
+
 .lyrics-drag-indicator.active { opacity: 1; }
 .lyrics-drag-line { flex-grow: 1; height: 1px; background-color: var(--primary-color); }
 .lyrics-drag-time { font-size: 13px; color: #000; background-color: var(--primary-color); padding: 4px 8px; border-radius: 4px; font-weight: 500; }
@@ -145,9 +170,10 @@
 }
 
 .lyrics-list p.active {
-    color: var(--text-primary);
-    transform: scale(1.1);
+    color: var(--text-primary); /* 高亮当前行歌词 */
+    transform: scale(1.1); /* 轻微放大效果 */
 }
+
 .lyrics-list .no-lyrics {
     color: var(--text-secondary);
     font-size: 16px;
@@ -165,7 +191,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    display: none;
+    display: none; /* 默认隐藏 */
     flex-direction: column;
     justify-content: center;
     align-items: center;
@@ -173,13 +199,16 @@
     z-index: 10;
     background: transparent;
 }
+
 .main-view.is-empty .empty-state-view {
-    display: flex;
-    animation: fadeIn 0.5s ease-out;
+    display: flex; /* 当主视图为空时显示 */
+    animation: fadeIn 0.5s ease-out; /* 淡入动画 */
 }
+
 .main-view.is-empty .media-visualizer {
-    display: none;
+    display: none; /* 隐藏媒体可视区域 */
 }
+
 .empty-content {
     background-color: rgba(255, 255, 255, 0.05);
     padding: 40px;
@@ -190,46 +219,55 @@
     width: 90%;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
+
 .empty-icon {
     font-size: 64px;
     color: var(--text-secondary);
     margin-bottom: 20px;
     opacity: 0.7;
 }
+
 .empty-icon svg {
     width: 64px;
     height: 64px;
     fill: currentColor;
 }
+
 .empty-content h1 {
     font-size: 24px;
     margin-bottom: 10px;
     color: var(--text-primary);
 }
+
 .empty-content p {
     color: var(--text-secondary);
     margin-bottom: 30px;
     font-size: 14px;
 }
+
 .empty-actions {
     display: flex;
     flex-direction: column;
     gap: 12px;
 }
+
 .empty-actions .action-btn {
     width: 100%;
     justify-content: center;
     gap: 8px;
 }
+
 .empty-actions .action-btn.secondary-btn {
     background-color: transparent;
     border: 1px solid var(--text-secondary);
     color: var(--text-primary);
 }
+
 .empty-actions .action-btn.secondary-btn:hover {
     background-color: rgba(255, 255, 255, 0.1);
     border-color: var(--text-primary);
 }
+
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(20px); }
     to { opacity: 1; transform: translateY(0); }
@@ -237,37 +275,54 @@
 
 /* --- 沉浸式全屏模式 (双击触发) --- */
 .main-view {
+    /* 为进入/退出全屏提供平滑的过渡动画 */
     transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
+
 .main-view.main-view-fullscreen {
-    position: fixed;
+    position: fixed; /* 固定定位，覆盖整个视口 */
     top: 0;
     left: 0;
     z-index: 3000;
     width: 100vw;
     height: 100vh;
-    border-radius: 0;
-    padding: 0;
+    border-radius: 0; /* 移除圆角 */
 }
+
 .main-view.main-view-fullscreen .media-visualizer {
-    padding: 0;
+    padding: 0; /* 移除内边距，使内容填满屏幕 */
 }
-.main-view.main-view-fullscreen #media-player,
-.main-view.main-view-fullscreen .album-art-container {
+
+/* 视频全屏样式 */
+.main-view.main-view-fullscreen #media-player {
     width: 100%;
     height: 100%;
     max-width: 100%;
     max-height: 100%;
     border-radius: 0;
-}
-.main-view.main-view-fullscreen #media-player,
-.main-view.main-view-fullscreen #album-art {
-    object-fit: contain;
+    object-fit: contain; /* 保持视频宽高比，完整显示 */
 }
 
-/* ========================================================================= */
-/* 【新增】快进/快退/倍速播放的UI反馈样式 */
-/* ========================================================================= */
+/* 音频全屏样式 - 专辑封面 */
+.main-view.main-view-fullscreen .album-art-container {
+    width: auto; /* 重置宽度，让其根据高度和比例自动计算 */
+    height: auto;
+    /* 核心修复：限制最大尺寸为视口较小边的85%，使其成为一个居中的大方块 */
+    max-width: 85vh;
+    max-height: 85vw;
+    border-radius: 12px; /* 全屏时也保留一些圆角，更美观 */
+}
+
+/* 音频全屏样式 - 音频可视化 */
+.main-view.main-view-fullscreen #audio-visualizer {
+    /* 核心修复：让可视化效果填满整个全屏背景 */
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+}
+
+/* --- 快进/快退/倍速播放的UI反馈样式 --- */
 .seek-feedback {
     position: absolute;
     top: 50%;
@@ -284,13 +339,40 @@
     visibility: hidden;
     pointer-events: none;
     transition: opacity 0.2s ease-out, visibility 0s 0.2s, transform 0.2s ease-out;
-    white-space: nowrap;
+    white-space: nowrap; /* 防止文字换行 */
 }
 
 .seek-feedback.visible {
     opacity: 1;
     visibility: visible;
-    transform: translate(-50%, -50%) scale(1.1);
+    transform: translate(-50%, -50%) scale(1.1); /* 轻微放大动画 */
     transition: opacity 0.1s ease-in, visibility 0s, transform 0.1s ease-in;
+}
+
+/* ========================================================================= */
+/* 【新增】播放速度反馈的 UI 样式 */
+/* ========================================================================= */
+.speed-feedback {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: var(--text-primary);
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 1600; /* 确保在顶层 */
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.3s ease-out, visibility 0s 0.3s;
+    font-variant-numeric: tabular-nums; /* 使数字等宽，防止跳动 */
+}
+
+.speed-feedback.visible {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.1s ease-in, visibility 0s;
 }
 /* ========================================================================= */

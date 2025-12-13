@@ -98,7 +98,7 @@
                 <video id="media-player" playsinline crossorigin="anonymous"></video>
                 <canvas id="audio-visualizer"></canvas>
                 <div id="album-art-container" class="album-art-container">
-                    <img id="album-art" src="" alt="Album Art" crossorigin="anonymous">
+                    <img id="album-art" src="" alt="Album Art" crossorigin="anonymous" draggable="false">
                 </div>
             </div>
 
@@ -133,11 +133,8 @@
                 </div>
             </div>
 
-            <!-- ========================================================================= -->
-            <!-- 【新增】用于显示快进/快退等操作反馈的UI元素 -->
-            <!-- ========================================================================= -->
             <div id="seek-feedback" class="seek-feedback"></div>
-            <!-- ========================================================================= -->
+            <div id="speed-feedback" class="speed-feedback"></div>
 
             <svg id="glitch-overlay" class="glitch-overlay" aria-hidden="true">
                 <defs>
@@ -165,10 +162,10 @@
             </svg>
         </main>
 
-        <!-- 下载列表面板 (原播放列表) -->
+        <!-- 媒体库面板 (原播放列表) -->
         <aside id="playlist-panel" class="playlist-panel">
             <div class="panel-header">
-                <h2>下载列表</h2>
+                <h2>媒体库</h2>
                 <div class="panel-header-actions">
                     <button id="open-media-folder-btn" class="control-btn" title="打开媒体目录">
                         <svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"></path></svg>
@@ -223,7 +220,7 @@
             </ul>
         </aside>
 
-        <!-- 下载/搜索面板 -->
+        <!-- 添加资源面板 -->
         <aside id="download-panel" class="download-panel">
             <div class="panel-header">
                 <h2>添加资源</h2>
@@ -263,7 +260,7 @@
         <!-- 底部播放控制条 -->
         <footer class="player-controls">
             <div class="track-info">
-                <img id="control-album-art" src="" alt="Album Art" crossorigin="anonymous">
+                <img id="control-album-art" src="" alt="Album Art" crossorigin="anonymous" draggable="false">
                 <div class="track-details">
                     <div id="track-title">选择媒体</div>
                     <div id="track-artist">开始播放</div>
@@ -278,7 +275,7 @@
                         <svg class="pause-icon" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>
                     </button>
                     <button id="next-btn" class="control-btn" title="下一首"><svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zm-3.5 6l-8.5 6V6z"></path></svg></button>
-                    <button id="mobile-playlist-btn" class="control-btn mobile-only-btn" title="下载列表"><svg viewBox="0 0 24 24"><path d="M3 6h14v2H3V6zm0 5h14v2H3v-2zm0 5h10v2H3v-2zM17 10v8l5-4-5-4z"></path></svg></button>
+                    <button id="mobile-playlist-btn" class="control-btn mobile-only-btn" title="媒体库"><svg viewBox="0 0 24 24"><path d="M3 6h14v2H3V6zm0 5h14v2H3v-2zm0 5h10v2H3v-2zM17 10v8l5-4-5-4z"></path></svg></button>
                 </div>
                 <div class="progress-container">
                     <span id="current-time">0:00</span>
@@ -287,8 +284,27 @@
                 </div>
             </div>
             <div class="side-controls">
-                <button id="shortcut-btn" class="control-btn" title="快捷键设置"><svg viewBox="0 0 24 24"><path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"></path></svg></button>
-                <button id="info-btn" class="control-btn" title="关于"><svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"></path></svg></button>
+                <div class="more-options-container">
+                    <button id="more-options-btn" class="control-btn" title="更多选项">
+                        <svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"></path></svg>
+                    </button>
+                    <!-- ========================================================================= -->
+                    <!-- 【核心修改】将“更多选项”的菜单移动到按钮的包裹容器内 -->
+                    <!-- ========================================================================= -->
+                    <div id="more-options-menu" class="more-options-menu">
+                        <ul>
+                            <li id="shortcut-btn">
+                                <svg viewBox="0 0 24 24"><path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"></path></svg>
+                                <span>快捷键设置</span>
+                            </li>
+                            <li id="info-btn">
+                                <svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"></path></svg>
+                                <span>关于项目</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
                 <button id="mode-btn" class="control-btn" title="列表循环">
                     <svg class="mode-icon list-loop-icon" viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"></path></svg>
                     <svg class="mode-icon single-loop-icon" viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z M13.25 12.75h-1.5v-3.5h-1v3.5h-1.5v1h4v-1z"></path></svg>
@@ -299,8 +315,9 @@
                     <svg class="fullscreen-enter-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"></path></svg>
                     <svg class="fullscreen-exit-icon" viewBox="0 0 24 24"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"></path></svg>
                 </button>
-                <button id="download-panel-btn" class="control-btn" title="添加资源"><svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path></svg></button>
-                <button id="playlist-btn" class="control-btn" title="下载列表"><svg viewBox="0 0 24 24"><path d="M3 6h14v2H3V6zm0 5h14v2H3v-2zm0 5h10v2H3v-2zM17 10v8l5-4-5-4z"></path></svg></button>
+                <button id="download-panel-btn" class="control-btn" title="添加资源"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"></path></svg></button>
+                <button id="playlist-btn" class="control-btn" title="媒体库"><svg viewBox="0 0 24 24"><path d="M3 6h14v2H3V6zm0 5h14v2H3v-2zm0 5h10v2H3v-2zM17 10v8l5-4-5-4z"></path></svg></button>
+
                 <div class="volume-container">
                     <button id="volume-btn" class="control-btn" title="静音">
                         <svg class="volume-icon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"></path></svg>

@@ -52,11 +52,13 @@ export let openMediaFolderBtn = document.getElementById('open-media-folder-btn')
 
 // --- 信息面板 ---
 export let infoPanel = document.getElementById('info-panel');
+// 【核心修改】直接引用菜单项中的按钮，确保事件监听有效
 export let infoBtn = document.getElementById('info-btn');
 export let closeInfoBtn = document.getElementById('close-info-btn');
 
 // --- 快捷键面板 ---
 export let shortcutPanel = document.getElementById('shortcut-panel');
+// 【核心修改】直接引用菜单项中的按钮
 export let shortcutBtn = document.getElementById('shortcut-btn');
 export let closeShortcutBtn = document.getElementById('close-shortcut-btn');
 export let shortcutListEl = document.getElementById('shortcut-list');
@@ -113,12 +115,18 @@ export let bgCtx = bgCanvas.getContext('2d', { willReadFrequently: true });
 export let templatesContainer = document.getElementById('templates');
 export let docElement = document.documentElement;
 
+// --- 反馈 UI 元素 ---
+export let seekFeedbackEl = document.getElementById('seek-feedback');
+export let speedFeedbackEl = document.getElementById('speed-feedback');
+
 // =========================================================================
-// 【修复】将侧边面板集合的定义移至此处并导出，以解决 "is not iterable" 错误。
-// 这样可以确保其他模块（如 ui.js 和 renderer.js）能通过 dom 模块统一访问这个数组。
+// 【核心修改】新增对“更多选项”按钮和菜单的引用
 // =========================================================================
+export let moreOptionsBtn = document.getElementById('more-options-btn');
+export let moreOptionsMenu = document.getElementById('more-options-menu');
+// =========================================================================
+
 export const allSidePanels = [playlistPanel, infoPanel, shortcutPanel, downloadPanel];
-// =========================================================================
 
 // --- DOM 查询/创建辅助函数 ---
 export const getTemplateElementById = (id) => document.getElementById(id);
