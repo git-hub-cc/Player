@@ -13,9 +13,6 @@ const ITEMS_PER_PAGE = 10;
 
 /**
  * 将后端返回的统一数据转换为前端播放器使用的曲目对象。
- * 兼容新旧两种 API 的数据结构，并缓存 pic_id 和 source 以便按需获取封面。
- * @param {object} apiTrack - 后端返回的标准化曲目数据。
- * @returns {object} - 转换后的曲目对象。
  */
 function transformApiData(apiTrack) {
     const title = apiTrack.title || '未知标题';
@@ -28,7 +25,6 @@ function transformApiData(apiTrack) {
         id: apiTrack.id,
         source: apiTrack.source || 'joox',
         lyricId: apiTrack.lyricId,
-        // 缓存 pic_id 以便在播放或下载时按需获取封面
         pic_id: apiTrack.pic_id,
         originalSrc: apiTrack.url,
         originalAlbumArt: apiTrack.pic,
@@ -48,40 +44,31 @@ function transformApiData(apiTrack) {
     return track;
 }
 
-
 /**
  * 根据输入内容更新下载面板的模式（URL下载或关键词搜索）。
- * 此函数会自动从粘贴的文本中提取第一个有效的 URL。
  */
 function updateInputMode() {
     const originalText = dom.urlOrSearchInput.value;
     let processedText = originalText.trim();
 
-    // 使用正则表达式从输入文本中提取第一个有效的 URL
-    // 这允许用户粘贴包含额外文字的分享内容，系统会自动处理。
     const urlMatch = processedText.match(/https?:\/\/[^\s]+/);
     if (urlMatch) {
-        processedText = urlMatch[0]; // 仅使用匹配到的 URL 部分
-        // 如果提取出的 URL 与输入框内容不一致，则更新输入框，为用户提供清晰的反馈
+        processedText = urlMatch[0];
         if (dom.urlOrSearchInput.value.trim() !== processedText) {
             dom.urlOrSearchInput.value = processedText;
         }
     }
 
     const isUrlMode = processedText.toLowerCase().startsWith('http');
-
-    // 为所有支持的链接类型创建明确的布尔标志
     const isBilibiliUrl = isUrlMode && processedText.includes('bilibili.com/video/');
     const isJableUrl = isUrlMode && processedText.includes('jable.tv/videos/');
     const isYoutubeUrl = isUrlMode && (processedText.includes('youtube.com/') || processedText.includes('youtu.be/'));
     const isDouyinUrl = isUrlMode && (processedText.includes('douyin.com') || processedText.includes('iesdouyin.com'));
 
-    // 根据是否是URL，统一控制下载/搜索按钮的显隐
     dom.startDownloadBtn.style.display = isUrlMode ? 'flex' : 'none';
     dom.searchNeteaseBtn.style.display = isUrlMode ? 'none' : 'flex';
     document.getElementById('import-local-btn').style.display = 'flex';
 
-    // 使用更严谨的 if-else 链来设置提示文本
     if (isBilibiliUrl) {
         dom.panelDescription.textContent = '检测到B站链接，点击“开始下载”进行处理。';
     } else if (isJableUrl) {
@@ -91,19 +78,14 @@ function updateInputMode() {
     } else if (isDouyinUrl) {
         dom.panelDescription.textContent = '检测到抖音链接，点击“开始下载”进行处理。';
     } else if (isUrlMode) {
-        // 为无法识别的URL提供通用提示
         dom.panelDescription.textContent = '检测到未知链接，将尝试作为抖音视频处理...';
     } else {
-        // 默认的搜索模式提示
         dom.panelDescription.textContent = '输入歌曲名进行在线搜索，或粘贴视频分享链接进行本地下载。';
     }
 }
 
-
 /**
  * 更新下载面板底部的状态信息。
- * @param {string} message - 要显示的消息。
- * @param {'default' | 'success' | 'error'} type - 消息类型。
  */
 function updateStatus(message, type = 'default') {
     const statusEl = dom.downloadStatusEl;
@@ -116,7 +98,6 @@ function updateStatus(message, type = 'default') {
 
 /**
  * 向主进程请求删除一个已下载的曲目。
- * @param {object} track - 要删除的曲目对象。
  */
 export async function requestTrackDeletion(track) {
     const encodedSrc = track.src;
@@ -140,12 +121,8 @@ export async function requestTrackDeletion(track) {
 
 /**
  * 请求主进程解析一个曲目的可播放 URL 和封面 URL。
- * @param {object} track - 曲目信息对象。
- * @returns {Promise<object>} - 包含可播放 URL 和封面 URL 的对象。
- * @throws {Error} 如果无法获取 URL。
  */
 export async function resolvePlayableUrl(track) {
-    // 如果是本地媒体，直接返回
     if (track.src && track.src.startsWith('media://')) {
         return { playableSrc: track.src, albumArtUrl: track.albumArt };
     }
@@ -156,7 +133,6 @@ export async function resolvePlayableUrl(track) {
 
     if (result.success && result.url) {
         console.log(`[Resolver] 成功获取可播放URL: ${result.url.substring(0, 50)}...`);
-        // 更新传入的 track 对象的属性，以便后续操作（如下载）可以利用这些已获取的数据
         track.src = result.url;
         if (result.albumArtUrl) {
             track.albumArt = result.albumArtUrl;
@@ -168,21 +144,16 @@ export async function resolvePlayableUrl(track) {
     }
 }
 
-
 /**
  * 请求主进程缓存（下载）一个在线曲目。
- * @param {object} trackData - 包含原始 URL 的曲目数据。
  */
 function requestTrackCache(trackData) {
     console.log(`[Cache] 发送缓存请求: ${trackData.title}`);
     window.electronAPI.cacheTrack(trackData);
 }
 
-
 /**
  * 执行在线搜索。
- * @param {string} query - 搜索关键词。
- * @param {number} page - 要搜索的页码。
  */
 async function performSearch(query, page = 1) {
     if (!query) {
@@ -222,10 +193,8 @@ async function performSearch(query, page = 1) {
     }
 }
 
-
 /**
  * 向主进程发送下载请求（通用）。
- * @param {HTMLElement} clickedButton - 被点击的按钮元素。
  */
 function sendDownloadRequest(clickedButton) {
     const urlText = dom.urlOrSearchInput.value;
@@ -283,7 +252,6 @@ function setupPaginationListener() {
 
 /**
  * 处理“导入本地资源”按钮点击事件。
- * @param {Event} event
  */
 async function handleLocalImportClick(event) {
     const importBtn = event.currentTarget;
@@ -327,6 +295,110 @@ async function handleLocalImportClick(event) {
 }
 
 /**
+ * =========================================================================
+ * 【核心修复】删除了 'require('electron')'，改用 DOM 操作和 IPC API
+ * =========================================================================
+ * @param {string} toolName - 缺失的工具名称 ('ffmpeg' 或 'yt-dlp')
+ * @param {string} featureName - 触发该错误的功能描述
+ */
+async function handleMissingTool(toolName, featureName) {
+    const toolDisplayName = toolName === 'ffmpeg' ? 'FFmpeg' : 'yt-dlp';
+    const message = `${featureName} 功能需要 ${toolDisplayName} 组件才能运行。\n\n您可以选择自动下载并安装（约 20-150MB），或者查看如何手动下载。`;
+
+    const modal = document.getElementById('confirmation-modal-overlay');
+    const msgEl = document.getElementById('confirmation-message');
+    const cancelBtn = document.getElementById('cancel-btn');
+    const confirmBtn = document.getElementById('confirm-btn');
+
+    // 临时修改按钮文本和行为
+    const originalCancelText = cancelBtn.textContent;
+    const originalConfirmText = confirmBtn.textContent;
+
+    cancelBtn.textContent = "手动下载说明";
+    confirmBtn.textContent = "自动下载";
+
+    // 创建一个额外的“取消”按钮用于关闭
+    let closeBtn = document.getElementById('temp-close-btn');
+    if (!closeBtn) {
+        closeBtn = document.createElement('button');
+        closeBtn.id = 'temp-close-btn';
+        closeBtn.className = 'action-btn secondary-btn';
+        closeBtn.style.marginRight = '12px';
+        const actionsContainer = modal.querySelector('.confirmation-actions');
+        actionsContainer.insertBefore(closeBtn, cancelBtn);
+    }
+    closeBtn.textContent = '取消';
+    closeBtn.style.display = 'block';
+
+    msgEl.innerText = message;
+    modal.classList.add('visible');
+
+    const cleanup = () => {
+        modal.classList.remove('visible');
+        cancelBtn.textContent = originalCancelText;
+        confirmBtn.textContent = originalConfirmText;
+        if (closeBtn) closeBtn.style.display = 'none'; // 隐藏而不是移除，以便复用或防止报错
+
+        // 移除所有临时监听器，通过克隆节点的方式是最快的方法
+        // 注意：这会移除原始的事件监听器，所以在 renderer.js 中调用 showConfirmationModal 时
+        // 必须确保它每次都重新绑定事件（目前的 ui.js 实现是支持的）
+        const newCloseBtn = closeBtn.cloneNode(true);
+        closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+        closeBtn = newCloseBtn;
+
+        const newCancelBtn = cancelBtn.cloneNode(true);
+        cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+        const newConfirmBtn = confirmBtn.cloneNode(true);
+        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+    };
+
+    return new Promise((resolve) => {
+        // 自动下载
+        confirmBtn.onclick = async () => {
+            cleanup();
+            // 触发下载模态框
+            const progressModal = document.getElementById('download-progress-modal');
+            progressModal.classList.add('visible');
+            try {
+                // 调用 IPC 接口
+                const result = await window.electronAPI.downloadCoreTool(toolName);
+                if (result.success) {
+                    showToast(`${toolDisplayName} 安装成功！请重试刚才的操作。`, 'success');
+                } else {
+                    showToast(`安装失败: ${result.error}`, 'error');
+                }
+            } catch (err) {
+                showToast(`安装出错: ${err.message}`, 'error');
+            } finally {
+                progressModal.classList.remove('visible');
+            }
+            resolve(true);
+        };
+
+        // 手动说明
+        cancelBtn.onclick = async () => {
+            cleanup();
+            // 这里调用通用的弹窗，但需要确保它是异步的，不会立即被覆盖
+            setTimeout(async () => {
+                await showConfirmationModal(
+                    `手动下载步骤：\n\n1. 访问 GitHub Releases 页面下载 ${toolDisplayName}。\n2. 将下载的 .exe 文件放入应用的数据目录中。\n\n点击“确认”将自动打开该目录。`
+                ).then(async () => {
+                    await window.electronAPI.openToolsFolder();
+                }).catch(() => {});
+            }, 100);
+            resolve(false);
+        };
+
+        // 取消
+        closeBtn.onclick = () => {
+            cleanup();
+            resolve(false);
+        };
+    });
+}
+
+/**
  * 初始化所有下载器相关的事件监听器。
  */
 export function setupDownloaderListeners() {
@@ -347,7 +419,18 @@ export function setupDownloaderListeners() {
     setupPaginationListener();
 
     window.electronAPI.onDownloadStatus((status) => {
-        updateStatus(status.message, status.type);
+        if (status.type === 'error' && status.reason === 'tool_missing') {
+            const toolName = status.missing; // 'ffmpeg' or 'yt-dlp'
+            let featureName = "该";
+            if (toolName === 'ffmpeg') featureName = "视频转换";
+            if (toolName === 'yt-dlp') featureName = "视频下载";
+
+            handleMissingTool(toolName, featureName);
+            updateStatus(`需要安装 ${toolName} 才能继续。`, 'default');
+        } else {
+            updateStatus(status.message, status.type);
+        }
+
         if (status.type === 'success' || status.type === 'error') {
             [dom.startDownloadBtn, importLocalBtn].forEach(btn => {
                 btn.disabled = false;
@@ -357,14 +440,6 @@ export function setupDownloaderListeners() {
     });
 
     window.electronAPI.onNewTrack((newTrack) => {
-        // =========================================================================
-        // 【核心修复】移除重复的事件分发。
-        // 添加新曲目到播放列表的逻辑由 renderer.js 中的主监听器统一处理。
-        // 此处仅负责更新本模块（下载面板）内的UI状态。
-        // =========================================================================
-        // document.dispatchEvent(new CustomEvent('new-track-added', { detail: newTrack }));
-
-        // 此监听器的唯一职责是更新搜索结果列表中的UI状态
         if (dom.searchResultsList) {
             const items = dom.searchResultsList.querySelectorAll('.playlist-item');
             items.forEach(item => {

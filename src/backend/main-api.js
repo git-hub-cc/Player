@@ -20,7 +20,6 @@ protocol.registerSchemesAsPrivileged([
     { scheme: 'media', privileges: { standard: true, secure: true, supportFetch: true, corsEnabled: true } }
 ]);
 
-
 // 处理 Windows 上的快捷方式创建/删除
 if (started) {
     app.quit();
@@ -28,8 +27,6 @@ if (started) {
 
 /**
  * 向渲染进程发送消息。
- * @param {string} type - 消息类型 (IPC 频道)。
- * @param {any} data - 要发送的数据。
  */
 function sendMessage(type, data) {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -51,7 +48,7 @@ const createWindow = () => {
             preload: path.join(__dirname, 'preload.js'),
             sandbox: true,
             contextIsolation: true,
-            webSecurity: true, // 保持默认的安全设置
+            webSecurity: true,
         }
     });
 
@@ -70,16 +67,23 @@ const createWindow = () => {
  * 注册所有 IPC 监听器。
  */
 function registerIpcHandlers() {
+    // --- 媒体库相关 ---
     ipcMain.handle('get-local-playlist', () => libraryService.getLocalPlaylist());
     ipcMain.handle('delete-track', (event, trackData) => libraryService.handleDeleteTrack(trackData));
     ipcMain.handle('select-import-directory', () => libraryService.handleSelectDirectory());
     ipcMain.handle('start-local-import', (event, dirPath) => libraryService.handleLocalImport(dirPath, sendMessage));
     ipcMain.on('open-media-folder', () => libraryService.handleOpenMediaFolder());
+
+    // --- 在线服务相关 ---
     ipcMain.handle('search-online', (event, { query, page }) => onlineService.handleSearchRequest({ query, page }));
     ipcMain.handle('get-music-url', (event, trackInfo) => onlineService.handleGetMusicUrl(trackInfo));
     ipcMain.handle('get-lrc-content', (event, relativePath) => onlineService.handleGetLrcContent(relativePath));
     ipcMain.on('cache-track', (event, trackData) => onlineService.handleCacheRequest(trackData));
+
+    // --- 下载与工具相关 ---
     ipcMain.on('download-douyin', (event, data) => downloadService.handleDownloadRequest(data));
+
+    // --- 窗口控制 ---
     ipcMain.on('toggle-fullscreen', (event, state) => {
         if (mainWindow) {
             mainWindow.setFullScreen(state);
@@ -88,6 +92,59 @@ function registerIpcHandlers() {
     ipcMain.on('show-user-data', () => {
         const userDataPath = app.getPath('userData');
         shell.openPath(userDataPath);
+    });
+
+    // --- 视频分离 ---
+    ipcMain.handle('separate-video', (event, trackData) =>
+        libraryService.handleSeparateVideo(trackData)
+    );
+
+    // =========================================================================
+    // 【核心修复】处理文件拖拽事件
+    // =========================================================================
+    ipcMain.handle('handle-file-drop', (event, files) => {
+        console.log('🔍 [Main IPC] handle-file-drop invoked');
+        if (Array.isArray(files) && files.length > 0) {
+            console.log(`   - Receiving ${files.length} files. First item path: ${files[0].path}`);
+        } else {
+            console.warn('   - Warning: Received empty or invalid file list:', files);
+        }
+        return libraryService.handleDroppedFiles(files, sendMessage);
+    });
+    // =========================================================================
+
+    // --- 工具下载 ---
+    ipcMain.handle('download-core-tool', async (event, toolName) => {
+        try {
+            const binDir = CONFIG.BIN_DIR;
+            let newPath;
+
+            if (toolName === 'ffmpeg') {
+                newPath = await setupService.downloadFfmpeg(binDir);
+                downloadService.setFfmpegPath(newPath);
+                libraryService.setFfmpegPath(newPath);
+            } else if (toolName === 'yt-dlp') {
+                newPath = await setupService.downloadYtDlp(binDir);
+                downloadService.setYtDlpPath(newPath);
+            } else {
+                throw new Error(`未知的工具名称: ${toolName}`);
+            }
+
+            return { success: true, path: newPath };
+        } catch (error) {
+            console.error(`[Main API] 下载工具 ${toolName} 失败:`, error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // --- 打开工具目录 ---
+    ipcMain.handle('open-tools-folder', () => {
+        const binDir = CONFIG.BIN_DIR;
+        if (binDir) {
+            shell.openPath(binDir);
+            return true;
+        }
+        return false;
     });
 }
 
@@ -118,7 +175,6 @@ app.whenReady().then(async () => {
         }
     }
 
-    // 设置内容安全策略 (CSP)
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
         callback({
             responseHeaders: {
@@ -141,32 +197,17 @@ app.whenReady().then(async () => {
     Menu.setApplicationMenu(null);
 
     try {
-        // =========================================================================
-        // 【核心修改】处理 setupService 的新返回结构
-        //
-        // 1. 调用 initializeApp 并获取包含 shouldContinue 标志的结果。
-        // 2. 如果 shouldContinue 为 false，说明用户选择了退出或发生了无法恢复的错误，
-        //    此时应直接退出应用，不执行后续的初始化。
-        // =========================================================================
-        const setupResult = await setupService.initializeApp(app);
-
-        if (!setupResult.shouldContinue) {
-            console.log('[Main API] 初始化流程被用户或系统中止，应用即将退出。');
-            app.quit();
-            return;
-        }
-
+        const setupResult = await setupService.initializeApp(app, mainWindow);
         const { config, ffmpegPath, ytDlpPath, systemProxy } = setupResult;
         CONFIG = config;
 
         console.log(`[Main API] 成功接收到初始化参数:`);
-        console.log(`  - FFmpeg: ${ffmpegPath}`);
-        console.log(`  - yt-dlp: ${ytDlpPath}`);
+        console.log(`  - FFmpeg: ${ffmpegPath || '未就绪'}`);
+        console.log(`  - yt-dlp: ${ytDlpPath || '未就绪'}`);
         console.log(`  - Proxy: ${systemProxy}`);
 
         const serviceInitParams = { config, ffmpegPath, ytDlpPath, systemProxy, sendMessageFunc: sendMessage };
 
-        // 使用获取到的参数初始化所有服务
         libraryService.init(CONFIG, ffmpegPath);
         onlineService.init(CONFIG, sendMessage);
         downloadService.init(serviceInitParams);
@@ -181,7 +222,6 @@ app.whenReady().then(async () => {
         return;
     }
 
-    // 注册 'media://' 协议
     protocol.registerFileProtocol('media', (request, callback) => {
         const url = request.url.substring('media://'.length);
         const decodedUrl = decodeURIComponent(url);
@@ -189,11 +229,9 @@ app.whenReady().then(async () => {
         callback({ path: path.normalize(filePath) });
     });
 
-    // 注册 IPC 事件和创建窗口
     registerIpcHandlers();
     createWindow();
 
-    // 注册全局快捷键
     globalShortcut.register('CommandOrControl+Shift+I', () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
             const webContents = mainWindow.webContents;
@@ -208,11 +246,13 @@ app.whenReady().then(async () => {
     globalShortcut.register('CommandOrControl+Shift+L', () => {
         const userDataPath = app.getPath('userData');
         shell.openPath(userDataPath);
-        dialog.showMessageBox(mainWindow, {
-            type: 'info',
-            title: '日志与工具目录',
-            message: `日志文件、配置文件和下载的工具位于以下目录中：\n\n${userDataPath}`
-        });
+        if (mainWindow) {
+            dialog.showMessageBox(mainWindow, {
+                type: 'info',
+                title: '日志与工具目录',
+                message: `日志文件、配置文件和下载的工具位于以下目录中：\n\n${userDataPath}`
+            });
+        }
     });
 
     app.on('activate', () => {

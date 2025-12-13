@@ -12,7 +12,12 @@ let skeletonTimer = null;
 let nextBackgroundUpdateTime = 0;
 const BACKGROUND_BEAT_MULTIPLIER = 12;
 
-// 【新增】一个辅助函数来清空可视化画布
+// =========================================================================
+// 【新增】用于倍速播放的状态变量
+// =========================================================================
+let originalPlaybackRate = 1.0;
+// =========================================================================
+
 function clearVisualizer() {
     if (dom.audioVisualizer) {
         const ctx = dom.audioVisualizer.getContext('2d');
@@ -20,7 +25,6 @@ function clearVisualizer() {
     }
 }
 
-// 【新增】用于在加载轨道时临时存储初始跳转时间
 let _pendingSeekTime = 0;
 export function setPendingSeek(time) { _pendingSeekTime = time > 0 ? time : 0; }
 export function consumePendingSeek() {
@@ -29,10 +33,6 @@ export function consumePendingSeek() {
     return time;
 }
 
-/**
- * [MODIFIED] 初始化 Web Audio API 上下文。
- * 仅在首次需要时创建。
- */
 function setupAudioContext() {
     if (state.audioContext) return;
 
@@ -44,10 +44,8 @@ function setupAudioContext() {
         state.setAudioContext(context);
         state.setAnalyser(analyserNode);
 
-        // 为 *当前* 的媒体元素创建一个源并连接
         const source = context.createMediaElementSource(dom.mediaPlayer);
         source.connect(analyserNode);
-        // 【修改】初始连接直接到 destination
         analyserNode.connect(context.destination);
         state.setAudioSource(source);
         console.log("AudioContext and visualizer source connected.");
@@ -76,24 +74,11 @@ export function resetPlayerUI() {
     renderLyrics();
     hideSkeleton();
     clearVisualizer();
-    // 清除播放信息并更新UI以移除高亮
     state.clearPlayingTrackInfo();
     updatePlaylistUI();
-    // =========================================================================
-    // 【新增】重置UI时，移除 video-mode 类，确保全屏按钮被隐藏
-    // =========================================================================
     dom.playerContainer.classList.remove('video-mode');
-    // =========================================================================
 }
 
-/**
- * =========================================================================
- * 【核心修改】调整此函数以处理按需获取的封面 URL
- *
- * 播放一个临时的、不属于下载列表的在线曲目。
- * @param {object} track - 要播放的曲目对象。
- * =========================================================================
- */
 export async function playTemporaryTrack(track) {
     if (!track) return;
     showSkeleton();
@@ -107,14 +92,12 @@ export async function playTemporaryTrack(track) {
     dom.trackTitleEl.textContent = track.title || "未知标题";
     dom.trackArtistEl.textContent = track.artist || "未知艺术家";
 
-    // 【修改】初始时，封面可能为空，使用默认图占位
     dom.albumArtEl.src = DEFAULT_ART;
     dom.controlAlbumArtEl.src = DEFAULT_ART;
-    dom.mainView.style.background = ''; // 重置背景
+    dom.mainView.style.background = '';
 
     let playableSrc, albumArtUrl;
     try {
-        // 【修改】resolvePlayableUrl 现在返回一个包含播放链接和封面链接的对象
         const resolvedData = await resolvePlayableUrl(track);
         playableSrc = resolvedData.playableSrc;
         albumArtUrl = resolvedData.albumArtUrl;
@@ -127,11 +110,9 @@ export async function playTemporaryTrack(track) {
         return;
     }
 
-    // 【修改】获取到真实的封面 URL 后再更新 UI
     if (albumArtUrl) {
         dom.albumArtEl.src = albumArtUrl;
         dom.controlAlbumArtEl.src = albumArtUrl;
-        // 确保 onload 事件能触发背景渐变提取
         dom.albumArtEl.onload = () => extractAndApplyGradient(dom.albumArtEl);
         if (dom.albumArtEl.complete) extractAndApplyGradient(dom.albumArtEl);
     }
@@ -152,21 +133,12 @@ export async function playTemporaryTrack(track) {
 
     dom.playerContainer.classList.remove('video-mode');
 
-    // 【修改】直接设置 src 并加载，不再克隆或附加事件监听器
-    setPendingSeek(0); // 临时播放在线曲目从头开始
-    state.setIsPlaying(true); // 准备自动播放
+    setPendingSeek(0);
+    state.setIsPlaying(true);
     dom.mediaPlayer.src = playableSrc;
     dom.mediaPlayer.load();
 }
 
-
-/**
- * 加载并准备播放指定的轨道。
- * @param {number} trackIndex - 轨道在播放列表中的索引。
- * @param {object} [options={}] - 加载选项。
- * @param {boolean} [options.forcePlay=false] - 加载后是否强制播放。
- * @param {number} [options.initialTime=0] - 初始播放时间点。
- */
 export async function loadTrack(trackIndex, options = {}) {
     const { forcePlay = false, initialTime = 0 } = options;
 
@@ -229,7 +201,6 @@ export async function loadTrack(trackIndex, options = {}) {
         dom.playerContainer.classList.add('video-mode');
     }
 
-    // 【修改】直接设置 src 并加载，事件监听由 main.js 处理
     setPendingSeek(initialTime);
     dom.mediaPlayer.src = playableSrc;
     dom.mediaPlayer.load();
@@ -264,16 +235,8 @@ function runAnimationFrame() {
 
 export function playTrack() {
     if (!dom.mediaPlayer || !dom.mediaPlayer.src) return;
-
-    // 【修改】首次播放时初始化 AudioContext 并进行连接
-    if (!state.audioContext) {
-        setupAudioContext();
-    }
-
-    // 确保 AudioContext 在用户交互后处于 running 状态
-    if (state.audioContext && state.audioContext.state === 'suspended') {
-        state.audioContext.resume();
-    }
+    if (!state.audioContext) setupAudioContext();
+    if (state.audioContext && state.audioContext.state === 'suspended') state.audioContext.resume();
 
     const playPromise = dom.mediaPlayer.play();
     if (playPromise !== undefined) {
@@ -305,18 +268,12 @@ export const togglePlayPause = () => state.isPlaying ? pauseTrack() : playTrack(
 
 function changeTrack(direction) {
     if (state.playlist.length <= 1 && !state.temporaryPlayingTrack) return;
-
-    if(state.temporaryPlayingTrack) {
+    if (state.temporaryPlayingTrack) {
         state.clearPlayingTrackInfo();
-        if (state.playlist.length === 0) {
-            resetPlayerUI();
-            return;
-        }
+        if (state.playlist.length === 0) { resetPlayerUI(); return; }
     }
-
     clearTimeout(skeletonTimer);
     skeletonTimer = setTimeout(() => showSkeleton(), 300);
-
     setTimeout(() => {
         let newIndex;
         const currentMode = PLAY_MODES[state.currentModeIndex];
@@ -362,3 +319,37 @@ export function cyclePlayMode() {
     const titles = { 'list': '列表循环', 'single': '单曲循环', 'shuffle': '随机播放' };
     showToast(`播放模式: ${titles[currentMode]}`);
 }
+
+// =========================================================================
+// 【新增】用于处理时间跳转和倍速播放的函数
+// =========================================================================
+/**
+ * 跳转到媒体的指定秒数。
+ * @param {number} seconds - 要跳转的秒数（正为快进，负为快退）。
+ */
+export function seek(seconds) {
+    if (!dom.mediaPlayer || isNaN(dom.mediaPlayer.duration)) return;
+    const newTime = dom.mediaPlayer.currentTime + seconds;
+    // 确保时间不会超出范围 [0, duration]
+    dom.mediaPlayer.currentTime = Math.max(0, Math.min(dom.mediaPlayer.duration, newTime));
+    updateProgress(); // 立即更新UI
+}
+
+/**
+ * 临时设置播放速率（用于长按快进）。
+ * @param {number} rate - 新的播放速率。
+ */
+export function setTemporaryPlaybackRate(rate) {
+    if (!dom.mediaPlayer) return;
+    originalPlaybackRate = dom.mediaPlayer.playbackRate; // 保存当前速率
+    dom.mediaPlayer.playbackRate = rate;
+}
+
+/**
+ * 恢复到原始的播放速率。
+ */
+export function restorePlaybackRate() {
+    if (!dom.mediaPlayer) return;
+    dom.mediaPlayer.playbackRate = originalPlaybackRate;
+}
+// =========================================================================

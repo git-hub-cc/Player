@@ -7,26 +7,20 @@ import { playTrack, pauseTrack } from './player.js';
 
 let toastTimeout;
 let lastActiveLyricIndex = -1;
-let glitchAnimationId;
 let visualizerDataArray = null;
 let visualizerBufferLength = 0;
+// =========================================================================
+// 【新增】用于UI反馈的变量
+// =========================================================================
+let seekFeedbackTimeout = null;
+// =========================================================================
 
-// --- 面板管理 ---
-
-/**
- * 关闭所有当前活动的侧边面板。
- */
 export function closeActivePanels() {
     dom.allSidePanels.forEach(panel => {
         if (panel) panel.classList.remove('active');
     });
 }
 
-/**
- * 管理单个侧边面板的显示与隐藏。
- * 如果该面板已打开，则关闭所有面板。如果未打开，则打开该面板并关闭其他面板。
- * @param {HTMLElement} panelToToggle - 需要切换状态的面板元素。
- */
 function manageSidePanel(panelToToggle) {
     if (!panelToToggle) return;
     const isCurrentlyActive = panelToToggle.classList.contains('active');
@@ -36,13 +30,6 @@ function manageSidePanel(panelToToggle) {
     }
 }
 
-// --- 视图状态切换 ---
-
-/**
- * 切换播放器界面的“空状态”。
- * 在此状态下，会显示欢迎信息和操作按钮，并禁用播放控制。
- * @param {boolean} isEmpty - 是否进入空状态。
- */
 export function toggleEmptyState(isEmpty) {
     if (isEmpty) {
         dom.mainView.classList.add('is-empty');
@@ -61,27 +48,16 @@ export function toggleEmptyState(isEmpty) {
     }
 }
 
-/**
- * 显示骨架屏加载动画，用于在加载曲目时提供视觉反馈。
- */
 export function showSkeleton() {
     dom.playerContainer.classList.add('loading');
     dom.skeletonOverlay.classList.add('active');
 }
 
-/**
- * 隐藏骨架屏加载动画。
- */
 export function hideSkeleton() {
     dom.skeletonOverlay.classList.remove('active');
     dom.playerContainer.classList.remove('loading');
 }
 
-// --- 视觉效果 ---
-
-/**
- * 绘制音频可视化效果。在专辑封面周围生成动态的能量条。
- */
 export function drawVisualizer() {
     if (!state.analyser || !dom.audioVisualizer || !dom.albumArtContainer) return;
 
@@ -153,10 +129,6 @@ export function drawVisualizer() {
     }
 }
 
-/**
- * 从媒体源（图片或视频）提取颜色，并应用为播放器背景渐变。
- * @param {HTMLImageElement|HTMLVideoElement} sourceElement - 颜色来源元素。
- */
 export function extractAndApplyGradient(sourceElement) {
     if (!sourceElement || (sourceElement.tagName === 'IMG' && (!sourceElement.complete || sourceElement.naturalWidth === 0)) || (sourceElement.tagName === 'VIDEO' && sourceElement.readyState < 2)) {
         dom.mainView.style.background = '';
@@ -179,11 +151,6 @@ export function extractAndApplyGradient(sourceElement) {
     }
 }
 
-// --- 歌词渲染与同步 ---
-
-/**
- * 根据解析后的歌词数据，渲染歌词列表到DOM。
- */
 export function renderLyrics() {
     dom.lyricsList.innerHTML = '';
     dom.lyricsList.style.transform = 'translateY(0)';
@@ -201,10 +168,6 @@ export function renderLyrics() {
     lastActiveLyricIndex = -1;
 }
 
-/**
- * 根据当前播放时间，同步高亮显示的歌词行。
- * @param {number} currentTime - 当前播放时间（秒）。
- */
 export function syncLyrics(currentTime) {
     if (state.isDraggingLyrics || state.parsedLyrics.length === 0) return;
     const allLyricLines = dom.getLyricLines();
@@ -230,11 +193,6 @@ export function syncLyrics(currentTime) {
     }
 }
 
-// --- 列表与控件渲染 ---
-
-/**
- * 渲染主播放列表。
- */
 export function renderPlaylist() {
     dom.playlistEl.innerHTML = '';
     const fragment = dom.createFragment();
@@ -251,9 +209,6 @@ export function renderPlaylist() {
     dom.playlistEl.appendChild(fragment);
 }
 
-/**
- * 更新播放列表和搜索结果列表中的高亮项，以反映当前播放的曲目。
- */
 export function updatePlaylistUI() {
     document.querySelectorAll('.playlist-item.active').forEach(item => item.classList.remove('active'));
     if (state.temporaryPlayingTrack) {
@@ -268,9 +223,6 @@ export function updatePlaylistUI() {
     }
 }
 
-/**
- * 根据输入框中的文本过滤主播放列表的显示。
- */
 export function filterPlaylist() {
     const query = dom.playlistSearchInput.value.toLowerCase().replace(/\s/g, '');
     let hasVisibleItems = false;
@@ -290,18 +242,12 @@ export function filterPlaylist() {
     }
 }
 
-// --- 事件处理与UI更新 ---
 export function toggleLyricsPanel() { dom.lyricsContainer.classList.toggle('active'); }
 export function togglePlaylistPanel() { manageSidePanel(dom.playlistPanel); }
 export function toggleInfoPanel() { manageSidePanel(dom.infoPanel); }
 export function toggleShortcutPanel() { manageSidePanel(dom.shortcutPanel); }
 export function toggleDownloadPanel() { manageSidePanel(dom.downloadPanel); }
 
-/**
- * 显示一个短暂的提示消息（Toast）。
- * @param {string} message - 要显示的消息。
- * @param {'info'|'success'|'error'} type - 消息类型。
- */
 export function showToast(message, type = 'info') {
     clearTimeout(toastTimeout);
     dom.toastEl.textContent = message;
@@ -311,11 +257,37 @@ export function showToast(message, type = 'info') {
     toastTimeout = setTimeout(() => dom.toastEl.classList.remove('show'), 3000);
 }
 
+// =========================================================================
+// 【新增】显示快进/快退UI反馈的函数
+// =========================================================================
 /**
- * 显示一个通用的确认模态框，并返回一个 Promise。
- * @param {string} message - 模态框中显示的问题或信息。
- * @returns {Promise<void>} - 用户点击确认时 resolve，点击取消或关闭时 reject。
+ * 在屏幕中央显示操作反馈。
+ * @param {number|string} feedback - 如果是数字，显示为跳转秒数；如果是字符串，直接显示。
  */
+export function showSeekFeedback(feedback) {
+    const feedbackEl = dom.seekFeedbackEl;
+    if (!feedbackEl) return;
+
+    clearTimeout(seekFeedbackTimeout);
+
+    let content = '';
+    if (typeof feedback === 'number') {
+        const sign = feedback > 0 ? '»' : '«';
+        content = `${sign} ${Math.abs(feedback)}s`;
+    } else {
+        content = feedback;
+    }
+
+    feedbackEl.textContent = content;
+    feedbackEl.classList.add('visible');
+
+    // 1秒后自动隐藏
+    seekFeedbackTimeout = setTimeout(() => {
+        feedbackEl.classList.remove('visible');
+    }, 1000);
+}
+// =========================================================================
+
 export function showConfirmationModal(message) {
     return new Promise((resolve, reject) => {
         dom.confirmationMessage.textContent = message;
@@ -342,11 +314,6 @@ export function showConfirmationModal(message) {
     });
 }
 
-/**
- * 更新音量条和静音按钮的视觉状态。
- * @param {number} volume - 当前音量 (0-1)。
- * @param {boolean} isMuted - 是否静音。
- */
 export function updateVolumeBarVisual(volume, isMuted) {
     const volumePercent = isMuted ? 0 : volume * 100;
     dom.volumeBar.value = isMuted ? 0 : volume;
@@ -354,9 +321,6 @@ export function updateVolumeBarVisual(volume, isMuted) {
     dom.volumeBtn.classList.toggle('muted', isMuted || volume === 0);
 }
 
-/**
- * 更新播放模式按钮的图标和标题。
- */
 export function updateModeButton() {
     const currentMode = PLAY_MODES[state.currentModeIndex];
     dom.modeBtn.className = 'control-btn';
@@ -365,21 +329,23 @@ export function updateModeButton() {
     dom.modeBtn.title = titles[currentMode];
 }
 
-/**
- * 隐藏右键上下文菜单。
- */
 export function hideContextMenu() { if (dom.contextMenu) dom.contextMenu.style.display = 'none'; }
 
-/**
- * 根据上下文渲染右键菜单的内容。
- * @param {object} context - 上下文对象，包含类型（如 'playlist-item'）和相关数据（如索引）。
- */
 export function renderContextMenu(context = {}) {
     const menuList = dom.getContextMenuList();
     if (!menuList) return;
     menuList.innerHTML = '';
     const fragment = dom.createFragment();
+
     if (context.type === 'playlist-item' && typeof context.index !== 'undefined') {
+        const track = state.playlist[context.index];
+        if (track && track.type === 'video') {
+            const separateLi = dom.createListItem();
+            separateLi.textContent = '分离音视频';
+            separateLi.dataset.action = 'separate-video';
+            separateLi.dataset.index = context.index;
+            fragment.appendChild(separateLi);
+        }
         const deleteLi = dom.createListItem();
         deleteLi.textContent = '删除';
         deleteLi.dataset.action = 'delete-track';
@@ -396,12 +362,6 @@ export function renderContextMenu(context = {}) {
     menuList.appendChild(fragment);
 }
 
-/**
- * 规范化上下文菜单的坐标，确保它不会超出窗口边界。
- * @param {number} mouseX - 鼠标X坐标。
- * @param {number} mouseY - 鼠标Y坐标。
- * @returns {{normalizedX: number, normalizedY: number}} - 调整后的坐标。
- */
 export function normalizePosition(mouseX, mouseY) {
     const { innerWidth: windowWidth, innerHeight: windowHeight } = window;
     const { offsetWidth: menuWidth, offsetHeight: menuHeight } = dom.contextMenu;
@@ -410,22 +370,10 @@ export function normalizePosition(mouseX, mouseY) {
     return { normalizedX, normalizedY };
 }
 
-// --- 搜索结果处理 ---
-
-/**
- * 清空搜索结果列表。
- */
 export function clearSearchResults() {
     if (dom.searchResultsList) dom.searchResultsList.innerHTML = '';
 }
 
-/**
- * 创建一个搜索结果项的DOM节点。
- * @param {object} track - 曲目数据。
- * @param {number} index - 曲目在当前搜索结果中的索引。
- * @param {boolean} isCached - 该曲目是否已在本地播放列表中。
- * @returns {DocumentFragment} - 包含列表项的文档片段。
- */
 function createResultItem(track, index, isCached = false) {
     const itemNode = getTemplate('template-search-result-item');
     const itemEl = itemNode.querySelector('.playlist-item');
@@ -439,10 +387,6 @@ function createResultItem(track, index, isCached = false) {
     return itemNode;
 }
 
-/**
- * 渲染搜索结果列表。
- * @param {Array<object>} tracks - 搜索到的曲目数组。
- */
 export function renderSearchResults(tracks) {
     clearSearchResults();
     const fragment = dom.createFragment();
@@ -455,11 +399,6 @@ export function renderSearchResults(tracks) {
     dom.searchResultsList.appendChild(fragment);
 }
 
-/**
- * 更新单个搜索结果项的下载状态（如图标变化）。
- * @param {HTMLElement} itemElement - 列表项元素。
- * @param {'downloading'|'cached'|'none'} status - 新的状态。
- */
 export function updateSearchResultItemStatus(itemElement, status) {
     const downloadBtn = itemElement?.querySelector('.playlist-download-btn');
     if (!downloadBtn) return;
@@ -468,11 +407,6 @@ export function updateSearchResultItemStatus(itemElement, status) {
     else if (status === 'cached') downloadBtn.classList.add('cached');
 }
 
-/**
- * 渲染分页控制按钮。
- * @param {number} currentPage - 当前页码。
- * @param {number} totalPages - 总页数。
- */
 export function renderPaginationControls(currentPage, totalPages) {
     const container = dom.paginationControls;
     container.innerHTML = '';
@@ -492,7 +426,6 @@ export function renderPaginationControls(currentPage, totalPages) {
     `;
 }
 
-// --- 歌词拖拽功能 ---
 let wasPlayingBeforeDrag = false;
 let dragStartY = 0;
 let initialTranslateY = 0;
@@ -550,9 +483,6 @@ function onLyricsDragEnd(e) {
     syncLyrics(dom.mediaPlayer.currentTime);
 }
 
-/**
- * 初始化歌词拖拽功能的事件监听器。
- */
 export function setupLyricsDragHandler() {
     dom.lyricsListWrapper.addEventListener('mousedown', onLyricsDragStart);
 }
