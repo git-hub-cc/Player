@@ -7,7 +7,6 @@ import { pinyin } from 'pinyin-pro';
 import { exec } from 'child_process';
 import * as jableProvider from '../providers/jable.js';
 import * as youtubeProvider from '../providers/youtube.js';
-// 【核心修改】导入新的抖音服务提供者
 import * as douyinProvider from '../providers/douyin.js';
 import { updateLocalPlaylist } from './library-service.js';
 
@@ -31,16 +30,31 @@ export function init(initParams) {
     SYSTEM_PROXY = initParams.systemProxy;
     sendMessageCallback = initParams.sendMessageFunc;
 
-    // 【核心修改】初始化所有下载提供者
     douyinProvider.init({ config: CONFIG, sendMessageFunc: sendMessageCallback });
 
     console.log('[Download Service] 服务已初始化。');
 }
 
 /**
+ * 【新增】用于在按需下载成功后，更新 ffmpeg 路径。
+ * @param {string} path - 新的路径。
+ */
+export function setFfmpegPath(path) {
+    FFMPEG_PATH = path;
+    console.log(`[Download Service] FFmpeg 路径已更新: ${path}`);
+}
+
+/**
+ * 【新增】用于在按需下载成功后，更新 yt-dlp 路径。
+ * @param {string} path - 新的路径。
+ */
+export function setYtDlpPath(path) {
+    YT_DLP_PATH = path;
+    console.log(`[Download Service] yt-dlp 路径已更新: ${path}`);
+}
+
+/**
  * 清理文件名，移除不安全字符。
- * @param {string} filename - 原始文件名。
- * @returns {string} - 清理后的文件名。
  */
 function sanitizeFilename(filename) {
     if (!filename) return 'untitled';
@@ -49,13 +63,7 @@ function sanitizeFilename(filename) {
 }
 
 /**
- * 【核心修改】导出此通用文件下载函数，供其他模块（如 provider）使用。
- * 支持重试和空文件校验。
- * @param {string} url - 文件 URL。
- * @param {string} folder - 目标文件夹。
- * @param {string} fileName - 文件名。
- * @param {object} headers - 请求头。
- * @param {number} retries - 重试次数。
+ * 通用文件下载函数。
  */
 export async function downloadFile(url, folder, fileName, headers = {}, retries = DOWNLOAD_RETRY_COUNT) {
     const filePath = path.join(folder, fileName);
@@ -66,7 +74,7 @@ export async function downloadFile(url, folder, fileName, headers = {}, retries 
                 console.log(`[Download] 文件 ${fileName} 已存在且非空，跳过。`);
                 return;
             }
-        } catch (e) { /* 忽略 stat 错误，继续下载 */ }
+        } catch (e) { /* 忽略 stat 错误 */ }
     }
 
     for (let i = 0; i < retries; i++) {
@@ -100,9 +108,7 @@ export async function downloadFile(url, folder, fileName, headers = {}, retries 
 }
 
 /**
- * 处理来自渲染进程的所有下载请求。
- * 这是一个路由函数，根据 URL 类型分发给不同的提供者。
- * @param {string|object} requestData - 下载请求数据。
+ * 处理下载请求。
  */
 export async function handleDownloadRequest(requestData) {
     let url = typeof requestData === 'object' ? requestData.url : requestData;
@@ -119,14 +125,11 @@ export async function handleDownloadRequest(requestData) {
 
     const matchedContent = match[0];
 
-    // [修改] 为所有支持的链接创建明确的布尔标志
     const isBiliUrl = matchedContent.includes('bilibili.com/video/');
     const isJableUrl = matchedContent.includes('jable.tv/videos/');
     const isYoutubeUrl = matchedContent.includes('youtube.com/') || matchedContent.includes('youtu.be/');
     const isDouyinUrl = matchedContent.includes('douyin.com') || matchedContent.includes('iesdouyin.com');
 
-
-    // [修改] 使用更严谨的 if-else 链进行任务分发
     if (isBiliUrl) {
         await downloadBilibiliVideo(matchedContent);
     } else if (isJableUrl) {
@@ -134,11 +137,9 @@ export async function handleDownloadRequest(requestData) {
     } else if (isYoutubeUrl) {
         await downloadYoutubeVideo(matchedContent);
     } else if (isDouyinUrl) {
-        // 明确处理抖音链接
         sendMessageCallback('download-status', { message: `抖音目标已提取: ${matchedContent}` });
         await douyinProvider.handleDouyinDownload(matchedContent);
     } else {
-        // [修改] 将其他所有URL都尝试用抖音解析器处理，并给出明确提示
         sendMessageCallback('download-status', { message: `未知链接，尝试作为抖音视频处理: ${matchedContent}` });
         await douyinProvider.handleDouyinDownload(matchedContent);
     }
@@ -146,11 +147,16 @@ export async function handleDownloadRequest(requestData) {
 
 /**
  * 下载 Bilibili 视频。
- * @param {string} videoUrl - Bilibili 视频 URL。
+ * 【修改】增加对 FFmpeg 存在性的前置检查。
  */
 async function downloadBilibiliVideo(videoUrl) {
     if (!FFMPEG_PATH) {
-        sendMessageCallback('download-status', { message: '错误: FFmpeg 未找到，无法合并B站视频。', type: 'error' });
+        sendMessageCallback('download-status', {
+            message: '缺少 FFmpeg 组件，无法合并B站视频。',
+            type: 'error',
+            reason: 'tool_missing',
+            missing: 'ffmpeg'
+        });
         return;
     }
     try {
@@ -205,11 +211,16 @@ async function downloadBilibiliVideo(videoUrl) {
 
 /**
  * 下载 Jable 视频。
- * @param {string} videoUrl - Jable 视频 URL。
+ * 【修改】增加对 FFmpeg 存在性的前置检查。
  */
 async function downloadJableVideo(videoUrl) {
     if (!FFMPEG_PATH) {
-        sendMessageCallback('download-status', { message: '错误: FFmpeg 未找到，无法处理Jable视频。', type: 'error' });
+        sendMessageCallback('download-status', {
+            message: '缺少 FFmpeg 组件，无法处理Jable视频。',
+            type: 'error',
+            reason: 'tool_missing',
+            missing: 'ffmpeg'
+        });
         return;
     }
     try {
@@ -241,11 +252,16 @@ async function downloadJableVideo(videoUrl) {
 
 /**
  * 下载 YouTube 视频。
- * @param {string} videoUrl - YouTube 视频 URL。
+ * 【修改】增加对 yt-dlp 和 FFmpeg 存在性的前置检查。
  */
 async function downloadYoutubeVideo(videoUrl) {
     if (!YT_DLP_PATH || !FFMPEG_PATH) {
-        sendMessageCallback('download-status', { message: '错误: yt-dlp 或 FFmpeg 未就绪，无法下载 YouTube 视频。', type: 'error' });
+        sendMessageCallback('download-status', {
+            message: '缺少核心组件，无法下载 YouTube 视频。',
+            type: 'error',
+            reason: 'tool_missing',
+            missing: !YT_DLP_PATH ? 'yt-dlp' : 'ffmpeg' // 简单的优先级提示
+        });
         return;
     }
     try {
