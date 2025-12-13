@@ -6,6 +6,7 @@
   "main": ".vite/build/main-api.js",
   "scripts": {
     "start": "chcp 65001 && electron-forge start",
+    "clean": "npm cache clean --force && rmdir /s /q node_modules && del package-lock.json",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",

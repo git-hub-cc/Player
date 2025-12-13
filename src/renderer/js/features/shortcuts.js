@@ -1,4 +1,4 @@
-// js/features/shortcuts.js
+// src/renderer/js/features/shortcuts.js
 
 import * as dom from '../dom.js';
 import * as state from '../state.js';
@@ -7,19 +7,25 @@ import { getTemplate, normalizeKey } from '../utils.js';
 import { togglePlayPause, playNextTrack, playPrevTrack, seek, setTemporaryPlaybackRate, restorePlaybackRate } from '../player.js';
 import { toggleLyricsPanel, togglePlaylistPanel, updateVolumeBarVisual, showSeekFeedback } from '../ui.js';
 
-// =========================================================================
-// 【核心修改】引入长按检测机制所需的状态变量
-// =========================================================================
-const LONG_PRESS_THRESHOLD = 250; // 长按阈值 (毫秒)
-const SEEK_STEP_SHORT = 10; // 短按跳转秒数 (短视频/音频)
-const SEEK_STEP_LONG = 30; // 短按跳转秒数 (长视频)
-const LONG_PRESS_RATE = 4.0; // 长按倍速
+// --- 配置与状态变量 ---
+
+// 长按检测阈值（毫秒），超过此时长视为长按
+const LONG_PRESS_THRESHOLD = 250;
+// 短按时步进的秒数（适用于短于10分钟的媒体）
+const SEEK_STEP_SHORT = 10;
+// 短按时步进的秒数（适用于长于10分钟的媒体）
+const SEEK_STEP_LONG = 30;
+// 长按时设置的播放速率
+const LONG_PRESS_RATE = 4.0;
 
 let longPressTimer = null; // 用于检测长按的计时器
 let isLongPressActive = false; // 标记长按行为是否已触发
-const activeKeys = new Map(); // 存储当前按下的键及其状态
-// =========================================================================
 
+/**
+ * 将按键数组格式化为可显示的 DOM 片段（<kbd>...</kbd>）。
+ * @param {string[]} keys - 按键名称数组。
+ * @returns {DocumentFragment} - 包含格式化按键的 DOM 片段。
+ */
 function formatKeysToFragment(keys) {
     const fragment = document.createDocumentFragment();
     if (!keys || keys.length === 0) {
@@ -37,6 +43,9 @@ function formatKeysToFragment(keys) {
     return fragment;
 }
 
+/**
+ * 渲染快捷键设置列表到 UI。
+ */
 function renderShortcutList() {
     dom.shortcutListEl.innerHTML = '';
     const fragment = document.createDocumentFragment();
@@ -54,56 +63,87 @@ function renderShortcutList() {
     dom.shortcutListEl.appendChild(fragment);
 }
 
+/**
+ * 保存当前快捷键设置到 localStorage。
+ */
 function saveShortcuts() {
     localStorage.setItem('player-shortcuts', JSON.stringify(state.shortcutSettings));
 }
 
+/**
+ * 从 localStorage 加载快捷键设置，如果不存在则使用默认设置。
+ */
 export function loadShortcuts() {
     const saved = localStorage.getItem('player-shortcuts');
+    // 使用深拷贝确保默认设置不被意外修改
     const newSettings = saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(defaultShortcuts));
     state.setShortcutSettings(newSettings);
     renderShortcutList();
 }
 
+/**
+ * 开始录制新的快捷键。
+ * @param {string} actionId - 正在设置的目标动作ID。
+ */
 function startRecording(actionId) {
     state.setCurrentRecordingAction(actionId);
     state.setIsRecordingShortcut(true);
-    state.pressedShortcutKeys.clear();
+    state.pressedShortcutKeys.clear(); // 清空当前按键状态
     dom.shortcutKeyPreviewEl.innerHTML = '';
     dom.shortcutKeyPreviewEl.appendChild(getTemplate('template-recording-placeholder'));
-    dom.shortcutModalOverlayEl.classList.add('visible');
+    dom.shortcutModalOverlayEl.classList.add('visible'); // 显示模态框
+    // 注册录制专用的事件监听
     window.addEventListener('keydown', handleShortcutKeyDownForRecording);
     window.addEventListener('keyup', handleShortcutKeyUpForRecording);
 }
 
+/**
+ * 停止录制快捷键。
+ */
 function stopRecording() {
     state.setIsRecordingShortcut(false);
     state.setCurrentRecordingAction(null);
     state.pressedShortcutKeys.clear();
-    dom.shortcutModalOverlayEl.classList.remove('visible');
+    dom.shortcutModalOverlayEl.classList.remove('visible'); // 隐藏模态框
+    // 移除录制专用的事件监听
     window.removeEventListener('keydown', handleShortcutKeyDownForRecording);
     window.removeEventListener('keyup', handleShortcutKeyUpForRecording);
 }
 
+/**
+ * 录制过程中的 keydown 事件处理器。
+ * @param {KeyboardEvent} e - 键盘事件对象。
+ */
 function handleShortcutKeyDownForRecording(e) {
     if (!state.isRecordingShortcut) return;
     e.preventDefault();
     e.stopPropagation();
+
+    // 按下 Esc 键取消录制
     if (e.key === 'Escape') {
         stopRecording();
         return;
     }
+
     state.pressedShortcutKeys.add(normalizeKey(e.key));
     const keysFragment = formatKeysToFragment(Array.from(state.pressedShortcutKeys));
     dom.shortcutKeyPreviewEl.innerHTML = '';
     dom.shortcutKeyPreviewEl.appendChild(keysFragment);
 }
 
+/**
+ * 录制过程中的 keyup 事件处理器。
+ * 当检测到非修饰键抬起时，确认并保存快捷键。
+ * @param {KeyboardEvent} e - 键盘事件对象。
+ */
 function handleShortcutKeyUpForRecording(e) {
     if (!state.isRecordingShortcut || state.pressedShortcutKeys.size === 0) return;
+
     const modifierKeys = ['Ctrl', 'Alt', 'Shift', 'Cmd'];
+    // 检查按下的键中是否包含非修饰键（如 A, B, Space 等）
     const hasNonModifierKey = Array.from(state.pressedShortcutKeys).some(k => !modifierKeys.includes(k));
 
+    // 如果包含，则认为快捷键设置完成
     if (hasNonModifierKey) {
         state.shortcutSettings[state.currentRecordingAction].keys = Array.from(state.pressedShortcutKeys);
         saveShortcuts();
@@ -129,6 +169,7 @@ export function executeShortcut(actionId) {
             break;
         case 'seek-forward': // 短按时触发
         {
+            // 根据媒体时长决定步进大小
             const step = (dom.mediaPlayer.duration || 0) > 600 ? SEEK_STEP_LONG : SEEK_STEP_SHORT;
             seek(step);
             showSeekFeedback(step);
@@ -162,11 +203,14 @@ export function executeShortcut(actionId) {
 }
 
 /**
- * =========================================================================
- * 【核心重构】新的快捷键事件监听逻辑，支持长按/短按区分
- * =========================================================================
+ * 全局 keydown 事件处理器，支持长按/短按区分。
+ * @param {KeyboardEvent} e - 键盘事件对象。
  */
 function handleGlobalKeyDown(e) {
+    // 【鲁棒性增强】如果事件是系统长按重复触发的，则忽略，防止逻辑重复执行。
+    if (e.repeat) {
+        return;
+    }
     // 如果正在录制快捷键或焦点在输入框，则忽略
     if (state.isRecordingShortcut || ['input', 'textarea'].includes(e.target.tagName.toLowerCase())) {
         return;
@@ -175,14 +219,9 @@ function handleGlobalKeyDown(e) {
     if (state.playlist.length === 0) {
         return;
     }
-    // 如果按键已经按下（系统触发的 repeat 事件），则忽略
-    if (activeKeys.has(e.key)) {
-        return;
-    }
 
     const normalizedKey = normalizeKey(e.key);
     state.pressedShortcutKeys.add(normalizedKey);
-    activeKeys.set(e.key, true);
 
     // 查找匹配的快捷键动作
     for (const actionId in state.shortcutSettings) {
@@ -212,10 +251,14 @@ function handleGlobalKeyDown(e) {
     }
 }
 
+/**
+ * 全局 keyup 事件处理器。
+ * @param {KeyboardEvent} e - 键盘事件对象。
+ */
 function handleGlobalKeyUp(e) {
     if (state.isRecordingShortcut) return;
 
-    // 清除长按计时器
+    // 释放按键时，清除长按计时器
     clearTimeout(longPressTimer);
     longPressTimer = null;
 
@@ -225,9 +268,8 @@ function handleGlobalKeyUp(e) {
     const seekForwardKeys = new Set(state.shortcutSettings['seek-forward'].keys);
     const seekBackwardKeys = new Set(state.shortcutSettings['seek-backward'].keys);
 
-    let wasSeekKey = false;
+    // 检查释放的键是否是快进键，并且所有快进组合键都曾被按下
     if (seekForwardKeys.has(normalizedKey) && [...seekForwardKeys].every(k => state.pressedShortcutKeys.has(k))) {
-        wasSeekKey = true;
         // 如果长按行为已触发，则恢复正常播放速率
         if (isLongPressActive) {
             restorePlaybackRate();
@@ -236,8 +278,9 @@ function handleGlobalKeyUp(e) {
             // 否则，视为短按，执行单次跳转
             executeShortcut('seek-forward');
         }
-    } else if (seekBackwardKeys.has(normalizedKey) && [...seekBackwardKeys].every(k => state.pressedShortcutKeys.has(k))) {
-        wasSeekKey = true;
+    }
+    // 检查释放的键是否是快退键
+    else if (seekBackwardKeys.has(normalizedKey) && [...seekBackwardKeys].every(k => state.pressedShortcutKeys.has(k))) {
         if (isLongPressActive) {
             restorePlaybackRate();
             showSeekFeedback('恢复正常');
@@ -249,35 +292,50 @@ function handleGlobalKeyUp(e) {
     // 重置状态
     isLongPressActive = false;
     state.pressedShortcutKeys.delete(normalizedKey);
-    activeKeys.delete(e.key);
 }
 
-// =========================================================================
-
+/**
+ * 初始化所有与快捷键相关的事件监听器。
+ */
 export function setupShortcutListeners() {
+    // --- 设置面板内的交互 ---
     dom.shortcutListEl.addEventListener('click', (e) => {
         const target = e.target;
         const item = target.closest('.shortcut-item');
         if (!item) return;
         const actionId = item.dataset.action;
+
+        // 点击“设置”按钮
         if (target.classList.contains('set-btn')) {
             startRecording(actionId);
         }
+        // 点击“清除”按钮
         if (target.classList.contains('clear-btn')) {
             state.shortcutSettings[actionId].keys = [];
             saveShortcuts();
             renderShortcutList();
         }
     });
+
+    // 点击模态框背景可取消录制
     dom.shortcutModalOverlayEl.addEventListener('click', (e) => {
         if (e.target === dom.shortcutModalOverlayEl) stopRecording();
     });
 
-    // 移除旧的、简单的监听器
-    // window.removeEventListener('keydown', ...);
-    // window.removeEventListener('keyup', ...);
-
-    // 添加新的、支持长短按的监听器
+    // --- 全局事件监听 ---
     window.addEventListener('keydown', handleGlobalKeyDown);
     window.addEventListener('keyup', handleGlobalKeyUp);
+
+    // 【鲁棒性增强】当窗口失去焦点时，重置所有按键状态。
+    // 这可以防止用户 Alt+Tab 切换应用后，按键状态残留导致快捷键失灵。
+    window.addEventListener('blur', () => {
+        state.pressedShortcutKeys.clear();
+        isLongPressActive = false;
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+        // 如果倍速播放被激活，也恢复正常速率
+        if (dom.mediaPlayer && dom.mediaPlayer.playbackRate !== 1.0) {
+            restorePlaybackRate();
+        }
+    });
 }
