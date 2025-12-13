@@ -9,16 +9,17 @@ let toastTimeout;
 let lastActiveLyricIndex = -1;
 let visualizerDataArray = null;
 let visualizerBufferLength = 0;
-// =========================================================================
-// 【新增】用于UI反馈的变量
-// =========================================================================
 let seekFeedbackTimeout = null;
-// =========================================================================
+let speedFeedbackTimeout = null; // 用于播放速度反馈的计时器
 
 export function closeActivePanels() {
     dom.allSidePanels.forEach(panel => {
         if (panel) panel.classList.remove('active');
     });
+    // 【核心修改】同时确保“更多选项”菜单也被关闭
+    if (dom.moreOptionsMenu) {
+        dom.moreOptionsMenu.classList.remove('visible');
+    }
 }
 
 function manageSidePanel(panelToToggle) {
@@ -29,6 +30,27 @@ function manageSidePanel(panelToToggle) {
         panelToToggle.classList.add('active');
     }
 }
+
+// =========================================================================
+// 【核心修改】新增控制“更多选项”菜单的函数
+// =========================================================================
+/**
+ * 切换“更多选项”弹出菜单的显示状态。
+ * 如果其他面板是打开的，会先关闭它们。
+ */
+export function toggleMoreOptionsMenu() {
+    if (!dom.moreOptionsMenu) return;
+
+    // 如果有任何侧边面板是打开的，先关闭它们
+    const isAnyPanelActive = dom.allSidePanels.some(p => p.classList.contains('active'));
+    if (isAnyPanelActive) {
+        closeActivePanels();
+    }
+
+    // 然后切换菜单的可见性
+    dom.moreOptionsMenu.classList.toggle('visible');
+}
+// =========================================================================
 
 export function toggleEmptyState(isEmpty) {
     if (isEmpty) {
@@ -257,13 +279,6 @@ export function showToast(message, type = 'info') {
     toastTimeout = setTimeout(() => dom.toastEl.classList.remove('show'), 3000);
 }
 
-// =========================================================================
-// 【新增】显示快进/快退UI反馈的函数
-// =========================================================================
-/**
- * 在屏幕中央显示操作反馈。
- * @param {number|string} feedback - 如果是数字，显示为跳转秒数；如果是字符串，直接显示。
- */
 export function showSeekFeedback(feedback) {
     const feedbackEl = dom.seekFeedbackEl;
     if (!feedbackEl) return;
@@ -281,12 +296,25 @@ export function showSeekFeedback(feedback) {
     feedbackEl.textContent = content;
     feedbackEl.classList.add('visible');
 
-    // 1秒后自动隐藏
     seekFeedbackTimeout = setTimeout(() => {
         feedbackEl.classList.remove('visible');
     }, 1000);
 }
-// =========================================================================
+
+export function showSpeedFeedback() {
+    const feedbackEl = dom.speedFeedbackEl;
+    if (!feedbackEl || !dom.mediaPlayer) return;
+
+    clearTimeout(speedFeedbackTimeout);
+
+    const speedText = `${dom.mediaPlayer.playbackRate.toFixed(1)}x`;
+    feedbackEl.textContent = speedText;
+    feedbackEl.classList.add('visible');
+
+    speedFeedbackTimeout = setTimeout(() => {
+        feedbackEl.classList.remove('visible');
+    }, 1500);
+}
 
 export function showConfirmationModal(message) {
     return new Promise((resolve, reject) => {

@@ -4,7 +4,7 @@ import * as dom from './dom.js';
 import * as state from './state.js';
 import { PLAY_MODES, DEFAULT_ART } from './config.js';
 import { formatTime, parseLRC } from './utils.js';
-import { renderLyrics, syncLyrics, extractAndApplyGradient, showSkeleton, hideSkeleton, updatePlaylistUI, updateModeButton, showToast, drawVisualizer } from './ui.js';
+import { renderLyrics, syncLyrics, extractAndApplyGradient, showSkeleton, hideSkeleton, updatePlaylistUI, updateModeButton, showToast, drawVisualizer, showSpeedFeedback } from './ui.js';
 import { resolvePlayableUrl } from './features/downloader.js';
 
 let animationFrameId = null;
@@ -13,7 +13,7 @@ let nextBackgroundUpdateTime = 0;
 const BACKGROUND_BEAT_MULTIPLIER = 12;
 
 // =========================================================================
-// 【新增】用于倍速播放的状态变量
+// 【新增】用于长按快进时的原始播放速率备份
 // =========================================================================
 let originalPlaybackRate = 1.0;
 // =========================================================================
@@ -86,6 +86,9 @@ export async function playTemporaryTrack(track) {
     resetBackgroundBeatTimer();
     state.setCurrentColorPaletteIndex(0);
 
+    // 【新增】应用当前设置的播放速率
+    dom.mediaPlayer.playbackRate = state.playbackRate;
+
     state.setTemporaryPlayingTrack(track);
     updatePlaylistUI();
 
@@ -147,6 +150,9 @@ export async function loadTrack(trackIndex, options = {}) {
     if (skeletonTimer) clearTimeout(skeletonTimer);
     if (state.playlist.length === 0) { resetPlayerUI(); return; }
     if (forcePlay) state.setIsPlaying(true);
+
+    // 【新增】应用当前设置的播放速率
+    dom.mediaPlayer.playbackRate = state.playbackRate;
 
     state.setCurrentTrackIndex(trackIndex);
     const track = state.playlist[trackIndex];
@@ -321,7 +327,7 @@ export function cyclePlayMode() {
 }
 
 // =========================================================================
-// 【新增】用于处理时间跳转和倍速播放的函数
+// 【修改】处理时间跳转和倍速播放的函数
 // =========================================================================
 /**
  * 跳转到媒体的指定秒数。
@@ -346,10 +352,39 @@ export function setTemporaryPlaybackRate(rate) {
 }
 
 /**
- * 恢复到原始的播放速率。
+ * 恢复到长按前的播放速率。
  */
 export function restorePlaybackRate() {
     if (!dom.mediaPlayer) return;
     dom.mediaPlayer.playbackRate = originalPlaybackRate;
+}
+
+/**
+ * 增加播放速度。
+ */
+export function increaseSpeed() {
+    if (!dom.mediaPlayer) return;
+    const currentRate = dom.mediaPlayer.playbackRate;
+    // 使用 toFixed 避免浮点数精度问题
+    let newRate = parseFloat((currentRate + 0.1).toFixed(1));
+    // 限制最大速度为 2.0x
+    newRate = Math.min(newRate, 2.0);
+    dom.mediaPlayer.playbackRate = newRate;
+    state.setPlaybackRate(newRate);
+    showSpeedFeedback();
+}
+
+/**
+ * 降低播放速度。
+ */
+export function decreaseSpeed() {
+    if (!dom.mediaPlayer) return;
+    const currentRate = dom.mediaPlayer.playbackRate;
+    let newRate = parseFloat((currentRate - 0.1).toFixed(1));
+    // 限制最小速度为 0.5x
+    newRate = Math.max(newRate, 0.5);
+    dom.mediaPlayer.playbackRate = newRate;
+    state.setPlaybackRate(newRate);
+    showSpeedFeedback();
 }
 // =========================================================================

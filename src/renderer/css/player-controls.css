@@ -8,9 +8,9 @@
     grid-template-columns: 3fr 4fr 3fr;
     align-items: center;
     border-top: 1px solid #282828;
-    z-index: 2001; /* 【修改】确保 z-index 高于面板 */
-    position: relative; /* 【新增】确保 z-index 生效 */
-    transition: opacity 0.3s ease, visibility 0.3s ease, filter 0.3s ease; /* 【优化】添加 filter 过渡 */
+    z-index: 2001;
+    position: relative;
+    transition: opacity 0.3s ease, visibility 0.3s ease, filter 0.3s ease;
 }
 .track-info {
     display: flex;
@@ -23,7 +23,7 @@
     margin-right: 15px;
     border-radius: 4px;
     flex-shrink: 0;
-    object-fit: cover; /* 【新增】确保图片保持宽高比，裁剪以适应容器 */
+    object-fit: cover;
 }
 .track-details {
     white-space: nowrap;
@@ -151,37 +151,36 @@
 }
 .mobile-only-btn { display: none; }
 
-/* ========================================================================= */
-/* 【新增】空状态下的控制条样式                                              */
-/* ========================================================================= */
 .player-controls.disabled {
     opacity: 0.5;
-    pointer-events: none; /* 禁用所有点击 */
+    pointer-events: none;
     filter: grayscale(100%);
 }
-/* ========================================================================= */
-/* ========================================================================= */
-/* 【新增】视频内容全屏按钮的样式                                            */
-/* ========================================================================= */
+
 #fullscreen-btn {
-    display: none; /* 默认隐藏 */
+    display: none;
 }
-/* 当播放器容器有 .video-mode 类时，显示全屏按钮 */
 .player-container.video-mode #fullscreen-btn {
     display: flex;
     align-items: center;
     justify-content: center;
 }
-/* 默认隐藏“退出全屏”图标 */
 #fullscreen-btn .fullscreen-exit-icon {
     display: none;
 }
-/* 当按钮有 .fullscreen-active 类时，隐藏“进入全屏”图标 */
 #fullscreen-btn.fullscreen-active .fullscreen-enter-icon {
     display: none;
 }
-/* 当按钮有 .fullscreen-active 类时，显示“退出全屏”图标 */
 #fullscreen-btn.fullscreen-active .fullscreen-exit-icon {
     display: block;
+}
+
+/* ========================================================================= */
+/* 【核心修改】为“更多选项”的包裹容器添加样式 */
+/* ========================================================================= */
+.more-options-container {
+    position: relative; /* 关键：为内部的绝对定位菜单提供参考系 */
+    display: flex; /* 使其行为像 flex 布局中的一个项目 */
+    align-items: center;
 }
 /* ========================================================================= */

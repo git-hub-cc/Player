@@ -48,9 +48,7 @@
 .action-btn.secondary-btn { background-color: var(--slider-track-color); color: var(--text-primary); }
 .action-btn.secondary-btn:hover { background-color: #6a6a6a; }
 
-/* ========================================================================= */
-/* 【新增】下载进度模态框样式                                                  */
-/* ========================================================================= */
+/* --- 下载进度模态框样式 --- */
 .download-progress-content {
     width: 450px;
     max-width: 90vw;
@@ -89,7 +87,6 @@
     color: var(--text-primary);
     font-variant-numeric: tabular-nums; /* 数字等宽，防止跳动 */
 }
-/* ========================================================================= */
 
 /* --- Toast Notification --- */
 .toast { visibility: hidden; opacity: 0; position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%); min-width: 250px; background-color: var(--highlight-bg); color: var(--text-primary); text-align: center; border-radius: 4px; padding: 16px; z-index: 10001; box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: opacity 0.5s, visibility 0.5s; font-size: 14px; }
@@ -102,3 +99,57 @@
 .custom-context-menu ul { list-style: none; margin: 0; padding: 0; }
 .custom-context-menu li { padding: 10px 15px; font-size: 14px; color: var(--text-secondary); cursor: pointer; border-radius: 4px; transition: background-color 0.2s ease, color 0.2s ease; }
 .custom-context-menu li:hover { background-color: var(--highlight-bg); color: var(--text-primary); }
+
+/* --- “更多选项”弹出菜单的样式 --- */
+.more-options-menu {
+    /* ========================================================================= */
+    /* 【核心修改】调整定位属性，使其相对于父容器 .more-options-container */
+    /* ========================================================================= */
+    position: absolute;
+    bottom: calc(100% + 10px); /* 位于父容器（按钮）上方 10px 处 */
+    right: 0; /* 右边缘与父容器（按钮）右边缘对齐 */
+    /* ========================================================================= */
+    z-index: 4001;
+    background-color: var(--panel-bg);
+    border-radius: 6px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    padding: 6px;
+    min-width: 180px;
+    border: 1px solid var(--highlight-bg);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(10px);
+    transition: opacity 0.2s ease, visibility 0s 0.2s, transform 0.2s ease;
+}
+.more-options-menu.visible {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    transition: opacity 0.2s ease, visibility 0s, transform 0.2s ease;
+}
+.more-options-menu ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.more-options-menu li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 15px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+.more-options-menu li:hover {
+    background-color: var(--highlight-bg);
+    color: var(--text-primary);
+}
+.more-options-menu li svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+    flex-shrink: 0;
+}

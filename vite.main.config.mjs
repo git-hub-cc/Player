@@ -18,7 +18,6 @@ export default defineConfig({
         // 【核心修复】强制 Vite 将所有依赖项打包到主进程代码中
         // 这是解决 "Cannot find module" 错误的关键设置。
         // 它告诉 Vite 将所有依赖（包括 playwright-extra 和 merge-deep）
-        // 的代码都捆绑进最终的 .vite/build/main.js 文件中，
         // 而不是将它们作为外部的 'require()' 调用。
         // --------------------------------------------------------------------
         noExternal: true,

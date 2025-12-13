@@ -1,10 +1,10 @@
-// src/renderer/js/features/shortcuts.js
+// js/features/shortcuts.js
 
 import * as dom from '../dom.js';
 import * as state from '../state.js';
 import { defaultShortcuts } from '../config.js';
 import { getTemplate, normalizeKey } from '../utils.js';
-import { togglePlayPause, playNextTrack, playPrevTrack, seek, setTemporaryPlaybackRate, restorePlaybackRate } from '../player.js';
+import { togglePlayPause, playNextTrack, playPrevTrack, seek, setTemporaryPlaybackRate, restorePlaybackRate, increaseSpeed, decreaseSpeed } from '../player.js';
 import { toggleLyricsPanel, togglePlaylistPanel, updateVolumeBarVisual, showSeekFeedback } from '../ui.js';
 
 // --- 配置与状态变量 ---
@@ -190,6 +190,16 @@ export function executeShortcut(actionId) {
             dom.mediaPlayer.volume = Math.max(0, dom.mediaPlayer.volume - 0.1);
             updateVolumeBarVisual(dom.mediaPlayer.volume, dom.mediaPlayer.muted);
             break;
+        // =========================================================================
+        // 【新增】处理加速和减速的快捷键动作
+        // =========================================================================
+        case 'speed-up':
+            increaseSpeed();
+            break;
+        case 'speed-down':
+            decreaseSpeed();
+            break;
+        // =========================================================================
         case 'toggle-mute':
             dom.volumeBtn.click();
             break;
@@ -334,8 +344,11 @@ export function setupShortcutListeners() {
         clearTimeout(longPressTimer);
         longPressTimer = null;
         // 如果倍速播放被激活，也恢复正常速率
-        if (dom.mediaPlayer && dom.mediaPlayer.playbackRate !== 1.0) {
-            restorePlaybackRate();
+        if (dom.mediaPlayer && dom.mediaPlayer.playbackRate !== state.playbackRate) {
+            // 注意: 此处不再使用 restorePlaybackRate，而是直接设置为 state 中的值，
+            // 因为长按快进可能与用户设定的倍速播放冲突。
+            // 用户的设定（state.playbackRate）优先级更高。
+            dom.mediaPlayer.playbackRate = state.playbackRate;
         }
     });
 }
