@@ -6,11 +6,20 @@
     left: 0;
     width: 100vw;
     height: 100vh;
-    z-index: 1; /* Place it behind the player */
+    z-index: 1; /* 位于播放器之后 */
     cursor: grab;
     user-select: none;
     overflow: hidden;
+    /* 【核心新增】为显隐状态添加平滑的过渡效果 */
+    transition: opacity 0.4s ease;
 }
+
+/* 【核心新增】当主视图全屏时，隐藏背景画廊 */
+#gallery-container.suppressed-by-fullscreen {
+    opacity: 0;
+    pointer-events: none;
+}
+
 
 #gallery-container.active {
     cursor: grabbing;
