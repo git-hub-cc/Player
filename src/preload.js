@@ -12,16 +12,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     selectImportDirectory: () => ipcRenderer.invoke('select-import-directory'),
     startLocalImport: (dirPath) => ipcRenderer.invoke('start-local-import', dirPath),
     separateVideo: (trackData) => ipcRenderer.invoke('separate-video', trackData),
+    // =========================================================================
+    // 【核心新增】暴露获取在线歌词的接口给渲染进程
+    // =========================================================================
+    getOnlineLyric: (lyricId, source) => ipcRenderer.invoke('get-online-lyric', { lyricId, source }),
+    // =========================================================================
 
     // --- 核心工具 ---
     downloadCoreTool: (toolName) => ipcRenderer.invoke('download-core-tool', toolName),
     openToolsFolder: () => ipcRenderer.invoke('open-tools-folder'),
 
-    // =========================================================================
-    // 【核心修复】handleFileDrop
-    // 1. 接收来自 Renderer 的标准数组 (files)。
-    // 2. 使用 webUtils.getPathForFile(file) 获取真实路径。
-    // =========================================================================
+    // --- 文件拖拽处理 ---
     handleFileDrop: (files) => {
         console.group('🔍 [Preload] handleFileDrop Log');
         console.log('1. Files array received:', files);
@@ -57,7 +58,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
             return Promise.resolve({ success: false, error: `Preload Error: ${e.message}` });
         }
     },
-    // =========================================================================
 
     // --- 单向调用 ---
     startDownload: (requestData) => ipcRenderer.send('download-douyin', requestData),

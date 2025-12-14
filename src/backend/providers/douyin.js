@@ -148,8 +148,43 @@ export async function handleDouyinDownload(videoUrl) {
             });
         });
 
+        let urlToLoad = videoUrl;
+
+        // 如果不是短链 (v.douyin.com)，则尝试转换
+        if (!urlToLoad.includes('v.douyin.com')) {
+            let numericId = null;
+            try {
+                const url = new URL(urlToLoad);
+                // 检查 modal_id (Type 2)
+                if (url.searchParams.has('modal_id')) {
+                    numericId = url.searchParams.get('modal_id');
+                }
+                // 检查路径中的 ID (Type 3 for video or note)
+                else {
+                    const pathMatch = url.pathname.match(/\/(?:video|note)\/(\d+)/);
+                    if (pathMatch && pathMatch[1]) {
+                        numericId = pathMatch[1];
+                    }
+                }
+            } catch (parseError) {
+                console.warn(`[Douyin Provider] URL '${urlToLoad}' 解析失败，将使用原始链接。错误: ${parseError.message}`);
+            }
+
+            if (numericId) {
+                try {
+                    urlToLoad = `https://www.douyin.com/video/${numericId}/`;
+                    sendMessageCallback('download-status', { message: `已将长链接转换为短链接: ${urlToLoad}` });
+                } catch (encodeError) {
+                    console.error(`[Douyin Provider] Base62 编码失败: ${encodeError.message}`);
+                    sendMessageCallback('download-status', { message: `链接转换失败: ${encodeError.message}`, type: 'error' });
+                    // 如果转换失败，则回退到原始 URL
+                    urlToLoad = videoUrl;
+                }
+            }
+        }
+
         // 加载目标 URL，并伪装成普通浏览器
-        await win.loadURL(videoUrl, { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' });
+        await win.loadURL(urlToLoad, { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' });
         sendMessageCallback('download-status', { message: '正在导航页面，等待 API 响应...' });
 
         // 等待 API 响应的 Promise 完成

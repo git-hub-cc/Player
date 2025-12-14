@@ -79,6 +79,13 @@ function registerIpcHandlers() {
     ipcMain.handle('get-music-url', (event, trackInfo) => onlineService.handleGetMusicUrl(trackInfo));
     ipcMain.handle('get-lrc-content', (event, relativePath) => onlineService.handleGetLrcContent(relativePath));
     ipcMain.on('cache-track', (event, trackData) => onlineService.handleCacheRequest(trackData));
+    // =========================================================================
+    // 【核心新增】添加 IPC 句柄，用于获取在线歌曲的歌词
+    // =========================================================================
+    ipcMain.handle('get-online-lyric', (event, { lyricId, source }) =>
+        onlineService.handleGetOnlineLyric({ lyricId, source })
+    );
+    // =========================================================================
 
     // --- 下载与工具相关 ---
     ipcMain.on('download-douyin', (event, data) => downloadService.handleDownloadRequest(data));
@@ -99,9 +106,7 @@ function registerIpcHandlers() {
         libraryService.handleSeparateVideo(trackData)
     );
 
-    // =========================================================================
-    // 【核心修复】处理文件拖拽事件
-    // =========================================================================
+    // --- 文件拖拽 ---
     ipcMain.handle('handle-file-drop', (event, files) => {
         console.log('🔍 [Main IPC] handle-file-drop invoked');
         if (Array.isArray(files) && files.length > 0) {
@@ -111,7 +116,6 @@ function registerIpcHandlers() {
         }
         return libraryService.handleDroppedFiles(files, sendMessage);
     });
-    // =========================================================================
 
     // --- 工具下载 ---
     ipcMain.handle('download-core-tool', async (event, toolName) => {

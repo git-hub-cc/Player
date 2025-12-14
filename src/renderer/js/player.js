@@ -12,11 +12,7 @@ let skeletonTimer = null;
 let nextBackgroundUpdateTime = 0;
 const BACKGROUND_BEAT_MULTIPLIER = 12;
 
-// =========================================================================
-// 【新增】用于长按快进时的原始播放速率备份
-// =========================================================================
 let originalPlaybackRate = 1.0;
-// =========================================================================
 
 function clearVisualizer() {
     if (dom.audioVisualizer) {
@@ -86,7 +82,6 @@ export async function playTemporaryTrack(track) {
     resetBackgroundBeatTimer();
     state.setCurrentColorPaletteIndex(0);
 
-    // 【新增】应用当前设置的播放速率
     dom.mediaPlayer.playbackRate = state.playbackRate;
 
     state.setTemporaryPlayingTrack(track);
@@ -120,16 +115,28 @@ export async function playTemporaryTrack(track) {
         if (dom.albumArtEl.complete) extractAndApplyGradient(dom.albumArtEl);
     }
 
+    // =========================================================================
+    // 【核心修复】在播放临时在线曲目时，主动获取其歌词
+    // 1. 清空当前歌词。
+    // 2. 检查曲目对象是否存在 `lyricId` 和 `source`。
+    // 3. 如果存在，则通过 `electronAPI` 调用主进程获取歌词。
+    // 4. 成功获取后，解析歌词并更新UI。
+    // =========================================================================
     state.setParsedLyrics([]);
-    if (track.lyrics) {
+    if (track.lyricId && track.source) {
         try {
-            const lrcText = track.lyrics.startsWith('data:text/plain,')
-                ? decodeURIComponent(track.lyrics.substring('data:text/plain,'.length))
-                : await (await fetch(track.lyrics)).text();
-            state.setParsedLyrics(parseLRC(lrcText));
-        } catch (error) { console.error(`无法加载临时歌词:`, error); }
+            const result = await window.electronAPI.getOnlineLyric(track.lyricId, track.source);
+            if (result.success && result.data) {
+                state.setParsedLyrics(parseLRC(result.data));
+            } else {
+                console.warn(`获取在线歌词失败: ${result.error}`);
+            }
+        } catch (error) {
+            console.error(`请求在线歌词时发生错误:`, error);
+        }
     }
     renderLyrics();
+    // =========================================================================
 
     dom.albumArtContainer.style.display = 'flex';
     dom.mediaPlayer.style.display = 'none';
@@ -151,7 +158,6 @@ export async function loadTrack(trackIndex, options = {}) {
     if (state.playlist.length === 0) { resetPlayerUI(); return; }
     if (forcePlay) state.setIsPlaying(true);
 
-    // 【新增】应用当前设置的播放速率
     dom.mediaPlayer.playbackRate = state.playbackRate;
 
     state.setCurrentTrackIndex(trackIndex);
@@ -174,7 +180,7 @@ export async function loadTrack(trackIndex, options = {}) {
             if (track.lyrics.startsWith('data:text/plain,')) {
                 lrcText = decodeURIComponent(track.lyrics.substring('data:text/plain,'.length));
             } else if (track.lyrics.startsWith('media://')) {
-                const relativePath = track.lyrics.substring('media://'.length);
+                const relativePath = decodeURIComponent(track.lyrics.substring('media://'.length));
                 const result = await window.electronAPI.getLrcContent(relativePath);
                 if (result.success) lrcText = result.data; else throw new Error(result.error);
             } else if (track.lyrics.startsWith('http')) {
@@ -326,9 +332,6 @@ export function cyclePlayMode() {
     showToast(`播放模式: ${titles[currentMode]}`);
 }
 
-// =========================================================================
-// 【修改】处理时间跳转和倍速播放的函数
-// =========================================================================
 /**
  * 跳转到媒体的指定秒数。
  * @param {number} seconds - 要跳转的秒数（正为快进，负为快退）。
@@ -336,9 +339,8 @@ export function cyclePlayMode() {
 export function seek(seconds) {
     if (!dom.mediaPlayer || isNaN(dom.mediaPlayer.duration)) return;
     const newTime = dom.mediaPlayer.currentTime + seconds;
-    // 确保时间不会超出范围 [0, duration]
     dom.mediaPlayer.currentTime = Math.max(0, Math.min(dom.mediaPlayer.duration, newTime));
-    updateProgress(); // 立即更新UI
+    updateProgress();
 }
 
 /**
@@ -347,7 +349,7 @@ export function seek(seconds) {
  */
 export function setTemporaryPlaybackRate(rate) {
     if (!dom.mediaPlayer) return;
-    originalPlaybackRate = dom.mediaPlayer.playbackRate; // 保存当前速率
+    originalPlaybackRate = dom.mediaPlayer.playbackRate;
     dom.mediaPlayer.playbackRate = rate;
 }
 
@@ -365,9 +367,7 @@ export function restorePlaybackRate() {
 export function increaseSpeed() {
     if (!dom.mediaPlayer) return;
     const currentRate = dom.mediaPlayer.playbackRate;
-    // 使用 toFixed 避免浮点数精度问题
     let newRate = parseFloat((currentRate + 0.1).toFixed(1));
-    // 限制最大速度为 2.0x
     newRate = Math.min(newRate, 2.0);
     dom.mediaPlayer.playbackRate = newRate;
     state.setPlaybackRate(newRate);
@@ -381,10 +381,8 @@ export function decreaseSpeed() {
     if (!dom.mediaPlayer) return;
     const currentRate = dom.mediaPlayer.playbackRate;
     let newRate = parseFloat((currentRate - 0.1).toFixed(1));
-    // 限制最小速度为 0.5x
     newRate = Math.max(newRate, 0.5);
     dom.mediaPlayer.playbackRate = newRate;
     state.setPlaybackRate(newRate);
     showSpeedFeedback();
 }
-// =========================================================================
