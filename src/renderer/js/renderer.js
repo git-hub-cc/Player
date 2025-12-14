@@ -370,8 +370,19 @@ function setupEventListeners() {
 
     // --- 双击进入沉浸模式 ---
     dom.mainView.addEventListener('dblclick', () => {
+        // 如果已处于原生全屏或屏保模式，则不响应双击
         if (document.fullscreenElement || state.isScreensaverMode) return;
+
+        // 切换主视图的全屏样式
         dom.mainView.classList.toggle('main-view-fullscreen');
+
+        // =========================================================================
+        // 【核心修改】同步切换背景画廊的可见性，防止在过渡时被看到
+        // =========================================================================
+        dom.galleryContainer.classList.toggle('suppressed-by-fullscreen');
+        // =========================================================================
+
+        // 移除当前焦点，防止UI元素（如按钮）在全屏模式下依然有焦点轮廓
         if (document.activeElement) document.activeElement.blur();
     });
     document.addEventListener('fullscreenchange', () => { if (dom.fullscreenBtn) dom.fullscreenBtn.classList.toggle('fullscreen-active', !!document.fullscreenElement); });
