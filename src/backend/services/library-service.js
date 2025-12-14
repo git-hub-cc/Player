@@ -71,7 +71,8 @@ function stringToColor(str) {
 
 function getDisplayChars(title) {
     if (!title) return '';
-    return title.trim().substring(0, 10);
+    // 【修改】允许最多 50 个字符，以适应自动换行
+    return title.trim().substring(0, 50);
 }
 
 function generatePlaceholderArt(title) {
@@ -80,14 +81,55 @@ function generatePlaceholderArt(title) {
     const canvas = createCanvas(size, size);
     const ctx = canvas.getContext('2d');
     const bgColor = stringToColor(title);
+
+    // 绘制背景
     ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, size, size);
-    const text = getDisplayChars(title);
-    ctx.font = 'bold 90px "Microsoft YaHei", "Segoe UI", Arial, sans-serif';
+
+    // 配置字体
+    const fontSize = 90;
+    const lineHeight = 110; // 行高
+    const maxWidth = size * 0.85; // 最大宽度，留出左右边距
+    ctx.font = `bold ${fontSize}px "Microsoft YaHei", "Segoe UI", Arial, sans-serif`;
     ctx.fillStyle = '#FFFFFF';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, size / 2, size / 2);
+
+    const text = getDisplayChars(title);
+
+    // 【新增】自动换行逻辑
+    const lines = [];
+    let currentLine = '';
+
+    // 遍历字符进行分行计算
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const testLine = currentLine + char;
+        const metrics = ctx.measureText(testLine);
+
+        // 如果加入当前字符后超过最大宽度，且当前行不为空
+        if (metrics.width > maxWidth && i > 0) {
+            lines.push(currentLine);
+            currentLine = char;
+        } else {
+            currentLine = testLine;
+        }
+    }
+    // 添加最后一行
+    lines.push(currentLine);
+
+    // 计算垂直居中的起始位置
+    const totalBlockHeight = lines.length * lineHeight;
+    // 起始 Y 坐标 = (画布高度 - 总文本块高度) / 2 + (第一行的基线偏移 / 2)
+    // 因为 textBaseline 是 middle，所以每行的 Y 应该是该行高度的中间点
+    let startY = (size - totalBlockHeight) / 2 + (lineHeight / 2);
+
+    // 逐行绘制
+    lines.forEach((line) => {
+        ctx.fillText(line, size / 2, startY);
+        startY += lineHeight;
+    });
+
     return canvas.toDataURL('image/png');
 }
 

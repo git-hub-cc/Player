@@ -64,14 +64,23 @@ function sanitizeFilename(filename) {
 
 /**
  * 通用文件下载函数。
+ * 【核心修改】增加 onProgress 回调以支持进度报告。
+ * @param {string} url - 文件的 URL。
+ * @param {string} folder - 保存目录。
+ * @param {string} fileName - 文件名。
+ * @param {object} headers - 请求头。
+ * @param {function} onProgress - 进度回调函数，接收一个 0-1 的小数。
+ * @param {number} retries - 重试次数。
+ * @returns {Promise<void>}
  */
-export async function downloadFile(url, folder, fileName, headers = {}, retries = DOWNLOAD_RETRY_COUNT) {
+export async function downloadFile(url, folder, fileName, headers = {}, onProgress = () => {}, retries = DOWNLOAD_RETRY_COUNT) {
     const filePath = path.join(folder, fileName);
     if (fs.existsSync(filePath)) {
         try {
             const stats = await fs.promises.stat(filePath);
             if (stats.size > 0) {
                 console.log(`[Download] 文件 ${fileName} 已存在且非空，跳过。`);
+                onProgress(1); // 文件已存在，视为100%完成
                 return;
             }
         } catch (e) { /* 忽略 stat 错误 */ }
@@ -83,6 +92,17 @@ export async function downloadFile(url, folder, fileName, headers = {}, retries 
             const response = await axios({
                 url, method: 'GET', responseType: 'stream',
                 headers: { 'User-Agent': 'Mozilla/5.0', ...headers }
+            });
+
+            // 获取文件总大小用于计算进度
+            const totalLength = parseInt(response.headers['content-length'], 10);
+            let downloadedLength = 0;
+
+            response.data.on('data', chunk => {
+                downloadedLength += chunk.length;
+                if (totalLength > 0) {
+                    onProgress(downloadedLength / totalLength);
+                }
             });
 
             response.data.pipe(writer);
@@ -236,7 +256,7 @@ async function downloadJableVideo(videoUrl) {
         sendMessageCallback('download-status', { message: '开始下载并解密视频分片...', type: 'default' });
         await jableProvider.downloadVideo(
             info.m3u8Url, CONFIG.VIDEOS_DIR, `${safeFilename}.mp4`,
-            (progress) => sendMessageCallback('download-status', { message: `下载进度: ${(progress * 100).toFixed(1)}%`, type: 'default' }),
+            (progress) => sendMessageCallback('download-status', { message: `下载进度: ${(progress * 100).toFixed(1)}%`, progress: progress, type: 'progress' }),
             FFMPEG_PATH, info.cookieString
         );
 
@@ -276,7 +296,7 @@ async function downloadYoutubeVideo(videoUrl) {
         sendMessageCallback('download-status', { message: '开始调用 yt-dlp 下载...', type: 'default' });
         await youtubeProvider.downloadVideo(
             videoUrl, CONFIG.VIDEOS_DIR, safeFilename, YT_DLP_PATH, FFMPEG_PATH,
-            (progress) => sendMessageCallback('download-status', { message: `下载进度: ${(progress * 100).toFixed(1)}%`, type: 'default' }),
+            (progress) => sendMessageCallback('download-status', { message: `下载进度: ${(progress * 100).toFixed(1)}%`, progress: progress, type: 'progress' }),
             SYSTEM_PROXY
         );
 
