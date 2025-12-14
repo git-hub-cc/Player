@@ -3,9 +3,6 @@
 import fs from 'fs';
 import path from 'path';
 import { pinyin } from 'pinyin-pro';
-// =========================================================================
-// 【核心修改】从 gdstudio 导入 resolvePicUrl 函数，用于按需获取封面
-// =========================================================================
 import * as gdstudio from '../providers/gdstudio.js';
 import { updateLocalPlaylist } from './library-service.js';
 import { downloadFile } from './download-service.js';
@@ -40,7 +37,6 @@ function sanitizeFilename(filename) {
  */
 export async function handleSearchRequest({ query, page = 1 }) {
     try {
-        // 【鲁棒性】现在 search 函数仅返回基础信息，不再包含耗时的封面请求
         const { list, total } = await gdstudio.search(query, page);
         return { success: true, data: { results: list, total } };
     } catch (error) {
@@ -50,9 +46,6 @@ export async function handleSearchRequest({ query, page = 1 }) {
 }
 
 /**
- * =========================================================================
- * 【核心修改】增强此函数，使其在获取播放链接的同时，也按需获取封面 URL
- * =========================================================================
  * 获取在线音乐的可播放 URL 和封面 URL。
  * @param {object} trackInfo - 曲目信息对象，应包含 id, source, pic_id。
  * @returns {Promise<object>} - 包含 success 和 url, albumArtUrl, error 的结果对象。
@@ -100,11 +93,7 @@ export async function handleCacheRequest(trackData) {
             throw new Error('无法获取音频下载链接。');
         }
 
-        // =========================================================================
-        // 【核心修改】按需获取封面 URL 进行下载
-        // 1. 优先使用 trackData 中已有的 albumArt (可能在播放时已获取)。
-        // 2. 如果没有，则使用 pic_id 实时获取。
-        // =========================================================================
+        // --- 封面下载 ---
         let artUrl = trackData.albumArt || trackData.originalAlbumArt;
         if (!artUrl && trackData.pic_id) {
             artUrl = await gdstudio.resolvePicUrl(trackData.pic_id, trackData.source);
@@ -126,7 +115,6 @@ export async function handleCacheRequest(trackData) {
             }
         }
         if (lyricContent) {
-            // 使用 a+ 标志，如果文件已由 downloadFile 创建，则不会覆盖
             fs.writeFileSync(lyricsPath, lyricContent, { encoding: 'utf-8', flag: 'a+' });
         }
 
@@ -171,3 +159,25 @@ export async function handleGetLrcContent(relativePath) {
         return { success: false, error: e.message };
     }
 }
+
+// =========================================================================
+// 【核心新增】添加一个新函数，用于专门获取在线歌词
+// =========================================================================
+/**
+ * 获取在线歌曲的歌词内容。
+ * @param {object} params - 包含 lyricId 和 source 的参数对象。
+ * @returns {Promise<object>} - 包含 success 和 data/error 的结果对象。
+ */
+export async function handleGetOnlineLyric({ lyricId, source }) {
+    if (!lyricId || !source) {
+        return { success: false, error: '缺少歌词 ID 或来源信息。' };
+    }
+    try {
+        const content = await gdstudio.getLyric(lyricId, source);
+        return { success: true, data: content };
+    } catch (error) {
+        console.error(`[Online] 获取在线歌词失败: ${error.message}`);
+        return { success: false, error: error.message };
+    }
+}
+// =========================================================================
