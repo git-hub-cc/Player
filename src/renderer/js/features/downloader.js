@@ -11,6 +11,14 @@ let currentPage = 1;
 let totalPages = 1;
 const ITEMS_PER_PAGE = 10;
 
+// =========================================================================
+// 【核心新增】获取 DOM 元素的引用
+// =========================================================================
+const downloadProgressContainer = document.querySelector('.download-progress-container');
+const downloadProgressBar = document.querySelector('.download-progress-bar');
+// =========================================================================
+
+
 /**
  * 将后端返回的统一数据转换为前端播放器使用的曲目对象。
  */
@@ -84,17 +92,33 @@ function updateInputMode() {
     }
 }
 
+
 /**
- * 更新下载面板底部的状态信息。
+ * 【核心修改】更新下载面板底部的状态信息，并处理进度条显示。
+ * @param {string} message - 要显示的消息文本。
+ * @param {string} type - 消息类型 ('default', 'success', 'error', 'progress')。
+ * @param {number|undefined} progress - 下载进度 (0-1)。
  */
-function updateStatus(message, type = 'default') {
+function updateStatus(message, type = 'default', progress = undefined) {
     const statusEl = dom.downloadStatusEl;
+
+    // 更新文本信息
     statusEl.textContent = message;
-    statusEl.className = 'download-status';
+    statusEl.className = 'download-status'; // 重置 class
     if (type === 'success') statusEl.classList.add('success');
     else if (type === 'error') statusEl.classList.add('error');
     statusEl.style.display = 'block';
+
+    // 根据类型和进度值决定是否显示进度条
+    if (type === 'progress' && typeof progress === 'number') {
+        downloadProgressContainer.style.display = 'block';
+        downloadProgressBar.style.width = `${Math.min(100, progress * 100)}%`;
+    } else {
+        downloadProgressContainer.style.display = 'none';
+        downloadProgressBar.style.width = '0%';
+    }
 }
+
 
 /**
  * 向主进程请求删除一个已下载的曲目。
@@ -295,9 +319,7 @@ async function handleLocalImportClick(event) {
 }
 
 /**
- * =========================================================================
- * 【核心修复】删除了 'require('electron')'，改用 DOM 操作和 IPC API
- * =========================================================================
+ * 处理缺失核心工具的通用流程。
  * @param {string} toolName - 缺失的工具名称 ('ffmpeg' 或 'yt-dlp')
  * @param {string} featureName - 触发该错误的功能描述
  */
@@ -337,11 +359,8 @@ async function handleMissingTool(toolName, featureName) {
         modal.classList.remove('visible');
         cancelBtn.textContent = originalCancelText;
         confirmBtn.textContent = originalConfirmText;
-        if (closeBtn) closeBtn.style.display = 'none'; // 隐藏而不是移除，以便复用或防止报错
+        if (closeBtn) closeBtn.style.display = 'none';
 
-        // 移除所有临时监听器，通过克隆节点的方式是最快的方法
-        // 注意：这会移除原始的事件监听器，所以在 renderer.js 中调用 showConfirmationModal 时
-        // 必须确保它每次都重新绑定事件（目前的 ui.js 实现是支持的）
         const newCloseBtn = closeBtn.cloneNode(true);
         closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
         closeBtn = newCloseBtn;
@@ -357,11 +376,9 @@ async function handleMissingTool(toolName, featureName) {
         // 自动下载
         confirmBtn.onclick = async () => {
             cleanup();
-            // 触发下载模态框
             const progressModal = document.getElementById('download-progress-modal');
             progressModal.classList.add('visible');
             try {
-                // 调用 IPC 接口
                 const result = await window.electronAPI.downloadCoreTool(toolName);
                 if (result.success) {
                     showToast(`${toolDisplayName} 安装成功！请重试刚才的操作。`, 'success');
@@ -379,7 +396,6 @@ async function handleMissingTool(toolName, featureName) {
         // 手动说明
         cancelBtn.onclick = async () => {
             cleanup();
-            // 这里调用通用的弹窗，但需要确保它是异步的，不会立即被覆盖
             setTimeout(async () => {
                 await showConfirmationModal(
                     `手动下载步骤：\n\n1. 访问 GitHub Releases 页面下载 ${toolDisplayName}。\n2. 将下载的 .exe 文件放入应用的数据目录中。\n\n点击“确认”将自动打开该目录。`
@@ -419,15 +435,20 @@ export function setupDownloaderListeners() {
     setupPaginationListener();
 
     window.electronAPI.onDownloadStatus((status) => {
+        // 【核心修改】处理新的 IPC 消息格式
         if (status.type === 'error' && status.reason === 'tool_missing') {
-            const toolName = status.missing; // 'ffmpeg' or 'yt-dlp'
+            const toolName = status.missing;
             let featureName = "该";
             if (toolName === 'ffmpeg') featureName = "视频转换";
             if (toolName === 'yt-dlp') featureName = "视频下载";
 
             handleMissingTool(toolName, featureName);
             updateStatus(`需要安装 ${toolName} 才能继续。`, 'default');
+        } else if (status.type === 'progress') {
+            // 当消息类型为 'progress' 时，更新状态和进度条
+            updateStatus(status.message, 'progress', status.progress);
         } else {
+            // 其他类型的消息，只更新状态文本
             updateStatus(status.message, status.type);
         }
 
