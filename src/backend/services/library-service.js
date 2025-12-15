@@ -99,9 +99,6 @@ export class LibraryService {
     // --- 公共 API 方法 ---
 
     /**
-     * =========================================================================
-     * 【核心修改】将此方法设为公共方法，以便其他服务可以调用它来生成占位图。
-     * =========================================================================
      * 为给定的标题生成一个基于颜色哈希的占位封面图。
      * @param {string} title - 用于生成颜色和文本的标题。
      * @returns {string} - 返回 PNG 格式的 Base64 Data URL，如果 Canvas 不可用则返回空字符串。
@@ -176,13 +173,9 @@ export class LibraryService {
             let playlist = JSON.parse(fs.readFileSync(this.#config.PLAYLIST_PATH, 'utf-8')); const originalIndex = playlist.findIndex(t => t.src === sourceRelativePath);
             if (originalIndex === -1) { return { success: false, error: '在播放列表中未找到原始轨道，无法更新。' }; }
             const videoOnlyTrack = { ...trackData, title: `${trackData.title} (仅视频)`, src: path.relative(this.#config.MEDIA_ROOT, videoOnlyPath).replace(/\\/g, '/'), albumArt: videoArtPath, };
-            // =========================================================================
-            // 【核心修改】为分离出的音频文件生成占位封面图，而不是留空。
-            // =========================================================================
             const audioTitle = `${trackData.title} (仅音频)`;
             const audioArtDataUrl = this.generatePlaceholderArt(audioTitle);
             const audioOnlyTrack = { ...trackData, title: audioTitle, src: path.relative(this.#config.MEDIA_ROOT, audioOnlyPath).replace(/\\/g, '/'), type: 'audio', lyrics: '', albumArt: audioArtDataUrl, };
-            // =========================================================================
             playlist.splice(originalIndex + 1, 0, videoOnlyTrack, audioOnlyTrack); fs.writeFileSync(this.#config.PLAYLIST_PATH, JSON.stringify(playlist, null, 2), 'utf-8');
             return { success: true, data: playlist, message: '视频分离成功！' };
         } catch (error) { return { success: false, error: error.message }; }
@@ -206,8 +199,17 @@ export class LibraryService {
                 newPlaylistTracks.push(newTrack); importedCount++; sendMessage('new-track-added', newTrack);
             } catch (error) { console.error(`❌ [Library Service] 导入文件 ${file.name} 失败:`, error); }
         }
-        if (newPlaylistTracks.length > 0) { await this.updateLocalPlaylist(newPlaylistTracks); sendMessage('import-status', { message: `成功导入 ${importedCount} 个文件！`, type: 'success' }); return { success: true, importedCount, tracks: newPlaylistTracks }; }
-        else { return { success: false, error: '导入失败，请检查日志。' }; }
+        if (newPlaylistTracks.length > 0) {
+            await this.updateLocalPlaylist(newPlaylistTracks);
+            sendMessage('import-status', {
+                message: `成功导入 ${importedCount} 个文件！`,
+                type: 'success',
+                importedCount: importedCount
+            });
+            return { success: true, importedCount, tracks: newPlaylistTracks };
+        } else {
+            return { success: false, error: '导入失败，请检查日志。' };
+        }
     }
 
     async handleLocalImport(directoryPath, sendMessage) {
@@ -256,7 +258,11 @@ export class LibraryService {
                 }
             }
             if (newPlaylistTracks.length > 0) { await this.updateLocalPlaylist(newPlaylistTracks); }
-            sendMessage('import-status', { message: `导入完成！成功导入 ${importedCount} 个文件。`, type: 'success' });
+            sendMessage('import-status', {
+                message: `导入完成！成功导入 ${importedCount} 个文件。`,
+                type: 'success',
+                importedCount: importedCount
+            });
             return { success: true, importedCount };
         } catch (error) { return { success: false, error: error.message }; }
     }

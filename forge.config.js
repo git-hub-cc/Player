@@ -17,13 +17,6 @@ module.exports = {
             config: {
                 name: 'Player',
                 setupIcon: path.resolve(__dirname, 'src/renderer/assets/app.ico'),
-                // =========================================================================
-                // 【优化建议】下面的 iconUrl 指向一个临时的 GitHub S3 链接，它可能在未来失效。
-                // 建议您将 app.ico 或一个 256x256 的 .ico 文件上传到一个稳定、公开可访问的
-                // URL (例如您自己的服务器或稳定的图床)，然后替换下面的链接。
-                //
-                // iconUrl: 'https://github-production-user-asset-6210df.s3.amazonaws.com/96827876/511516278-b000fda9-25e9-40f4-b299-6e0404f0bb19.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20251107%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251107T210545Z&X-Amz-Expires=300&X-Amz-Signature=df9a5a6d6c7a94243c590795458572875b9887832f4ab20dcd89b81f8dd5b73a&X-Amz-SignedHeaders=host',
-                // =========================================================================
             }
         },
         {
