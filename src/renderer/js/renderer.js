@@ -93,8 +93,20 @@ function loadPlayerState() {
 function setupEventListeners() {
     // --- 播放控制 ---
     dom.playPauseBtn?.addEventListener('click', mutations.togglePlayState);
-    dom.prevBtn?.addEventListener('click', async () => new (await import('./features/shortcuts.js')).PrevTrackCommand().execute());
-    dom.nextBtn?.addEventListener('click', async () => new (await import('./features/shortcuts.js')).NextTrackCommand().execute());
+
+    // =========================================================================
+    // 【核心修复】采用更稳健的动态导入方式，防止生产环境打包优化后出错。
+    // =========================================================================
+    dom.prevBtn?.addEventListener('click', async () => {
+        const shortcutsModule = await import('./features/shortcuts.js');
+        new shortcutsModule.PrevTrackCommand().execute();
+    });
+    dom.nextBtn?.addEventListener('click', async () => {
+        const shortcutsModule = await import('./features/shortcuts.js');
+        new shortcutsModule.NextTrackCommand().execute();
+    });
+    // =========================================================================
+
     dom.modeBtn?.addEventListener('click', mutations.cyclePlayMode);
 
     // --- 进度条 ---
