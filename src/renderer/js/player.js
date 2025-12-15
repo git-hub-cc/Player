@@ -1,380 +1,180 @@
-// js/player.js
+// src/renderer/js/player.js
+
+/**
+ * @file 媒体播放控制器 (Media Controller)
+ * @description
+ * 职责极其纯粹的模块：订阅状态，并根据状态控制 `<video>` 元素。
+ * 它不关心URL如何解析，也不关心UI如何展示，只负责播放这个动作本身。
+ */
 
 import * as dom from './dom.js';
-import * as state from './state.js';
-import { PLAY_MODES, DEFAULT_ART } from './config.js';
-import { formatTime, parseLRC } from './utils.js';
-import { renderLyrics, syncLyrics, extractAndApplyGradient, showSkeleton, hideSkeleton, updatePlaylistUI, updateModeButton, showToast, drawVisualizer, showSpeedFeedback } from './ui.js';
-import { resolvePlayableUrl } from './features/downloader.js';
+import { getters, mutations, subscribe } from './state.js';
+import { PLAY_MODES } from './config.js';
+import { parseLRC } from './utils.js';
 
-let animationFrameId = null;
+// --- 模块私有变量 ---
+let audioContextInitialized = false;
 let skeletonTimer = null;
-let nextBackgroundUpdateTime = 0;
-const BACKGROUND_BEAT_MULTIPLIER = 12;
 
-let originalPlaybackRate = 1.0;
+// --- 辅助函数 ---
 
-function clearVisualizer() {
-    if (dom.audioVisualizer) {
-        const ctx = dom.audioVisualizer.getContext('2d');
-        ctx.clearRect(0, 0, dom.audioVisualizer.width, dom.audioVisualizer.height);
-    }
-}
-
-let _pendingSeekTime = 0;
-export function setPendingSeek(time) { _pendingSeekTime = time > 0 ? time : 0; }
-export function consumePendingSeek() {
-    const time = _pendingSeekTime;
-    _pendingSeekTime = 0;
-    return time;
-}
-
-function setupAudioContext() {
-    if (state.audioContext) return;
-
+function _setupAudioContext() {
+    if (audioContextInitialized) return;
     try {
         const context = new (window.AudioContext || window.webkitAudioContext)();
-        const analyserNode = context.createAnalyser();
-        analyserNode.fftSize = 256;
-
-        state.setAudioContext(context);
-        state.setAnalyser(analyserNode);
-
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 256;
         const source = context.createMediaElementSource(dom.mediaPlayer);
-        source.connect(analyserNode);
-        analyserNode.connect(context.destination);
-        state.setAudioSource(source);
-        console.log("AudioContext and visualizer source connected.");
+        source.connect(analyser).connect(context.destination);
+        mutations.setAudioContext(context);
+        mutations.setAnalyser(analyser);
+        audioContextInitialized = true;
     } catch (e) {
-        console.error("Web Audio API is not supported in this browser.", e);
+        console.error("AudioContext setup failed:", e);
     }
 }
 
-export function resetBackgroundBeatTimer() {
-    nextBackgroundUpdateTime = 0;
-}
-
-export function resetPlayerUI() {
-    pauseTrack();
-    if (dom.mediaPlayer) dom.mediaPlayer.src = '';
-    dom.trackTitleEl.textContent = '选择媒体';
-    dom.trackArtistEl.textContent = '开始播放';
-    dom.albumArtEl.src = DEFAULT_ART;
-    dom.controlAlbumArtEl.src = DEFAULT_ART;
-    dom.currentTimeEl.textContent = '0:00';
-    dom.durationEl.textContent = '0:00';
-    dom.progressBar.value = 0;
-    dom.progressBar.style.setProperty('--value-percent', '0%');
-    dom.mainView.style.background = '';
-    state.setParsedLyrics([]);
-    renderLyrics();
-    hideSkeleton();
-    clearVisualizer();
-    state.clearPlayingTrackInfo();
-    updatePlaylistUI();
-    dom.playerContainer.classList.remove('video-mode');
-}
-
-export async function playTemporaryTrack(track) {
-    if (!track) return;
-    showSkeleton();
-    pauseTrack();
-    resetBackgroundBeatTimer();
-    state.setCurrentColorPaletteIndex(0);
-
-    dom.mediaPlayer.playbackRate = state.playbackRate;
-
-    state.setTemporaryPlayingTrack(track);
-    updatePlaylistUI();
-
-    dom.trackTitleEl.textContent = track.title || "未知标题";
-    dom.trackArtistEl.textContent = track.artist || "未知艺术家";
-
-    dom.albumArtEl.src = DEFAULT_ART;
-    dom.controlAlbumArtEl.src = DEFAULT_ART;
-    dom.mainView.style.background = '';
-
-    let playableSrc, albumArtUrl;
-    try {
-        const resolvedData = await resolvePlayableUrl(track);
-        playableSrc = resolvedData.playableSrc;
-        albumArtUrl = resolvedData.albumArtUrl;
-    } catch (error) {
-        console.error(`无法获取临时曲目 '${track.title}' 的播放链接:`, error);
-        showToast(`无法播放在线曲目: "${track.title}"`, 'error');
-        hideSkeleton();
-        state.clearPlayingTrackInfo();
-        updatePlaylistUI();
+/**
+ * 加载一个已经完全准备好的轨道对象。
+ * @private
+ * @param {object} track - 包含可直接播放的 `src` 的轨道对象。
+ */
+async function _loadTrack(track) {
+    if (!track || !track.src) {
+        dom.mediaPlayer.removeAttribute('src');
+        mutations.setParsedLyrics([]);
+        mutations.setDuration(0);
+        mutations.setIsPlaying(false);
         return;
     }
 
-    if (albumArtUrl) {
-        dom.albumArtEl.src = albumArtUrl;
-        dom.controlAlbumArtEl.src = albumArtUrl;
-        dom.albumArtEl.onload = () => extractAndApplyGradient(dom.albumArtEl);
-        if (dom.albumArtEl.complete) extractAndApplyGradient(dom.albumArtEl);
-    }
+    dom.mediaPlayer.playbackRate = getters.playbackRate();
+    dom.mediaPlayer.currentTime = 0;
 
-    state.setParsedLyrics([]);
-    if (track.lyricId && track.source) {
-        try {
-            const result = await window.electronAPI.getOnlineLyric(track.lyricId, track.source);
-            if (result.success && result.data) {
-                state.setParsedLyrics(parseLRC(result.data));
-            } else {
-                console.warn(`获取在线歌词失败: ${result.error}`);
-            }
-        } catch (error) {
-            console.error(`请求在线歌词时发生错误:`, error);
-        }
-    }
-    renderLyrics();
-
-    dom.albumArtContainer.style.display = 'flex';
-    dom.mediaPlayer.style.display = 'none';
-
-    dom.playerContainer.classList.remove('video-mode');
-
-    setPendingSeek(0);
-    state.setIsPlaying(true);
-    dom.mediaPlayer.src = playableSrc;
-    dom.mediaPlayer.load();
-}
-
-export async function loadTrack(trackIndex, options = {}) {
-    const { forcePlay = false, initialTime = 0 } = options;
-
-    resetBackgroundBeatTimer();
-    state.setCurrentColorPaletteIndex(0);
-    if (skeletonTimer) clearTimeout(skeletonTimer);
-    if (state.playlist.length === 0) { resetPlayerUI(); return; }
-    if (forcePlay) state.setIsPlaying(true);
-
-    dom.mediaPlayer.playbackRate = state.playbackRate;
-
-    state.setCurrentTrackIndex(trackIndex);
-    const track = state.playlist[trackIndex];
-
-    dom.trackTitleEl.textContent = track.title || "未知标题";
-    dom.trackArtistEl.textContent = track.artist || "未知艺术家";
-    const artUrl = track.albumArt || DEFAULT_ART;
-    dom.albumArtEl.src = artUrl;
-    dom.controlAlbumArtEl.src = artUrl;
-
-    const playableSrc = track.src;
-
-    state.setParsedLyrics([]);
-    renderLyrics();
-
-    if (track.lyrics) {
-        try {
-            let lrcText = '';
-            if (track.lyrics.startsWith('data:text/plain,')) {
+    // 加载歌词
+    try {
+        let lrcText = '';
+        if (track.lyrics) {
+            if (track.lyrics.startsWith('data:')) {
                 lrcText = decodeURIComponent(track.lyrics.substring('data:text/plain,'.length));
             } else if (track.lyrics.startsWith('media://')) {
-                const relativePath = decodeURIComponent(track.lyrics.substring('media://'.length));
-                const result = await window.electronAPI.getLrcContent(relativePath);
-                if (result.success) lrcText = result.data; else throw new Error(result.error);
-            } else if (track.lyrics.startsWith('http')) {
-                const response = await fetch(track.lyrics);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                lrcText = await response.text();
+                const result = await window.electronAPI.getLrcContent(decodeURIComponent(track.lyrics.substring('media://'.length)));
+                if (result.success) lrcText = result.data;
             }
-            if (lrcText) state.setParsedLyrics(parseLRC(lrcText));
-        } catch (error) {
-            console.error(`无法从路径加载歌词 '${track.lyrics}':`, error);
+        } else if (track.lyricId && track.source) { // 临时在线歌曲
+            const result = await window.electronAPI.getOnlineLyric(track.lyricId, track.source);
+            if (result.success) lrcText = result.data;
         }
-    }
-    renderLyrics();
-    updatePlaylistUI();
-
-    if (track.type === 'audio') {
-        dom.albumArtContainer.style.display = 'flex';
-        dom.mediaPlayer.style.display = 'none';
-        dom.albumArtEl.onload = () => extractAndApplyGradient(dom.albumArtEl);
-        if (dom.albumArtEl.complete && dom.albumArtEl.naturalWidth > 0) {
-            extractAndApplyGradient(dom.albumArtEl);
-        } else { dom.mainView.style.background = ''; }
-        dom.playerContainer.classList.remove('video-mode');
-    } else {
-        dom.albumArtContainer.style.display = 'none';
-        dom.mediaPlayer.style.display = 'block';
-        dom.mainView.style.background = '';
-        dom.mediaPlayer.addEventListener('canplay', () => extractAndApplyGradient(dom.mediaPlayer), { once: true });
-        clearVisualizer();
-        dom.playerContainer.classList.add('video-mode');
+        mutations.setParsedLyrics(parseLRC(lrcText));
+    } catch (error) {
+        console.error("Failed to load lyrics:", error);
+        mutations.setParsedLyrics([]);
     }
 
-    setPendingSeek(initialTime);
-    dom.mediaPlayer.src = playableSrc;
+    dom.mediaPlayer.src = track.src;
     dom.mediaPlayer.load();
 }
 
-function runAnimationFrame() {
-    updateProgress();
-    const currentTrackForVisualizer = state.temporaryPlayingTrack || state.playlist[state.currentTrackIndex];
-    if (state.isPlaying && state.analyser && currentTrackForVisualizer && currentTrackForVisualizer.type === 'audio') {
-        drawVisualizer();
-    }
-    const now = performance.now();
-    const currentTrack = state.temporaryPlayingTrack || state.playlist[state.currentTrackIndex];
-    if (state.isPlaying && currentTrack && dom.mediaPlayer.readyState > 1 && currentTrack.beatInterval > 0) {
-        if (nextBackgroundUpdateTime === 0) nextBackgroundUpdateTime = now;
-        if (now >= nextBackgroundUpdateTime) {
-            if (currentTrack.type === 'video') {
-                extractAndApplyGradient(dom.mediaPlayer);
-            } else if (currentTrack.type === 'audio' && currentTrack.colorPalettes?.length > 0) {
-                const palettes = currentTrack.colorPalettes;
-                const currentPalette = palettes[state.currentColorPaletteIndex];
-                dom.mainView.style.background = `linear-gradient(145deg, ${currentPalette[0]}, ${currentPalette[1]})`;
-                state.setCurrentColorPaletteIndex((state.currentColorPaletteIndex + 1) % palettes.length);
-            }
-            const updateInterval = currentTrack.beatInterval * 1000 * BACKGROUND_BEAT_MULTIPLIER;
-            nextBackgroundUpdateTime += updateInterval;
-            if (nextBackgroundUpdateTime < now) nextBackgroundUpdateTime = now + updateInterval;
-        }
-    }
-    animationFrameId = requestAnimationFrame(runAnimationFrame);
-}
 
-export function playTrack() {
-    if (!dom.mediaPlayer || !dom.mediaPlayer.src) return;
-    if (!state.audioContext) setupAudioContext();
-    if (state.audioContext && state.audioContext.state === 'suspended') state.audioContext.resume();
+// --- 状态订阅处理函数 ---
 
-    const playPromise = dom.mediaPlayer.play();
-    if (playPromise !== undefined) {
-        playPromise.then(() => {
-            state.setIsPlaying(true);
-            dom.playPauseBtn.classList.add('playing');
-            dom.playPauseBtn.title = '暂停';
-            const currentTrack = state.temporaryPlayingTrack || state.playlist[state.currentTrackIndex];
-            if (currentTrack && currentTrack.beatInterval && nextBackgroundUpdateTime === 0) {
-                nextBackgroundUpdateTime = performance.now();
+function onIsPlayingChanged(isPlaying) {
+    if (isPlaying) {
+        if (!dom.mediaPlayer.src) return;
+        if (!audioContextInitialized) _setupAudioContext();
+        getters.audioContext()?.resume();
+        dom.mediaPlayer.play().catch(e => {
+            if (e.name !== 'AbortError') {
+                console.error("Playback failed:", e);
+                mutations.setIsPlaying(false);
             }
-            if (animationFrameId === null) runAnimationFrame();
-        }).catch(e => {
-            if (e.name !== 'AbortError') console.error("播放失败:", e);
         });
-    }
-}
-
-export function pauseTrack() {
-    if (dom.mediaPlayer) dom.mediaPlayer.pause();
-    state.setIsPlaying(false);
-    dom.playPauseBtn.classList.remove('playing');
-    dom.playPauseBtn.title = '播放';
-    cancelAnimationFrame(animationFrameId);
-    animationFrameId = null;
-}
-
-export const togglePlayPause = () => state.isPlaying ? pauseTrack() : playTrack();
-
-function changeTrack(direction) {
-    if (state.playlist.length <= 1 && !state.temporaryPlayingTrack) return;
-    if (state.temporaryPlayingTrack) {
-        state.clearPlayingTrackInfo();
-        if (state.playlist.length === 0) { resetPlayerUI(); return; }
-    }
-    clearTimeout(skeletonTimer);
-    skeletonTimer = setTimeout(() => showSkeleton(), 300);
-    setTimeout(() => {
-        let newIndex;
-        const currentMode = PLAY_MODES[state.currentModeIndex];
-        const playlistLength = state.playlist.length;
-        if (direction === 1) { // Next
-            if (currentMode === 'shuffle') {
-                do { newIndex = Math.floor(Math.random() * playlistLength); } while (playlistLength > 1 && newIndex === state.currentTrackIndex);
-            } else { newIndex = (state.currentTrackIndex + 1) % playlistLength; }
-        } else { // Previous
-            if (currentMode === 'shuffle') {
-                do { newIndex = Math.floor(Math.random() * playlistLength); } while (playlistLength > 1 && newIndex === state.currentTrackIndex);
-            } else { newIndex = (state.currentTrackIndex - 1 + playlistLength) % playlistLength; }
-        }
-        loadTrack(newIndex, { forcePlay: true });
-    }, 150);
-}
-
-export function playNextTrack() { changeTrack(1); }
-export function playPrevTrack() { changeTrack(-1); }
-
-export function updateProgress() {
-    if (state.isScrubbing || !dom.mediaPlayer) return;
-    const { duration, currentTime } = dom.mediaPlayer;
-    let progressPercent = 0;
-    if (!isNaN(duration) && duration > 0) {
-        progressPercent = (currentTime / duration) * 100;
-        dom.progressBar.value = progressPercent;
-        dom.durationEl.textContent = formatTime(duration);
     } else {
-        dom.progressBar.value = 0;
-        dom.durationEl.textContent = "0:00";
+        dom.mediaPlayer.pause();
     }
-    dom.progressBar.style.setProperty('--value-percent', `${progressPercent}%`);
-    dom.currentTimeEl.textContent = formatTime(currentTime);
-    syncLyrics(currentTime);
 }
 
-export function cyclePlayMode() {
-    const newModeIndex = (state.currentModeIndex + 1) % PLAY_MODES.length;
-    state.setCurrentModeIndex(newModeIndex);
-    updateModeButton();
-    const currentMode = PLAY_MODES[state.currentModeIndex];
-    const titles = { 'list': '列表循环', 'single': '单曲循环', 'shuffle': '随机播放' };
-    showToast(`播放模式: ${titles[currentMode]}`);
+function onCurrentTrackChanged(track) {
+    clearTimeout(skeletonTimer);
+    if (track) {
+        skeletonTimer = setTimeout(() => _notify('showSkeleton'), 300);
+        _loadTrack(track);
+    } else {
+        _loadTrack(null);
+    }
 }
 
-/**
- * 跳转到媒体的指定秒数。
- * @param {number} seconds - 要跳转的秒数（正为快进，负为快退）。
- */
-export function seek(seconds) {
-    if (!dom.mediaPlayer || isNaN(dom.mediaPlayer.duration)) return;
-    const newTime = dom.mediaPlayer.currentTime + seconds;
-    dom.mediaPlayer.currentTime = Math.max(0, Math.min(dom.mediaPlayer.duration, newTime));
-    updateProgress();
-}
-
-/**
- * 临时设置播放速率（用于长按快进）。
- * @param {number} rate - 新的播放速率。
- */
-export function setTemporaryPlaybackRate(rate) {
-    if (!dom.mediaPlayer) return;
-    originalPlaybackRate = dom.mediaPlayer.playbackRate;
+function onPlaybackRateChanged(rate) {
     dom.mediaPlayer.playbackRate = rate;
 }
 
-/**
- * 恢复到长按前的播放速率。
- */
-export function restorePlaybackRate() {
-    if (!dom.mediaPlayer) return;
-    dom.mediaPlayer.playbackRate = originalPlaybackRate;
+function onVolumeChanged({ volume, isMuted }) {
+    dom.mediaPlayer.volume = volume;
+    dom.mediaPlayer.muted = isMuted;
 }
 
-/**
- * 增加播放速度。
- */
-export function increaseSpeed() {
-    if (!dom.mediaPlayer) return;
-    const currentRate = dom.mediaPlayer.playbackRate;
-    let newRate = parseFloat((currentRate + 0.1).toFixed(1));
-    newRate = Math.min(newRate, 2.0);
-    dom.mediaPlayer.playbackRate = newRate;
-    state.setPlaybackRate(newRate);
-    showSpeedFeedback();
+
+// --- 媒体元素事件处理 ---
+
+function onMediaTimeUpdate() {
+    if (!getters.isScrubbing()) {
+        mutations.setCurrentTime(dom.mediaPlayer.currentTime);
+    }
 }
 
-/**
- * 降低播放速度。
- */
-export function decreaseSpeed() {
-    if (!dom.mediaPlayer) return;
-    const currentRate = dom.mediaPlayer.playbackRate;
-    let newRate = parseFloat((currentRate - 0.1).toFixed(1));
-    newRate = Math.max(newRate, 0.5);
-    dom.mediaPlayer.playbackRate = newRate;
-    state.setPlaybackRate(newRate);
-    showSpeedFeedback();
+function onMediaCanPlay() {
+    clearTimeout(skeletonTimer);
+    _notify('hideSkeleton');
+    if (getters.isPlaying()) {
+        onIsPlayingChanged(true);
+    }
+}
+
+async function onMediaEnded() {
+    if (PLAY_MODES[getters.currentModeIndex()] === 'single') {
+        dom.mediaPlayer.currentTime = 0;
+        mutations.setIsPlaying(true);
+    } else {
+        // 使用命令模式触发下一首
+        const { NextTrackCommand } = await import('./features/shortcuts.js');
+        new NextTrackCommand().execute();
+    }
+}
+
+function onMediaError() {
+    clearTimeout(skeletonTimer);
+    _notify('hideSkeleton');
+    if (!dom.mediaPlayer.getAttribute('src')) return;
+    const track = getters.currentTrack();
+    _notify('showToast', { message: `播放失败: ${track?.title || '未知'}`, type: 'error' });
+}
+
+
+// --- 公共 API ---
+
+export function init() {
+    subscribe('isPlayingChanged', onIsPlayingChanged);
+    subscribe('currentTrackChanged', onCurrentTrackChanged);
+    subscribe('playbackRateChanged', onPlaybackRateChanged);
+    subscribe('volumeChanged', onVolumeChanged);
+
+    dom.mediaPlayer.addEventListener('timeupdate', onMediaTimeUpdate);
+    dom.mediaPlayer.addEventListener('loadedmetadata', () => mutations.setDuration(dom.mediaPlayer.duration));
+    dom.mediaPlayer.addEventListener('canplay', onMediaCanPlay);
+    dom.mediaPlayer.addEventListener('ended', onMediaEnded);
+    dom.mediaPlayer.addEventListener('error', onMediaError);
+
+    window.addEventListener('seekTo', (e) => {
+        const time = e.detail;
+        if (!isNaN(dom.mediaPlayer.duration)) {
+            dom.mediaPlayer.currentTime = Math.max(0, Math.min(dom.mediaPlayer.duration, time));
+            mutations.setCurrentTime(dom.mediaPlayer.currentTime);
+        }
+    });
+
+    console.log("Player Controller initialized.");
+}
+
+function _notify(eventName, data) {
+    window.dispatchEvent(new CustomEvent(eventName, { detail: data }));
 }

@@ -1,22 +1,27 @@
 /* player-controls.css */
+
 /* --- 底部控制条 --- */
 .player-controls {
     grid-row: 2 / 3;
     background-color: var(--surface-color);
     padding: 0 25px;
     display: grid;
-    grid-template-columns: 3fr 4fr 3fr;
+    /* 【核心修改】使用 minmax(0, Xfr) 强制限制列宽，防止长文本撑开 Grid 导致中间的控制按钮偏移 */
+    grid-template-columns: minmax(0, 3fr) 4fr minmax(0, 3fr);
     align-items: center;
     border-top: 1px solid #282828;
     z-index: 2001;
     position: relative;
     transition: opacity 0.3s ease, visibility 0.3s ease, filter 0.3s ease;
 }
+
 .track-info {
     display: flex;
     align-items: center;
+    /* 关键：允许 flex 容器在 grid 单元格内收缩，触发内部文本的省略号 */
     min-width: 0;
 }
+
 .track-info img {
     width: 56px;
     height: 56px;
@@ -25,30 +30,56 @@
     flex-shrink: 0;
     object-fit: cover;
 }
+
 .track-details {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    /* 关键：让文本区域占据剩余空间并允许收缩 */
+    flex: 1;
+    min-width: 0;
+    /* 保持原有的单行省略号设置 */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* 增加右侧内边距，防止文字紧贴 Grid 边界 */
+    padding-right: 10px;
+}
+
+#track-title {
+    font-size: 14px;
+    font-weight: 500;
+    /* 确保标题也能触发省略号 */
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
-#track-title {
-    font-size: 14px;
-    font-weight: 500;
-}
+
 #track-artist {
     font-size: 12px;
     color: var(--text-secondary);
+    /* 确保歌手名也能触发省略号 */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
+
 .main-controls {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 10px;
+    /* 确保主控制区在 Grid 中居中对齐 */
+    justify-self: center;
+    width: 100%;
 }
+
 .control-buttons {
     display: flex;
     align-items: center;
     gap: 20px;
 }
+
 .control-btn {
     background: none;
     border: none;
@@ -60,14 +91,17 @@
     align-items: center;
     justify-content: center;
 }
+
 .control-btn:hover {
     color: var(--text-primary);
 }
+
 .control-btn svg {
     width: 20px;
     height: 20px;
     fill: currentColor;
 }
+
 #play-pause-btn {
     background-color: var(--slider-thumb-color);
     color: #000;
@@ -77,9 +111,11 @@
     transition: transform 0.1s ease-out;
     padding: 0;
 }
+
 #play-pause-btn:hover {
     transform: scale(1.08);
 }
+
 .pause-icon { display: none; }
 .playing .play-icon { display: none; }
 .playing .pause-icon { display: block; }
@@ -93,6 +129,7 @@
     font-size: 12px;
     color: var(--text-secondary);
 }
+
 .progress-bar, .volume-bar {
     -webkit-appearance: none;
     appearance: none;
@@ -106,6 +143,7 @@
     outline: none;
     cursor: pointer;
 }
+
 .progress-bar::-webkit-slider-thumb, .volume-bar::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
@@ -114,7 +152,13 @@
     background: var(--slider-thumb-color);
     border-radius: 50%;
     opacity: 1;
+    transition: transform 0.1s;
 }
+
+.progress-bar:hover::-webkit-slider-thumb, .volume-bar:hover::-webkit-slider-thumb {
+    transform: scale(1.2);
+}
+
 .progress-bar::-moz-range-thumb, .volume-bar::-moz-range-thumb {
     width: 12px;
     height: 12px;
@@ -129,15 +173,19 @@
     justify-content: flex-end;
     align-items: center;
     gap: 10px;
+    /* 同样应用 flex 收缩规则，防止极小窗口下溢出 */
+    min-width: 0;
 }
 
 .volume-container {
     display: flex;
     align-items: center;
 }
+
 .mute-icon { display: none; }
 .muted .volume-icon { display: none; }
 .muted .mute-icon { display: block; }
+
 .volume-bar {
     width: 100px;
 }
@@ -149,6 +197,7 @@
 #mode-btn.mode-single, #mode-btn.mode-shuffle {
     color: var(--primary-color);
 }
+
 .mobile-only-btn { display: none; }
 
 .player-controls.disabled {
@@ -160,15 +209,19 @@
 #fullscreen-btn {
     display: none;
 }
+
 .player-container.video-mode #fullscreen-btn {
     display: flex;
 }
+
 #fullscreen-btn .fullscreen-exit-icon {
     display: none;
 }
+
 #fullscreen-btn.fullscreen-active .fullscreen-enter-icon {
     display: none;
 }
+
 #fullscreen-btn.fullscreen-active .fullscreen-exit-icon {
     display: block;
 }
