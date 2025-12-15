@@ -183,9 +183,13 @@ async function onMediaEnded() {
         dom.mediaPlayer.currentTime = 0;
         mutations.setIsPlaying(true);
     } else {
-        // 其他模式：使用命令模式触发下一首
-        const { NextTrackCommand } = await import('./features/shortcuts.js');
-        new NextTrackCommand().execute();
+        // =========================================================================
+        // 【核心修复】修复生产环境打包后动态导入失败的问题。
+        // 直接导入整个模块，然后通过属性访问获取类，避免解构赋值在打包优化后失效。
+        // =========================================================================
+        const shortcutsModule = await import('./features/shortcuts.js');
+        new shortcutsModule.NextTrackCommand().execute();
+        // =========================================================================
     }
 }
 
