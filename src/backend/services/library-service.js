@@ -98,11 +98,6 @@ export class LibraryService {
 
     // --- 公共 API 方法 ---
 
-    /**
-     * 为给定的标题生成一个基于颜色哈希的占位封面图。
-     * @param {string} title - 用于生成颜色和文本的标题。
-     * @returns {string} - 返回 PNG 格式的 Base64 Data URL，如果 Canvas 不可用则返回空字符串。
-     */
     generatePlaceholderArt(title) {
         if (!createCanvas) return '';
         const size = 1024;
@@ -133,6 +128,23 @@ export class LibraryService {
         const totalBlockHeight = lines.length * lineHeight; let startY = (size - totalBlockHeight) / 2 + (lineHeight / 2);
         lines.forEach((line) => { ctx.fillText(line, size / 2, startY); startY += lineHeight; });
         return canvas.toDataURL('image/png');
+    }
+
+    generateAndSavePlaceholderArt(title, safeFilenameBase) {
+        if (!createCanvas || !this.#config.ALBUMART_DIR) return '';
+        const base64Url = this.generatePlaceholderArt(title);
+        if (!base64Url) return '';
+        try {
+            const filename = `${safeFilenameBase}.png`;
+            const absolutePath = path.join(this.#config.ALBUMART_DIR, filename);
+            const base64Data = base64Url.replace(/^data:image\/png;base64,/, "");
+            fs.writeFileSync(absolutePath, base64Data, 'base64');
+            const relativePath = path.relative(this.#config.MEDIA_ROOT, absolutePath).replace(/\\/g, '/');
+            return relativePath;
+        } catch (error) {
+            console.error(`[Library] 保存占位封面图失败 for "${title}":`, error);
+            return '';
+        }
     }
 
     async getLocalPlaylist() {
@@ -195,7 +207,19 @@ export class LibraryService {
                 const targetDir = isVideo ? this.#config.VIDEOS_DIR : this.#config.MUSIC_DIR; const relativeDirName = isVideo ? 'videos' : 'music';
                 const newMediaPath = path.join(targetDir, `${safeFilename}${ext}`); await fs.promises.copyFile(originalPath, newMediaPath);
                 const newTrack = { title, artist: '拖拽导入', src: `${relativeDirName}/${path.basename(newMediaPath)}`, albumArt: '', lyrics: '', type: isVideo ? 'video' : 'audio', pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''), initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '') };
-                if (isVideo) { const generatedImageName = await this.#generateVideoThumbnail(newMediaPath, this.#config.ALBUMART_DIR, safeFilename); if (generatedImageName) newTrack.albumArt = `albumArt/${generatedImageName}`; }
+
+                // =========================================================================
+                // 【核心修改】为拖拽导入的音频文件生成占位图。
+                // =========================================================================
+                if (isVideo) {
+                    const generatedImageName = await this.#generateVideoThumbnail(newMediaPath, this.#config.ALBUMART_DIR, safeFilename);
+                    if (generatedImageName) newTrack.albumArt = `albumArt/${generatedImageName}`;
+                } else {
+                    // 如果是音频文件，则为其生成一个占位封面图
+                    newTrack.albumArt = this.generateAndSavePlaceholderArt(title, safeFilename);
+                }
+                // =========================================================================
+
                 newPlaylistTracks.push(newTrack); importedCount++; sendMessage('new-track-added', newTrack);
             } catch (error) { console.error(`❌ [Library Service] 导入文件 ${file.name} 失败:`, error); }
         }
@@ -241,6 +265,9 @@ export class LibraryService {
                         newTrack.lyrics = path.relative(this.#config.MEDIA_ROOT, newLrcPath).replace(/\\/g, '/');
                     } else { newTrack.lyrics = ''; }
 
+                    // =========================================================================
+                    // 【核心修改】为从目录导入的、没有自带封面的音频文件生成占位图。
+                    // =========================================================================
                     if (art) {
                         const newArtPath = path.join(this.#config.ALBUMART_DIR, `${safeFilename}${path.extname(art)}`);
                         await fs.promises.copyFile(art, newArtPath);
@@ -248,7 +275,11 @@ export class LibraryService {
                     } else if (isVideo) {
                         const thumbName = await this.#generateVideoThumbnail(newMediaPath, this.#config.ALBUMART_DIR, safeFilename);
                         newTrack.albumArt = thumbName ? `albumArt/${thumbName}` : '';
-                    } else { newTrack.albumArt = ''; }
+                    } else {
+                        // 如果是音频文件且没有找到关联的封面图，则为其生成一个占位图
+                        newTrack.albumArt = this.generateAndSavePlaceholderArt(title, safeFilename);
+                    }
+                    // =========================================================================
 
                     newPlaylistTracks.push(newTrack);
                     importedCount++;

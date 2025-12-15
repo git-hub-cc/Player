@@ -16,9 +16,7 @@ export class OnlineService {
     #config;
     // #sendMessageCallback 用于向渲染进程发送消息
     #sendMessageCallback;
-    // =========================================================================
-    // 【核心修改】增加对 libraryService 的引用，用于生成占位封面图。
-    // =========================================================================
+    // #libraryService 用于生成占位封面图
     #libraryService;
 
     /**
@@ -65,12 +63,14 @@ export class OnlineService {
             ]);
 
             // =========================================================================
-            // 【核心修改】如果无法解析到封面图URL，则调用 libraryService 生成占位图。
+            // 【核心修改】如果无法解析到封面图URL，则调用 libraryService 生成占位图并保存为文件。
             // =========================================================================
             let finalAlbumArtUrl = albumArtUrl;
             if (!finalAlbumArtUrl) {
-                // generatePlaceholderArt 返回的是 Data URL，可以直接在前端使用
-                finalAlbumArtUrl = this.#libraryService.generatePlaceholderArt(trackData.title);
+                // 1. 创建一个安全的文件名
+                const safeFilename = this.#sanitizeFilename(`${trackData.artist} - ${trackData.title}`);
+                // 2. 调用新方法生成并保存占位图，获取其相对路径
+                finalAlbumArtUrl = this.#libraryService.generateAndSavePlaceholderArt(trackData.title, safeFilename);
             }
             // =========================================================================
 
@@ -98,7 +98,9 @@ export class OnlineService {
             }
             downloadPromises.push(downloadFile(audioUrl, this.#config.MUSIC_DIR, `${safeFilename}.mp3`));
 
-            // 2. 封面处理
+            // =========================================================================
+            // 【核心修改】调整封面处理逻辑，以适应预先生成的文件路径。
+            // =========================================================================
             let finalAlbumArtPath = "";
             let artUrl = trackData.albumArt || trackData.originalAlbumArt;
 
@@ -106,16 +108,22 @@ export class OnlineService {
             if (artUrl && artUrl.startsWith('http')) {
                 const coverPath = path.join(this.#config.ALBUMART_DIR, `${safeFilename}.jpg`);
                 downloadPromises.push(downloadFile(artUrl, this.#config.ALBUMART_DIR, `${safeFilename}.jpg`));
-                if (fs.existsSync(coverPath)) {
-                    finalAlbumArtPath = `albumArt/${safeFilename}.jpg`;
-                }
-                // 如果 URL 是 Data URL (来自占位图生成)，则直接保存为文件
+                finalAlbumArtPath = `albumArt/${safeFilename}.jpg`;
+
+                // 如果 URL 是一个相对路径 (例如 "albumArt/filename.png")，
+                // 这意味着占位图文件已在 `handleGetMusicUrl` 阶段创建，我们只需直接引用它。
+            } else if (artUrl && !artUrl.startsWith('http') && !artUrl.startsWith('data:')) {
+                finalAlbumArtPath = artUrl;
+
+                // 保留对旧版 Base64 Data URL 的处理作为后备，以增强鲁棒性。
             } else if (artUrl && artUrl.startsWith('data:image/png;base64,')) {
                 const coverPath = path.join(this.#config.ALBUMART_DIR, `${safeFilename}.png`);
                 const base64Data = artUrl.replace(/^data:image\/png;base64,/, "");
                 fs.writeFileSync(coverPath, base64Data, 'base64');
                 finalAlbumArtPath = `albumArt/${safeFilename}.png`;
             }
+            // =========================================================================
+
 
             // 3. 歌词处理
             const lyricsPath = path.join(this.#config.MUSIC_DIR, `${safeFilename}.lrc`);
@@ -133,7 +141,6 @@ export class OnlineService {
             const newTrack = {
                 title, artist,
                 src: `music/${safeFilename}.mp3`,
-                // 确保即使下载失败，也能正确引用已存在的文件
                 albumArt: finalAlbumArtPath,
                 lyrics: fs.existsSync(lyricsPath) ? `music/${safeFilename}.lrc` : "",
                 type: "audio",
