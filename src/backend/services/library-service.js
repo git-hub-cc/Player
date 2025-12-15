@@ -55,7 +55,7 @@ export class LibraryService {
     }
 
     #generatePlaceholderArt(title) {
-        // ... 此处省略具体实现，与原文件相同 ...
+        
         // [原文件 #generatePlaceholderArt 函数的完整代码]
         if (!createCanvas) return '';
         const size = 1024;
@@ -110,7 +110,7 @@ export class LibraryService {
     }
 
     async #scanDirectoryRecursive(dirPath) {
-        // ... 此处省略具体实现，与原文件相同 ...
+        
         // [原文件 #scanDirectoryRecursive 函数的完整代码]
         const fileGroups = new Map(); const audioExt = ['.mp3', '.flac', '.wav', '.m4a', '.ogg', '.opus']; const videoExt = ['.mp4', '.mkv', '.webm', '.mov', '.avi']; const artExt = ['.jpg', '.jpeg', '.png']; const lrcExt = '.lrc';
         async function scan(currentDir) {
@@ -135,13 +135,13 @@ export class LibraryService {
     // --- 公共 API 方法 ---
 
     async getLocalPlaylist() {
-        // ... 此处省略具体实现，与原文件相同 ...
+        
         // [原文件 getLocalPlaylist 函数的完整代码]
         try { if (fs.existsSync(this.#config.PLAYLIST_PATH)) { const data = JSON.parse(fs.readFileSync(this.#config.PLAYLIST_PATH, 'utf-8')); return { success: true, data }; } else { return { success: true, data: [] }; } } catch (e) { return { success: false, error: e.message }; }
     }
 
     async handleDeleteTrack({ src: relativeSrc }) {
-        // ... 此处省略具体实现，与原文件相同 ...
+        
         // [原文件 handleDeleteTrack 函数的完整代码]
         if (!relativeSrc) return { success: false, error: '删除失败: 未提供曲目路径。' };
         try {
@@ -154,7 +154,7 @@ export class LibraryService {
     }
 
     async updateLocalPlaylist(newTracks) {
-        // ... 此处省略具体实现，与原文件相同 ...
+        
         // [原文件 updateLocalPlaylist 函数的完整代码]
         if (!newTracks || newTracks.length === 0) return; let playlist = [];
         try { if (fs.existsSync(this.#config.PLAYLIST_PATH)) { playlist = JSON.parse(fs.readFileSync(this.#config.PLAYLIST_PATH, 'utf-8')); } } catch (e) { console.error(`[Library] 读取旧播放列表失败:`, e); }
@@ -163,7 +163,7 @@ export class LibraryService {
     }
 
     async handleSeparateVideo(trackData) {
-        // ... 此处省略具体实现，与原文件相同 ...
+        
         // [原文件 handleSeparateVideo 函数的完整代码，注意替换 FFMPEG_PATH 和 CONFIG]
         if (!this.#ffmpegPath) { return { success: false, error: 'FFmpeg 未安装，无法执行分离操作。', reason: 'tool_missing', missing: 'ffmpeg' }; }
         if (!trackData || !trackData.src) { return { success: false, error: '无效的轨道数据。' }; }
@@ -187,7 +187,7 @@ export class LibraryService {
     }
 
     async handleDroppedFiles(files, sendMessage) {
-        // ... 此处省略具体实现，与原文件相同 ...
+        
         // [原文件 handleDroppedFiles 函数的完整代码，注意替换 CONFIG]
         console.log('🔍 [Library Service] 开始处理拖拽文件...'); if (!files || files.length === 0) return { success: false, error: '未接收到文件。' };
         const audioExt = ['.mp3', '.flac', '.wav', '.m4a', '.ogg', '.opus']; const videoExt = ['.mp4', '.mkv', '.webm', '.mov', '.avi'];
@@ -212,7 +212,7 @@ export class LibraryService {
     }
 
     async handleLocalImport(directoryPath, sendMessage) {
-        // ... 此处省略具体实现，与原文件相同 ...
+        
         // [原文件 handleLocalImport 函数的完整代码，注意替换 CONFIG]
         if (!directoryPath) { return { success: false, error: '未提供目录。' }; } sendMessage('import-status', { message: '开始扫描目录...', type: 'default' });
         try {

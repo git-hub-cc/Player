@@ -1,223 +1,262 @@
-// js/state.js
+// src/renderer/js/state.js
 
 /**
- * @type {Array<Object>} 播放列表，包含所有媒体轨道对象。
- */
-export let playlist = [];
-
-/**
- * @type {number} 当前播放轨道在播放列表中的索引。-1 表示没有来自播放列表的曲目被激活。
- */
-export let currentTrackIndex = -1;
-
-/**
- * @type {boolean} 播放器是否正在播放。
- */
-export let isPlaying = false;
-
-/**
- * @type {Object|null} 记录当前正在播放的临时（在线）曲目对象。如果为 null，表示当前播放的是播放列表中的曲目。
- */
-export let temporaryPlayingTrack = null;
-
-/**
- * @type {Array<{time: number, text: string}>} 当前已解析的歌词数组。
- */
-export let parsedLyrics = [];
-
-/**
- * @type {number} 当前播放模式的索引 (0: list, 1: single, 2: shuffle)。
- */
-export let currentModeIndex = 0;
-
-// =========================================================================
-// 【新增】用于存储当前播放速率的状态变量
-// =========================================================================
-/**
- * @type {number} 当前的播放速率。1.0 为正常速度。
- */
-export let playbackRate = 1.0;
-// =========================================================================
-
-/**
- * @type {Object} 用户的快捷键设置。
- */
-export let shortcutSettings = {};
-
-/**
- * @type {Set<string>} 当前按下的快捷键集合。
- */
-export let pressedShortcutKeys = new Set();
-
-/**
- * @type {boolean} 是否正在录制新的快捷键。
- */
-export let isRecordingShortcut = false;
-
-/**
- * @type {string|null} 正在录制快捷键的目标动作ID。
- */
-export let currentRecordingAction = null;
-
-/**
- * @type {boolean} 用户是否正在拖动歌词。
- */
-export let isDraggingLyrics = false;
-
-/**
- * @type {boolean} 用户是否正在拖动进度条。
- */
-export let isScrubbing = false;
-
-/**
- * @type {number} 当前音频使用的颜色调色板索引。
- */
-export let currentColorPaletteIndex = 0;
-
-/**
- * @type {AudioContext|null} Web Audio API 的音频上下文。
- */
-export let audioContext = null;
-
-/**
- * @type {MediaElementAudioSourceNode|null} 连接到媒体元素的音频源节点。
- */
-export let audioSource = null;
-
-/**
- * @type {AnalyserNode|null} 用于音频可视化的分析器节点。
- */
-export let analyser = null;
-
-/**
- * @type {Array<Array<number>>|null} 存储当前背景的基色 [[r,g,b], [r,g,b]]
- */
-export let currentGradientColors = null;
-
-/**
- * @type {boolean} 是否处于演示/屏保模式。
- */
-export let isScreensaverMode = false;
-
-
-// --- State Modifying Functions ---
-
-export function setPlaylist(newPlaylist) {
-    playlist = newPlaylist;
-}
-
-/**
- * =========================================================================
- * 【核心修复】简化 removeTrack 函数的职责
+ * @file 状态管理器 (State Manager)
+ * @description
+ * 这是一个可观测的状态容器，采用发布-订阅模式实现。
+ * 它是整个渲染进程的“单一数据源”(Single Source of Truth)。
  *
- * 1.  此函数现在只负责从播放列表数组中移除指定的项。
- * 2.  它会正确处理当被删除的曲目位于当前播放曲目之前时，对 `currentTrackIndex` 的递减操作。
- * 3.  **重要**: 它不再负责决定“删除当前曲目后应该播放哪一首”的复杂逻辑。
- *     这个职责已完全移交给 `renderer.js` 中的 `handleDeleteTrackRequest` 函数，
- *     使得状态变更的流程更清晰、更可控，从而修复了之前的 bug。
- * =========================================================================
- * @param {number} indexToRemove - 要从播放列表中移除的曲目的索引。
+ * 工作流程:
+ * 1. UI事件或其他模块调用 `mutations` 中的方法来请求状态变更。
+ * 2. `mutations` 方法更新私有的 `_state` 对象。
+ * 3. 更新后，通过 `_notify` 方法通知所有订阅了该状态变化的模块。
+ * 4. 其他模块（如 player.js, ui.js）通过 `subscribe` 方法监听变更，并做出响应。
+ *
+ * 优点:
+ * - 集中管理：所有状态和变更逻辑都集中在此，易于跟踪和调试。
+ * - 单向数据流：避免了模块间的循环依赖和混乱调用，代码结构更清晰。
+ * - 可预测性：状态的变更总是通过 mutations 发起，行为可预测。
  */
-export function removeTrack(indexToRemove) {
-    if (indexToRemove < 0 || indexToRemove >= playlist.length) {
-        // 如果索引无效，则不执行任何操作
+
+// --- 私有状态存储 ---
+const _state = {
+    playlist: [],
+    currentTrackIndex: -1,
+    isPlaying: false,
+    temporaryPlayingTrack: null,
+    parsedLyrics: [],
+    currentModeIndex: 0, // 0: list, 1: single, 2: shuffle
+    playbackRate: 1.0,
+    shortcutSettings: {},
+    isRecordingShortcut: false,
+    currentRecordingAction: null,
+    isDraggingLyrics: false,
+    isScrubbing: false,
+    audioContext: null,
+    analyser: null,
+    currentGradientColors: null,
+    isScreensaverMode: false,
+    // --- 新增用于媒体控制的状态 ---
+    volume: 1.0,
+    isMuted: false,
+    currentTime: 0,
+    duration: 0,
+};
+
+// --- 私有订阅者列表 ---
+const _listeners = {};
+
+/**
+ * 通知订阅者状态已发生变化。
+ * @private
+ * @param {string} eventName - 事件名称 (例如 'playlistChanged')。
+ * @param {*} data - 传递给订阅者回调函数的数据。
+ */
+function _notify(eventName, data) {
+    if (!_listeners[eventName]) {
         return;
     }
-
-    // 从播放列表中移除曲目
-    playlist.splice(indexToRemove, 1);
-
-    // 如果删除的是当前播放曲目之前的曲目，需要更新当前索引以指向正确的曲目
-    if (indexToRemove < currentTrackIndex) {
-        currentTrackIndex--;
-    }
-
-    // 如果列表变为空，重置索引
-    if (playlist.length === 0) {
-        currentTrackIndex = -1;
-    }
+    _listeners[eventName].forEach(callback => {
+        try {
+            callback(data);
+        } catch (error) {
+            console.error(`Error in subscriber for event "${eventName}":`, error);
+        }
+    });
 }
 
-
-export function setCurrentTrackIndex(index) {
-    // 如果索引未变且当前播放的不是临时曲目，则不执行任何操作
-    if (currentTrackIndex === index && !temporaryPlayingTrack) {
-        return;
-    }
-    // 设置新索引，并清除临时曲目信息，确保状态一致性
-    currentTrackIndex = index;
-    temporaryPlayingTrack = null;
-}
-
-export function setTemporaryPlayingTrack(track) {
-    if (temporaryPlayingTrack === track) return;
-    temporaryPlayingTrack = track;
-    currentTrackIndex = -1; // 播放临时曲目时，取消播放列表的激活索引
-}
-
-export function clearPlayingTrackInfo() {
-    temporaryPlayingTrack = null;
-    currentTrackIndex = -1;
-}
-
-export function setIsPlaying(playing) {
-    if (isPlaying === playing) return;
-    isPlaying = playing;
-}
-
-export function setParsedLyrics(lyrics) {
-    parsedLyrics = lyrics;
-}
-
-export function setCurrentModeIndex(index) {
-    currentModeIndex = index;
-}
 
 // =========================================================================
-// 【新增】用于更新播放速率状态的函数
-// =========================================================================
-export function setPlaybackRate(newRate) {
-    playbackRate = newRate;
-}
+// --- 公共 API ---
 // =========================================================================
 
-export function setShortcutSettings(settings) {
-    shortcutSettings = settings;
-}
-export function setIsRecordingShortcut(recording) {
-    isRecordingShortcut = recording;
-}
-export function setCurrentRecordingAction(action) {
-    currentRecordingAction = action;
+/**
+ * 订阅一个状态变更事件。
+ * @param {string} eventName - 要订阅的事件名称。
+ * @param {Function} callback - 状态变更时要执行的回调函数。
+ * @returns {Function} - 一个用于取消订阅的函数。
+ */
+export function subscribe(eventName, callback) {
+    if (typeof callback !== 'function') {
+        console.error(`Invalid callback provided for event "${eventName}".`);
+        return () => {}; // 返回一个无操作的函数
+    }
+    if (!_listeners[eventName]) {
+        _listeners[eventName] = [];
+    }
+    _listeners[eventName].push(callback);
+
+    // 返回一个取消订阅的函数，便于组件销毁时清理
+    return () => {
+        _listeners[eventName] = _listeners[eventName].filter(cb => cb !== callback);
+    };
 }
 
-export function setIsDraggingLyrics(dragging) {
-    isDraggingLyrics = dragging;
-}
+/**
+ * 用于修改状态的方法集合。所有状态变更都必须通过调用这些方法来完成。
+ */
+export const mutations = {
+    setPlaylist(newPlaylist) {
+        if (!Array.isArray(newPlaylist)) return;
+        _state.playlist = newPlaylist;
+        _notify('playlistChanged', _state.playlist);
+    },
 
-export function setIsScrubbing(scrubbing) {
-    isScrubbing = scrubbing;
-}
+    removeTrack(indexToRemove) {
+        if (indexToRemove < 0 || indexToRemove >= _state.playlist.length) return;
 
-export function setCurrentColorPaletteIndex(index) {
-    currentColorPaletteIndex = index;
-}
+        _state.playlist.splice(indexToRemove, 1);
 
-export function setAudioContext(context) {
-    audioContext = context;
-}
-export function setAudioSource(source) {
-    audioSource = source;
-}
-export function setAnalyser(analyserNode) {
-    analyser = analyserNode;
-}
+        if (indexToRemove < _state.currentTrackIndex) {
+            _state.currentTrackIndex--;
+        }
 
-export function setCurrentGradientColors(colors) {
-    currentGradientColors = colors;
-}
+        if (_state.playlist.length === 0) {
+            _state.currentTrackIndex = -1;
+        }
+        // 通知播放列表和当前轨道索引可能都已改变
+        _notify('playlistChanged', _state.playlist);
+        _notify('currentTrackIndexChanged', _state.currentTrackIndex);
+    },
 
-export function setScreensaverMode(value) {
-    if (isScreensaverMode === value) return;
-    isScreensaverMode = value;
-}
+    setCurrentTrackIndex(index) {
+        if (_state.currentTrackIndex === index && !_state.temporaryPlayingTrack) return;
+        _state.currentTrackIndex = index;
+        _state.temporaryPlayingTrack = null;
+        _notify('currentTrackChanged', getters.currentTrack());
+    },
+
+    setTemporaryPlayingTrack(track) {
+        if (_state.temporaryPlayingTrack === track) return;
+        _state.temporaryPlayingTrack = track;
+        _state.currentTrackIndex = -1;
+        _notify('currentTrackChanged', getters.currentTrack());
+    },
+
+    clearPlayingTrackInfo() {
+        if (!_state.temporaryPlayingTrack && _state.currentTrackIndex === -1) return;
+        _state.temporaryPlayingTrack = null;
+        _state.currentTrackIndex = -1;
+        _notify('currentTrackChanged', null);
+    },
+
+    togglePlayState() {
+        mutations.setIsPlaying(!_state.isPlaying);
+    },
+
+    setIsPlaying(playing) {
+        const boolPlaying = !!playing;
+        if (_state.isPlaying === boolPlaying) return;
+        _state.isPlaying = boolPlaying;
+        _notify('isPlayingChanged', _state.isPlaying);
+    },
+
+    setParsedLyrics(lyrics) {
+        _state.parsedLyrics = lyrics;
+        _notify('lyricsChanged', _state.parsedLyrics);
+    },
+
+    cyclePlayMode() {
+        _state.currentModeIndex = (_state.currentModeIndex + 1) % 3;
+        _notify('playModeChanged', _state.currentModeIndex);
+    },
+
+    setPlaybackRate(newRate) {
+        if (typeof newRate !== 'number' || newRate < 0.5 || newRate > 2.0) return;
+        _state.playbackRate = newRate;
+        _notify('playbackRateChanged', _state.playbackRate);
+    },
+
+    setShortcutSettings(settings) {
+        _state.shortcutSettings = settings;
+        _notify('shortcutSettingsChanged', _state.shortcutSettings);
+    },
+
+    setIsRecordingShortcut(isRecording) {
+        _state.isRecordingShortcut = isRecording;
+        _notify('isRecordingShortcutChanged', _state.isRecordingShortcut);
+    },
+
+    setCurrentRecordingAction(action) {
+        _state.currentRecordingAction = action;
+    },
+
+    setIsDraggingLyrics(isDragging) {
+        _state.isDraggingLyrics = isDragging;
+    },
+
+    setIsScrubbing(isScrubbing) {
+        _state.isScrubbing = isScrubbing;
+    },
+
+    setAudioContext(context) {
+        _state.audioContext = context;
+    },
+
+    setAnalyser(analyser) {
+        _state.analyser = analyser;
+    },
+
+    setCurrentGradientColors(colors) {
+        _state.currentGradientColors = colors;
+        _notify('gradientColorsChanged', _state.currentGradientColors);
+    },
+
+    setScreensaverMode(value) {
+        if (_state.isScreensaverMode === value) return;
+        _state.isScreensaverMode = value;
+        _notify('screensaverModeChanged', _state.isScreensaverMode);
+    },
+
+    // --- 媒体控制相关 mutations ---
+    setVolume(newVolume) {
+        const volume = Math.max(0, Math.min(1, newVolume));
+        if (_state.volume === volume) return;
+        _state.volume = volume;
+        _notify('volumeChanged', { volume: _state.volume, isMuted: _state.isMuted });
+    },
+
+    setIsMuted(muted) {
+        const boolMuted = !!muted;
+        if (_state.isMuted === boolMuted) return;
+        _state.isMuted = boolMuted;
+        _notify('volumeChanged', { volume: _state.volume, isMuted: _state.isMuted });
+    },
+
+    setCurrentTime(time) {
+        _state.currentTime = time;
+        _notify('timeChanged', { currentTime: _state.currentTime, duration: _state.duration });
+    },
+
+    setDuration(duration) {
+        _state.duration = duration;
+        _notify('timeChanged', { currentTime: _state.currentTime, duration: _state.duration });
+    },
+};
+
+/**
+ * 用于安全地读取状态的方法集合。
+ */
+export const getters = {
+    playlist: () => _state.playlist,
+    currentTrackIndex: () => _state.currentTrackIndex,
+    isPlaying: () => _state.isPlaying,
+    temporaryPlayingTrack: () => _state.temporaryPlayingTrack,
+    currentTrack: () => _state.temporaryPlayingTrack || (_state.currentTrackIndex > -1 ? _state.playlist[_state.currentTrackIndex] : null),
+    parsedLyrics: () => _state.parsedLyrics,
+    currentModeIndex: () => _state.currentModeIndex,
+    playbackRate: () => _state.playbackRate,
+    shortcutSettings: () => _state.shortcutSettings,
+    isRecordingShortcut: () => _state.isRecordingShortcut,
+    currentRecordingAction: () => _state.currentRecordingAction,
+    isDraggingLyrics: () => _state.isDraggingLyrics,
+    isScrubbing: () => _state.isScrubbing,
+    audioContext: () => _state.audioContext,
+    analyser: () => _state.analyser,
+    currentGradientColors: () => _state.currentGradientColors,
+    isScreensaverMode: () => _state.isScreensaverMode,
+    volume: () => _state.volume,
+    isMuted: () => _state.isMuted,
+    currentTime: () => _state.currentTime,
+    duration: () => _state.duration,
+};

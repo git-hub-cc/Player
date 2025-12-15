@@ -1,633 +1,411 @@
 // src/renderer/js/renderer.js
 
+/**
+ * @file 应用引导程序 (App Bootstrapper)
+ * @description
+ * 这是渲染进程的唯一入口。它的职责极其精简：
+ * 1. 初始化所有核心模块（UI, Player, Services, Features）。
+ * 2. 绑定顶层用户输入事件，作为“总装配车间”将 UI 事件连接到 State 或 Services。
+ * 3. 加载应用的初始数据。
+ */
+
 import * as dom from './dom.js';
-import * as state from './state.js';
-import { PLAY_MODES } from './config.js';
-import { normalizeKey, formatTime } from './utils.js';
-import * as ICONS from './icons.js'; // 导入所有图标
-import { pinyin } from 'pinyin-pro';
-import {
-    loadTrack,
-    togglePlayPause,
-    playNextTrack,
-    playPrevTrack,
-    updateProgress,
-    resetPlayerUI,
-    consumePendingSeek,
-    playTrack,
-    cyclePlayMode
-} from './player.js';
-import {
-    renderPlaylist,
-    filterPlaylist,
-    toggleLyricsPanel,
-    togglePlaylistPanel,
-    toggleInfoPanel,
-    toggleShortcutPanel,
-    updateVolumeBarVisual,
-    showSkeleton,
-    hideSkeleton,
-    hideContextMenu,
-    renderContextMenu,
-    normalizePosition,
-    updateModeButton,
-    updatePlaylistUI,
-    setupLyricsDragHandler,
-    closeActivePanels,
-    toggleDownloadPanel,
-    showToast,
-    showConfirmationModal,
-    toggleEmptyState,
-    toggleMoreOptionsMenu
-} from './ui.js';
-import { loadShortcuts, executeShortcut, setupShortcutListeners } from './features/shortcuts.js';
+import { getters, mutations, subscribe } from './state.js';
+import { PLAY_MODES } from './config.js'; // 导入播放模式常量用于上一首/下一首逻辑
+import * as player from './player.js';
+import * as ui from './ui.js';
+import * as mediaService from './services/mediaService.js';
+import * as ICONS from './icons.js';
+import { loadShortcuts, setupShortcutListeners } from './features/shortcuts.js';
 import * as backgroundGallery from './features/gallery.js';
-import { setupDownloaderListeners, requestTrackDeletion } from './features/downloader.js';
+import { setupDownloaderListeners } from './features/downloader.js';
 
-// --- 全局变量 ---
-const PLAYER_STATE_KEY = 'player_state'; // 用于 localStorage 的键名
-let initialTime = 0; // 应用启动时要加载的初始播放时间
-
+// --- 常量 ---
+const PLAYER_STATE_KEY = 'player_state';
 
 /**
- * @function loadIcons
- * @description 将所有 SVG 图标加载到其在 DOM 中的占位符位置。
- *              此函数应在应用初始化时尽早调用。
+ * 将所有 SVG 图标加载到 DOM 中。
+ * 这是应用启动时最先执行的视觉操作之一，确保后续 JS 获取元素时图标已存在。
  */
 function loadIcons() {
-    // 将图标常量映射到其在 data-icon 属性中使用的键
-    const iconMap = {
-        // 面板与通用
-        FOLDER: ICONS.ICON_FOLDER,
-        CLOSE: ICONS.ICON_CLOSE,
-        ADD: ICONS.ICON_ADD,
-        DRAG_ADD: ICONS.ICON_DRAG_ADD,
-        // 主控制区
-        PREV: ICONS.ICON_PREV,
-        PLAY: ICONS.ICON_PLAY,
-        PAUSE: ICONS.ICON_PAUSE,
-        NEXT: ICONS.ICON_NEXT,
-        // 侧边控制区
-        MORE_OPTIONS: ICONS.ICON_MORE_OPTIONS,
-        KEYBOARD: ICONS.ICON_KEYBOARD,
-        INFO: ICONS.ICON_INFO,
-        LIST_LOOP: ICONS.ICON_LIST_LOOP,
-        SINGLE_LOOP: ICONS.ICON_SINGLE_LOOP,
-        SHUFFLE: ICONS.ICON_SHUFFLE,
-        LYRICS: ICONS.ICON_LYRICS,
-        FULLSCREEN_ENTER: ICONS.ICON_FULLSCREEN_ENTER,
-        FULLSCREEN_EXIT: ICONS.ICON_FULLSCREEN_EXIT,
-        PLAYLIST: ICONS.ICON_PLAYLIST,
-        VOLUME: ICONS.ICON_VOLUME,
-        MUTE: ICONS.ICON_MUTE,
-        // 移动端专用
-        MOBILE_LYRICS: ICONS.ICON_MOBILE_LYRICS,
-        MOBILE_PLAYLIST: ICONS.ICON_MOBILE_PLAYLIST,
-        // 动态模板
-        DOWNLOAD: ICONS.ICON_DOWNLOAD,
-        SPINNER: ICONS.ICON_SPINNER,
-        CACHED: ICONS.ICON_CACHED,
-        GALLERY_PLAY: ICONS.ICON_GALLERY_PLAY,
-    };
-
-    // 遍历所有占位符元素
-    document.querySelectorAll('.icon-placeholder').forEach(placeholder => {
-        const iconName = placeholder.dataset.icon;
-        if (iconMap[iconName]) {
-            // 使用 SVG 字符串替换占位符的内部 HTML
-            // 注意：此操作会移除占位符自身，只留下 SVG
-            placeholder.outerHTML = iconMap[iconName];
-        } else {
-            // 如果找不到对应的图标，则在控制台发出警告
-            console.warn(`未找到图标: ${iconName}`);
-            // 可以选择隐藏或移除无效的占位符
-            placeholder.remove();
-        }
-    });
+    try {
+        const iconMap = {
+            FOLDER: ICONS.ICON_FOLDER, CLOSE: ICONS.ICON_CLOSE, ADD: ICONS.ICON_ADD, DRAG_ADD: ICONS.ICON_DRAG_ADD,
+            PREV: ICONS.ICON_PREV, PLAY: ICONS.ICON_PLAY, PAUSE: ICONS.ICON_PAUSE, NEXT: ICONS.ICON_NEXT,
+            MORE_OPTIONS: ICONS.ICON_MORE_OPTIONS, KEYBOARD: ICONS.ICON_KEYBOARD, INFO: ICONS.ICON_INFO,
+            LIST_LOOP: ICONS.ICON_LIST_LOOP, SINGLE_LOOP: ICONS.ICON_SINGLE_LOOP, SHUFFLE: ICONS.ICON_SHUFFLE,
+            LYRICS: ICONS.ICON_LYRICS, FULLSCREEN_ENTER: ICONS.ICON_FULLSCREEN_ENTER, FULLSCREEN_EXIT: ICONS.ICON_FULLSCREEN_EXIT,
+            PLAYLIST: ICONS.ICON_PLAYLIST, VOLUME: ICONS.ICON_VOLUME, MUTE: ICONS.ICON_MUTE,
+            MOBILE_LYRICS: ICONS.ICON_MOBILE_LYRICS, MOBILE_PLAYLIST: ICONS.ICON_MOBILE_PLAYLIST,
+            DOWNLOAD: ICONS.ICON_DOWNLOAD, SPINNER: ICONS.ICON_SPINNER, CACHED: ICONS.ICON_CACHED,
+            GALLERY_PLAY: ICONS.ICON_GALLERY_PLAY
+        };
+        document.querySelectorAll('.icon-placeholder').forEach(p => {
+            const iconName = p.dataset.icon;
+            if (iconMap[iconName]) {
+                p.outerHTML = iconMap[iconName];
+            } else {
+                console.warn(`Icon not found for placeholder: ${iconName}`);
+                p.remove();
+            }
+        });
+    } catch (error) {
+        console.error("Failed to load icons:", error);
+    }
 }
 
-
 /**
- * 保存当前播放器状态到 localStorage。
- * 包括当前曲目索引、播放时间、音量、播放模式和播放速率。
+ * 保存当前播放器核心状态到 localStorage。
  */
 function savePlayerState() {
-    // 如果播放列表为空，则移除状态，不保存
-    if (state.playlist.length === 0) {
+    if (getters.playlist().length === 0) {
         localStorage.removeItem(PLAYER_STATE_KEY);
         return;
     }
-
-    const stateToSave = {
-        trackIndex: state.currentTrackIndex,
-        currentTime: dom.mediaPlayer.currentTime,
-        volume: dom.mediaPlayer.volume,
-        muted: dom.mediaPlayer.muted,
-        modeIndex: state.currentModeIndex,
-        playbackRate: state.playbackRate
-    };
-    localStorage.setItem(PLAYER_STATE_KEY, JSON.stringify(stateToSave));
+    try {
+        const stateToSave = {
+            trackIndex: getters.currentTrackIndex(),
+            currentTime: getters.currentTime(),
+            volume: getters.volume(),
+            muted: getters.isMuted(),
+            modeIndex: getters.currentModeIndex(),
+            playbackRate: getters.playbackRate(),
+        };
+        localStorage.setItem(PLAYER_STATE_KEY, JSON.stringify(stateToSave));
+    } catch (error) {
+        console.error("Failed to save player state:", error);
+    }
 }
 
 /**
- * 从 localStorage 加载播放器状态。
+ * 从 localStorage 加载播放器状态并应用。
+ * @returns {number} 初始播放时间。
  */
 function loadPlayerState() {
     const savedState = localStorage.getItem(PLAYER_STATE_KEY);
+    let initialTime = 0;
     if (savedState) {
         try {
             const parsedState = JSON.parse(savedState);
-            state.setCurrentTrackIndex(parsedState.trackIndex || 0);
-            state.setCurrentModeIndex(parsedState.modeIndex || 0);
-            dom.mediaPlayer.volume = parsedState.volume ?? 1;
-            dom.mediaPlayer.muted = parsedState.muted ?? false;
+            mutations.setCurrentTrackIndex(parsedState.trackIndex || 0);
+            mutations.setCurrentModeIndex(parsedState.modeIndex || 0);
+            mutations.setVolume(parsedState.volume ?? 1.0);
+            mutations.setIsMuted(parsedState.muted ?? false);
+            mutations.setPlaybackRate(parsedState.playbackRate || 1.0);
             initialTime = parsedState.currentTime || 0;
-
-            const loadedRate = parsedState.playbackRate;
-            if (typeof loadedRate === 'number' && loadedRate >= 0.5 && loadedRate <= 2.0) {
-                state.setPlaybackRate(loadedRate);
-            } else {
-                state.setPlaybackRate(1.0);
-            }
-
         } catch (error) {
-            console.error("解析播放器状态失败:", error);
-            localStorage.removeItem(PLAYER_STATE_KEY); // 解析失败则清除无效数据
+            console.error("Failed to parse player state from localStorage:", error);
+            localStorage.removeItem(PLAYER_STATE_KEY);
         }
     }
+    return initialTime;
 }
 
 /**
- * 将后端返回的曲目对象转换为前端可直接播放的格式。
- * 主要处理本地文件路径，将其转换为自定义的 'media://' 协议。
- * @param {object} track - 后端返回的原始曲目对象。
- * @returns {object} - 转换后的曲目对象。
+ * 辅助函数：处理“下一首/上一首”的逻辑。
+ * 因为 player.js 现在只负责核心控制，所以列表跳转逻辑在此处作为“调度者”处理。
+ * @param {number} direction - 1 为下一首，-1 为上一首。
  */
-function makeTrackPlayable(track) {
-    const playableTrack = { ...track };
+function handleTrackChange(direction) {
+    const playlist = getters.playlist();
+    const len = playlist.length;
 
-    const encodeMediaUrl = (relativePath) => {
-        if (!relativePath) return '';
-        const encodedPath = relativePath.split('/').map(segment => encodeURIComponent(segment)).join('/');
-        return `media://${encodedPath}`;
-    };
+    // 如果播放列表为空且没有临时曲目，不操作
+    if (len === 0 && !getters.temporaryPlayingTrack()) return;
 
-    ['src', 'albumArt', 'lyrics'].forEach(key => {
-        const value = playableTrack[key];
-        if (value && !value.startsWith('http') && !value.startsWith('data:')) {
-            playableTrack[key] = encodeMediaUrl(value);
-        }
-    });
-    return playableTrack;
-}
-
-/**
- * 处理分离视频音轨的请求。
- * @param {number} index - 目标视频在播放列表中的索引。
- */
-async function handleSeparateVideoRequest(index) {
-    const track = state.playlist[index];
-    if (!track || track.type !== 'video') return;
-
-    try {
-        await showConfirmationModal(`确定要将 "${track.title}" 分离为独立的音视频文件吗？\n将在列表中添加一个仅视频版本和一个仅音频版本。`);
-        showToast('正在处理，请稍候...', 'info');
-
-        const result = await window.electronAPI.separateVideo(track);
-
-        if (result.success) {
-            const updatedPlaylist = result.data.map(t => ({
-                ...makeTrackPlayable(t),
-                pinyin: pinyin(t.title || '', { toneType: 'none' }).replace(/\s/g, ''),
-                initials: pinyin(t.title || '', { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '')
-            }));
-
-            if (state.currentTrackIndex === index) {
-                resetPlayerUI();
-            }
-
-            state.setPlaylist(updatedPlaylist);
-            const currentSrc = state.playlist[state.currentTrackIndex]?.src;
-            const newIndex = updatedPlaylist.findIndex(t => t.src === currentSrc);
-            state.setCurrentTrackIndex(newIndex > -1 ? newIndex : 0);
-
-            renderPlaylist();
-            updatePlaylistUI();
-            backgroundGallery.updatePlaylistData(updatedPlaylist);
-
-            showToast(result.message || '视频分离成功！', 'success');
-        } else {
-            if (result.reason === 'tool_missing') {
-                showToast('该功能需要 FFmpeg 组件，请先在“添加资源”页面尝试下载视频以触发安装。', 'error');
-            } else {
-                showToast(`分离失败: ${result.error}`, 'error');
-            }
-        }
-    } catch (err) {
-        console.log("分离操作已取消。");
-    }
-}
-
-/**
- * 处理删除曲目的请求。
- * @param {number} index - 目标曲目在播放列表中的索引。
- */
-async function handleDeleteTrackRequest(index) {
-    const track = state.playlist[index];
-    if (!track) return;
-
-    try {
-        await showConfirmationModal(`确定要删除 "${track.title}" 吗？\n文件将从磁盘中永久移除。`);
-        const wasPlaying = state.isPlaying;
-        const isDeletingCurrent = state.currentTrackIndex === index;
-
-        if (isDeletingCurrent) resetPlayerUI();
-
-        const deleted = await requestTrackDeletion(track);
-        if (!deleted) {
-            if (isDeletingCurrent) loadTrack(index, { forcePlay: wasPlaying });
-            return;
-        }
-
-        const oldIndex = index;
-        state.removeTrack(index);
-        renderPlaylist();
-        updatePlaylistUI();
-        backgroundGallery.updatePlaylistData(state.playlist);
-
-        if (state.playlist.length === 0) {
-            toggleEmptyState(true);
-            showToast(`"${track.title}" 已删除`);
-            return;
-        }
-
-        if (isDeletingCurrent) {
-            let nextIndexToPlay = oldIndex;
-            if (nextIndexToPlay >= state.playlist.length) nextIndexToPlay = 0;
-            state.setCurrentTrackIndex(nextIndexToPlay);
-            loadTrack(state.currentTrackIndex, { forcePlay: wasPlaying });
-        }
-        showToast(`"${track.title}" 已删除`);
-    } catch (err) {
-        console.log("删除操作已取消或失败。", err);
-    }
-}
-
-/**
- * 进入屏保/演示模式。
- */
-function enterScreensaverMode() {
-    if (state.isScreensaverMode || state.playlist.length === 0) return;
-    state.setScreensaverMode(true);
-    window.electronAPI.toggleFullscreen(true);
-    backgroundGallery.startAutoScroll();
-    dom.playerContainer.classList.add('screensaver-active');
-    if (!state.isPlaying) {
-        if (dom.mediaPlayer.src && dom.mediaPlayer.currentTime > 0) playTrack();
-        else loadTrack(state.currentTrackIndex, { forcePlay: true });
-    }
-}
-
-/**
- * 退出屏保/演示模式。
- */
-function exitScreensaverMode() {
-    if (!state.isScreensaverMode) return;
-    state.setScreensaverMode(false);
-    window.electronAPI.toggleFullscreen(false);
-    backgroundGallery.stopAutoScroll();
-    dom.playerContainer.classList.remove('screensaver-active');
-}
-
-/**
- * 设置核心组件下载进度模态框的事件监听。
- */
-function setupCoreComponentDownloader() {
-    const modal = document.getElementById('download-progress-modal');
-    const titleEl = document.getElementById('download-progress-title');
-    const fileEl = document.getElementById('download-progress-file');
-    const barEl = document.getElementById('download-progress-bar');
-    const percentEl = document.getElementById('download-progress-percent');
-
-    window.electronAPI.onDownloadStarted(({ file }) => {
-        titleEl.textContent = '正在下载核心组件...';
-        fileEl.textContent = `文件: ${file}`;
-        barEl.style.width = '0%';
-        percentEl.textContent = '0%';
-        modal.classList.add('visible');
-    });
-
-    window.electronAPI.onDownloadProgress(({ file, progress, status }) => {
-        fileEl.textContent = `文件: ${file}`;
-        if (status) {
-            barEl.style.width = '100%';
-            percentEl.textContent = status;
-        } else {
-            barEl.style.width = `${progress}%`;
-            percentEl.textContent = `${progress}%`;
-        }
-    });
-
-    window.electronAPI.onDownloadFinished(({ success, error, tool }) => {
-        if (success) {
-            titleEl.textContent = '准备完成！';
-            fileEl.textContent = `${tool || '组件'} 已就绪。`;
-            setTimeout(() => modal.classList.remove('visible'), 1500);
-        } else {
-            titleEl.textContent = '下载失败！';
-            fileEl.textContent = `错误: ${error || '未知错误'}`;
-        }
-    });
-}
-
-/**
- * 设置文件拖拽上传的事件监听。
- */
-function setupDragAndDropListeners() {
-    let dragOverlay = document.querySelector('.drag-overlay');
-    if (!dragOverlay) {
-        dragOverlay = document.createElement('div');
-        dragOverlay.className = 'drag-overlay';
-        dragOverlay.innerHTML = `
-            ${ICONS.ICON_DRAG_ADD}
-            <div class="drag-overlay-text">拖拽文件到此处添加</div>
-            <div class="drag-overlay-subtext">支持音频和视频文件</div>
-        `;
-        // 更新 SVG 的 class 以应用样式
-        const svgElement = dragOverlay.querySelector('svg');
-        if (svgElement) {
-            svgElement.classList.add('drag-overlay-icon');
-        }
-        dom.playerContainer.appendChild(dragOverlay);
+    // 如果正在播放临时曲目，按下切换则回到列表第一首
+    if (getters.temporaryPlayingTrack()) {
+        mutations.clearPlayingTrackInfo();
+        if (len > 0) mutations.setCurrentTrackIndex(0);
+        return;
     }
 
-    let dragCounter = 0;
+    const currentMode = PLAY_MODES[getters.currentModeIndex()];
+    let newIndex;
 
-    window.addEventListener('dragenter', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dragCounter++;
-        if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-            dragOverlay.classList.add('active');
-        }
-    });
+    if (currentMode === 'shuffle') {
+        // 随机模式：随机选择一个非当前的索引
+        do {
+            newIndex = Math.floor(Math.random() * len);
+        } while (len > 1 && newIndex === getters.currentTrackIndex());
+    } else {
+        // 列表/单曲循环模式：按顺序切换（单曲模式下切歌也应切到下一首）
+        newIndex = (getters.currentTrackIndex() + direction + len) % len;
+    }
 
-    window.addEventListener('dragleave', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dragCounter--;
-        if (dragCounter === 0) {
-            dragOverlay.classList.remove('active');
-        }
-    });
-
-    window.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        e.dataTransfer.dropEffect = 'copy';
-    });
-
-    window.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        dragCounter = 0;
-        dragOverlay.classList.remove('active');
-
-        const files = e.dataTransfer.files;
-
-        if (files && files.length > 0) {
-            showToast('正在处理拖拽的文件...', 'info');
-            try {
-                const fileArray = Array.from(files);
-                const result = await window.electronAPI.handleFileDrop(fileArray);
-
-                if (result.success) {
-                    showToast(`成功添加 ${result.importedCount} 个文件！`, 'success');
-                } else {
-                    showToast(result.error || '添加文件失败', 'error');
-                }
-            } catch (error) {
-                console.error('处理文件拖拽时发生错误:', error);
-                showToast('处理文件时发生错误', 'error');
-            }
-        }
-    });
+    mutations.setCurrentTrackIndex(newIndex);
+    mutations.setIsPlaying(true);
 }
 
 /**
- * 设置所有核心UI元素的事件监听器。
+ * 设置核心 UI 元素的事件监听器。
+ * 修复：确保所有面板切换、菜单交互和核心控制按钮都已绑定。
  */
 function setupEventListeners() {
     // =========================================================================
-    // 【核心修复】在此函数作用域内创建局部变量来引用 DOM 元素。
-    // 这样可以确保我们使用的是 `loadIcons` 执行后的最新元素引用，
-    // 同时避免了对导入的 `dom` 模块进行非法的写操作。
+    // 1. 播放控制栏 (Play Control Bar)
     // =========================================================================
-    const playPauseBtn = document.getElementById('play-pause-btn');
-    const prevBtn = document.getElementById('prev-btn');
-    const nextBtn = document.getElementById('next-btn');
-    const modeBtn = document.getElementById('mode-btn');
-    const openMediaFolderBtn = document.getElementById('open-media-folder-btn');
-    const fullscreenBtn = document.getElementById('fullscreen-btn');
-    const volumeBtn = document.getElementById('volume-btn');
-    const lyricsBtn = document.getElementById('lyrics-btn');
-    const mobileLyricsBtn = document.getElementById('mobile-lyrics-btn');
-    const playlistBtn = document.getElementById('playlist-btn');
-    const mobilePlaylistBtn = document.getElementById('mobile-playlist-btn');
-    const infoBtn = document.getElementById('info-btn');
-    const shortcutBtn = document.getElementById('shortcut-btn');
-    const downloadPanelBtn = document.getElementById('download-panel-btn');
-    const closePlaylistBtn = document.getElementById('close-playlist-btn');
-    const closeInfoBtn = document.getElementById('close-info-btn');
-    const closeShortcutBtn = document.getElementById('close-shortcut-btn');
-    const closeDownloadBtn = document.getElementById('close-download-btn');
+
+    // 播放/暂停
+    document.getElementById('play-pause-btn')?.addEventListener('click', mutations.togglePlayState);
+
+    // 上一首 / 下一首
+    document.getElementById('prev-btn')?.addEventListener('click', () => handleTrackChange(-1));
+    document.getElementById('next-btn')?.addEventListener('click', () => handleTrackChange(1));
+
+    // 播放模式切换
+    document.getElementById('mode-btn')?.addEventListener('click', mutations.cyclePlayMode);
+
+    // 进度条拖拽与跳转
+    const progressBar = document.getElementById('progress-bar');
+    if (progressBar) {
+        progressBar.addEventListener('mousedown', () => mutations.setIsScrubbing(true));
+        // 使用 'change' 事件在拖拽结束时触发跳转
+        progressBar.addEventListener('change', (e) => {
+            const duration = getters.duration();
+            if (!isNaN(duration) && duration > 0) {
+                const newTime = (e.target.value / 100) * duration;
+                window.dispatchEvent(new CustomEvent('seekTo', { detail: newTime }));
+            }
+            mutations.setIsScrubbing(false);
+        });
+        // 'input' 事件在 ui.js 中处理（视觉更新），此处无需重复绑定
+    }
+
+    // 音量控制
+    document.getElementById('volume-btn')?.addEventListener('click', () => mutations.setIsMuted(!getters.isMuted()));
+    document.getElementById('volume-bar')?.addEventListener('input', (e) => {
+        const newVolume = parseFloat(e.target.value);
+        mutations.setVolume(newVolume);
+        mutations.setIsMuted(newVolume === 0);
+    });
+
+    // =========================================================================
+    // 2. 侧边面板切换与关闭 (Side Panels)
+    // =========================================================================
+
+    // 媒体库面板 (Playlist)
+    document.getElementById('playlist-btn')?.addEventListener('click', ui.togglePlaylistPanel);
+    document.getElementById('mobile-playlist-btn')?.addEventListener('click', ui.togglePlaylistPanel);
+    document.getElementById('close-playlist-btn')?.addEventListener('click', ui.closeActivePanels);
+
+    // 歌词面板 (Lyrics)
+    document.getElementById('lyrics-btn')?.addEventListener('click', ui.toggleLyricsPanel);
+    document.getElementById('mobile-lyrics-btn')?.addEventListener('click', ui.toggleLyricsPanel);
+    // 歌词面板本身通常没有关闭按钮，而是再次点击图标或点击背景关闭，这在 ui.js 的 init 中已处理（点击背景）
+
+    // 添加资源/下载面板 (Download)
+    document.getElementById('download-panel-btn')?.addEventListener('click', ui.toggleDownloadPanel);
+    document.getElementById('close-download-btn')?.addEventListener('click', ui.closeActivePanels);
+
+    // 信息面板 (Info) - 按钮位于“更多选项”菜单中
+    document.getElementById('info-btn')?.addEventListener('click', () => {
+        ui.toggleInfoPanel();
+        // 点击菜单项后，关闭菜单本身
+        document.getElementById('more-options-menu')?.classList.remove('visible');
+    });
+    document.getElementById('close-info-btn')?.addEventListener('click', ui.closeActivePanels);
+
+    // 快捷键面板 (Shortcut) - 按钮位于“更多选项”菜单中
+    document.getElementById('shortcut-btn')?.addEventListener('click', () => {
+        ui.toggleShortcutPanel();
+        document.getElementById('more-options-menu')?.classList.remove('visible');
+    });
+    document.getElementById('close-shortcut-btn')?.addEventListener('click', ui.closeActivePanels);
+
+    // =========================================================================
+    // 3. 菜单与更多选项 (Menus)
+    // =========================================================================
+
+    // “更多选项”按钮
     const moreOptionsBtn = document.getElementById('more-options-btn');
-
-
-    // --- 播放控制 ---
-    playPauseBtn.addEventListener('click', togglePlayPause);
-    prevBtn.addEventListener('click', () => { playPrevTrack(); savePlayerState(); });
-    nextBtn.addEventListener('click', () => { playNextTrack(); savePlayerState(); });
-    modeBtn.addEventListener('click', () => { cyclePlayMode(); savePlayerState(); });
-
-    // --- 其他按钮 ---
-    if (openMediaFolderBtn) openMediaFolderBtn.addEventListener('click', () => window.electronAPI.openMediaFolder());
-    if (dom.emptyStateSearchBtn) dom.emptyStateSearchBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleDownloadPanel(); setTimeout(() => { if (dom.urlOrSearchInput) dom.urlOrSearchInput.focus(); }, 500); });
-    if (dom.emptyStateImportBtn) dom.emptyStateImportBtn.addEventListener('click', (e) => { e.stopPropagation(); if (dom.importLocalBtn) dom.importLocalBtn.click(); });
-    if (fullscreenBtn) fullscreenBtn.addEventListener('click', () => { if (!document.fullscreenElement) dom.mediaPlayer.requestFullscreen().catch(err => console.error(`进入全屏失败: ${err.message}`)); else document.exitFullscreen(); });
-
-    // --- 双击进入沉浸模式 ---
-    dom.mainView.addEventListener('dblclick', () => {
-        if (document.fullscreenElement || state.isScreensaverMode) return;
-        dom.mainView.classList.toggle('main-view-fullscreen');
-        dom.galleryContainer.classList.toggle('suppressed-by-fullscreen');
-        if (document.activeElement) document.activeElement.blur();
+    moreOptionsBtn?.addEventListener('click', (e) => {
+        e.stopPropagation(); // 阻止冒泡，防止被全局点击关闭
+        ui.toggleMoreOptionsMenu();
     });
-    document.addEventListener('fullscreenchange', () => { if (fullscreenBtn) fullscreenBtn.classList.toggle('fullscreen-active', !!document.fullscreenElement); });
 
-    // --- 媒体元素事件 ---
-    dom.mediaPlayer.addEventListener('loadedmetadata', () => { updateProgress(); const seekTime = consumePendingSeek(); if (seekTime > 0 && dom.mediaPlayer.duration > seekTime) dom.mediaPlayer.currentTime = seekTime; });
-    dom.mediaPlayer.addEventListener('timeupdate', () => { if (dom.mediaPlayer.duration) updateProgress(); });
-    dom.mediaPlayer.addEventListener('canplay', () => { hideSkeleton(); if (state.isPlaying) playTrack(); });
-    dom.mediaPlayer.addEventListener('ended', () => { const currentMode = PLAY_MODES[state.currentModeIndex]; currentMode === 'single' ? (dom.mediaPlayer.currentTime = 0, playTrack()) : playNextTrack(); });
-    dom.mediaPlayer.addEventListener('error', (e) => { if (!dom.mediaPlayer.getAttribute('src') && state.playlist.length === 0) return; console.error("媒体加载错误:", e); hideSkeleton(); const currentTrack = state.temporaryPlayingTrack || state.playlist[state.currentTrackIndex]; if (currentTrack) showToast(`播放失败: ${currentTrack.title}`, 'error'); });
-
-    // --- 进度条控制 ---
-    dom.progressBar.addEventListener('mousedown', () => state.setIsScrubbing(true));
-    dom.progressBar.addEventListener('input', (e) => { dom.progressBar.style.setProperty('--value-percent', `${e.target.value}%`); if (!isNaN(dom.mediaPlayer.duration)) dom.currentTimeEl.textContent = formatTime((e.target.value / 100) * dom.mediaPlayer.duration); });
-    dom.progressBar.addEventListener('change', (e) => { if (!isNaN(dom.mediaPlayer.duration)) dom.mediaPlayer.currentTime = (e.target.value / 100) * dom.mediaPlayer.duration; state.setIsScrubbing(false); if (state.isPlaying) dom.mediaPlayer.play(); });
-
-    // --- 音量控制 ---
-    volumeBtn.addEventListener('click', () => { dom.mediaPlayer.muted = !dom.mediaPlayer.muted; updateVolumeBarVisual(dom.mediaPlayer.volume, dom.mediaPlayer.muted); savePlayerState(); });
-    dom.volumeBar.addEventListener('input', (e) => { const newVolume = parseFloat(e.target.value); dom.mediaPlayer.volume = newVolume; dom.mediaPlayer.muted = newVolume === 0; updateVolumeBarVisual(newVolume, dom.mediaPlayer.muted); savePlayerState(); });
-
-    // --- 面板开关 ---
-    [lyricsBtn, mobileLyricsBtn].forEach(btn => btn.addEventListener('click', toggleLyricsPanel));
-    [playlistBtn, mobilePlaylistBtn].forEach(btn => btn.addEventListener('click', togglePlaylistPanel));
-    infoBtn.addEventListener('click', () => {
-        toggleInfoPanel();
-        if (dom.moreOptionsMenu.classList.contains('visible')) {
-            dom.moreOptionsMenu.classList.remove('visible');
-        }
-    });
-    shortcutBtn.addEventListener('click', () => {
-        toggleShortcutPanel();
-        if (dom.moreOptionsMenu.classList.contains('visible')) {
-            dom.moreOptionsMenu.classList.remove('visible');
-        }
-    });
-    downloadPanelBtn.addEventListener('click', toggleDownloadPanel);
-    [closePlaylistBtn, closeInfoBtn, closeShortcutBtn, closeDownloadBtn].forEach(btn => btn.addEventListener('click', closeActivePanels));
-    [...dom.allSidePanels, dom.lyricsContainer].forEach(panel => panel.addEventListener('click', (e) => { if (e.target === panel) panel.classList.remove('active'); }));
-    dom.mainView.addEventListener('click', (e) => { if (!dom.mainView.classList.contains('main-view-fullscreen')) closeActivePanels(); });
-
-    // --- “更多选项”按钮事件 ---
-    moreOptionsBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        toggleMoreOptionsMenu();
-    });
+    // 全局点击：关闭“更多选项”菜单和右键菜单
     document.addEventListener('click', (e) => {
-        if (dom.moreOptionsMenu.classList.contains('visible') && !dom.moreOptionsMenu.contains(e.target) && !moreOptionsBtn.contains(e.target)) {
-            dom.moreOptionsMenu.classList.remove('visible');
+        const moreMenu = document.getElementById('more-options-menu');
+        const contextMenu = document.getElementById('custom-context-menu');
+
+        // 如果点击的不是“更多”按钮且菜单是打开的，则关闭
+        if (moreMenu?.classList.contains('visible') && !moreOptionsBtn?.contains(e.target) && !moreMenu.contains(e.target)) {
+            moreMenu.classList.remove('visible');
         }
-        if (dom.contextMenu.style.display === 'block' && !dom.contextMenu.contains(e.target)) {
-            hideContextMenu();
+
+        // 关闭右键菜单
+        if (contextMenu?.style.display === 'block' && !contextMenu.contains(e.target)) {
+            ui.hideContextMenu();
         }
     });
 
-    // --- 播放列表交互 ---
-    dom.playlistEl.addEventListener('click', (e) => { const item = e.target.closest('.playlist-item'); if (item) { const newIndex = parseInt(item.dataset.index, 10); if (state.currentTrackIndex !== newIndex) { loadTrack(newIndex, { forcePlay: true }); savePlayerState(); } } });
-    dom.playlistSearchInput.addEventListener('input', filterPlaylist);
+    // 右键菜单交互（委托给服务层处理复杂逻辑）
+    document.getElementById('custom-context-menu')?.addEventListener('click', (e) => {
+        const target = e.target.closest('li[data-action]');
+        if (!target) return;
 
-    // --- 右键菜单 ---
-    document.addEventListener('contextmenu', (e) => { if (state.playlist.length === 0) return; hideContextMenu(); const playlistItem = e.target.closest('#playlist .playlist-item'); const context = playlistItem ? { type: 'playlist-item', index: parseInt(playlistItem.dataset.index, 10) } : { type: 'global' }; if (context.type === 'playlist-item') e.preventDefault(); const { normalizedX, normalizedY } = normalizePosition(e.clientX, e.clientY); dom.contextMenu.style.top = `${normalizedY}px`; dom.contextMenu.style.left = `${normalizedX}px`; renderContextMenu(context); dom.contextMenu.style.display = 'block'; });
-    dom.contextMenu.addEventListener('click', (e) => {
-        const target = e.target;
-        if (target.tagName !== 'LI' || !target.dataset.action) return;
-        hideContextMenu();
+        ui.hideContextMenu();
         const action = target.dataset.action;
         const index = parseInt(target.dataset.index, 10);
+
         if (action === 'separate-video' && !isNaN(index)) {
-            handleSeparateVideoRequest(index);
+            mediaService.separateVideo(index);
         } else if (action === 'delete-track' && !isNaN(index)) {
-            handleDeleteTrackRequest(index);
-        } else {
-            executeShortcut(action);
+            mediaService.deleteTrack(index);
         }
     });
 
-    // --- 全局按键事件 ---
-    window.addEventListener('keydown', (e) => {
-        if (e.key === 'F11') {
-            e.preventDefault();
-            state.isScreensaverMode ? exitScreensaverMode() : enterScreensaverMode();
-            return;
-        }
-        if (e.key === 'Escape') {
-            hideContextMenu();
-            if (dom.moreOptionsMenu.classList.contains('visible')) {
-                dom.moreOptionsMenu.classList.remove('visible');
+    // =========================================================================
+    // 4. 媒体库功能 (Library Features)
+    // =========================================================================
+
+    // 播放列表项点击
+    document.getElementById('playlist')?.addEventListener('click', (e) => {
+        const item = e.target.closest('.playlist-item[data-index]');
+        if (item) {
+            const newIndex = parseInt(item.dataset.index, 10);
+            if (!isNaN(newIndex)) {
+                mutations.setCurrentTrackIndex(newIndex);
+                mutations.setIsPlaying(true);
             }
-            if (state.isScreensaverMode) exitScreensaverMode();
         }
     });
 
-    // --- 应用关闭前保存状态 ---
+    // 媒体库搜索过滤
+    document.getElementById('playlist-search')?.addEventListener('input', ui.filterPlaylist);
+
+    // 打开本地媒体文件夹
+    document.getElementById('open-media-folder-btn')?.addEventListener('click', () => {
+        window.electronAPI.openMediaFolder();
+    });
+
+    // =========================================================================
+    // 5. 视图控制与杂项 (View & Misc)
+    // =========================================================================
+
+    // 全屏控制
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+    fullscreenBtn?.addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+            document.getElementById('media-player')?.requestFullscreen().catch(e => console.error("Fullscreen error:", e));
+        } else {
+            document.exitFullscreen();
+        }
+    });
+
+    // 双击主视图切换沉浸模式
+    document.querySelector('.main-view')?.addEventListener('dblclick', () => {
+        if (document.fullscreenElement || getters.isScreensaverMode()) return;
+        const mainView = document.querySelector('.main-view');
+        const galleryContainer = document.getElementById('gallery-container');
+
+        mainView.classList.toggle('main-view-fullscreen');
+        galleryContainer.classList.toggle('suppressed-by-fullscreen');
+
+        // 关闭可能打开的面板
+        if (mainView.classList.contains('main-view-fullscreen')) {
+            ui.closeActivePanels();
+        }
+    });
+
+    // 监听全屏变化，同步退出屏保模式
+    window.electronAPI.onFullscreenChange((isFullscreen) => {
+        if (!isFullscreen && getters.isScreensaverMode()) {
+            mutations.setScreensaverMode(false);
+        }
+    });
+
+    // 空状态页面按钮
+    document.getElementById('empty-state-search-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        ui.toggleDownloadPanel();
+        // 自动聚焦输入框
+        setTimeout(() => document.getElementById('url-or-search-input')?.focus(), 500);
+    });
+
+    // 页面卸载前保存状态
     window.addEventListener('beforeunload', savePlayerState);
 
-    // --- IPC 事件监听 ---
-    window.electronAPI.onNewTrack((newTrack) => { document.dispatchEvent(new CustomEvent('new-track-added', { detail: newTrack })); });
-    document.addEventListener('new-track-added', (event) => {
-        const trackForPlaylist = makeTrackPlayable(event.detail);
-        const oldPlaylistLength = state.playlist.length;
-        state.setPlaylist([trackForPlaylist, ...state.playlist]);
-        if (oldPlaylistLength === 0) {
-            toggleEmptyState(false);
-            state.setCurrentTrackIndex(0);
-            backgroundGallery.init(state.playlist);
-            loadTrack(0, { forcePlay: true });
-        } else {
-            state.setCurrentTrackIndex(state.currentTrackIndex + 1);
+    // 全局按键：ESC 关闭面板/屏保
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            ui.hideContextMenu();
+            ui.closeActivePanels();
+            if (getters.isScreensaverMode()) {
+                mutations.setScreensaverMode(false);
+                window.electronAPI.toggleFullscreen(false);
+            }
         }
-        showToast(`已添加 "${trackForPlaylist.title}" 到媒体库！`);
-        renderPlaylist();
-        updatePlaylistUI();
-        backgroundGallery.updatePlaylistData(state.playlist);
+        // F11 屏保模式切换
+        if (e.key === 'F11') {
+            e.preventDefault();
+            const isSaver = getters.isScreensaverMode();
+            if (isSaver) {
+                mutations.setScreensaverMode(false);
+                window.electronAPI.toggleFullscreen(false);
+            } else if (getters.playlist().length > 0) {
+                mutations.setScreensaverMode(true);
+                window.electronAPI.toggleFullscreen(true);
+            }
+        }
     });
-
-    window.electronAPI.onFullscreenChange((isFullscreen) => { if (!isFullscreen && state.isScreensaverMode) exitScreensaverMode(); });
-
-    // --- 初始化功能模块 ---
-    setupDownloaderListeners();
-    setupShortcutListeners();
-    setupLyricsDragHandler();
-    setupCoreComponentDownloader();
-    setupDragAndDropListeners();
 }
 
 /**
  * 应用初始化函数。
  */
 async function init() {
-    // 关键：在操作 DOM 之前，先将所有图标占位符替换为实际的 SVG
+    // 1. 渲染基础UI
     loadIcons();
-    showSkeleton();
-    loadPlayerState();
 
-    const localResult = await window.electronAPI.getLocalPlaylist();
-    if (localResult.success && Array.isArray(localResult.data) && localResult.data.length > 0) {
-        const localPlaylist = localResult.data.map(track => ({
-            ...makeTrackPlayable(track),
-            pinyin: pinyin(track.title || '', { toneType: 'none' }).replace(/\s/g, ''),
-            initials: pinyin(track.title || '', { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '')
-        }));
-        state.setPlaylist(localPlaylist);
-    }
-
-    if (state.currentTrackIndex >= state.playlist.length || state.currentTrackIndex < 0) {
-        state.setCurrentTrackIndex(0);
-    }
-
-    backgroundGallery.init(state.playlist);
-
-    if (state.playlist.length > 0) {
-        toggleEmptyState(false);
-        renderPlaylist();
-        updatePlaylistUI();
-        await loadTrack(state.currentTrackIndex, { initialTime });
-    } else {
-        resetPlayerUI();
-        hideSkeleton();
-        toggleEmptyState(true);
-        setTimeout(() => toggleDownloadPanel(), 600);
-    }
-
-    updateVolumeBarVisual(dom.mediaPlayer.volume, dom.mediaPlayer.muted);
-    updateModeButton();
+    // 2. 初始化所有模块
+    ui.init();
+    player.init();
+    mediaService.init();
+    backgroundGallery.init();
     loadShortcuts();
-    renderContextMenu({ type: 'global' });
+
+    // 3. 绑定所有事件监听
     setupEventListeners();
+    setupDownloaderListeners();
+    setupShortcutListeners();
+
+    // 4. 加载持久化状态和初始数据
+    const initialTime = loadPlayerState();
+    await mediaService.loadInitialData();
+
+    // 5. 根据初始数据决定最终UI状态
+    const playlist = getters.playlist();
+    if (playlist.length > 0) {
+        let trackIndex = getters.currentTrackIndex();
+        if (trackIndex >= playlist.length || trackIndex < 0) {
+            trackIndex = 0;
+        }
+        // 使用 setTimeout 确保所有订阅者都已准备就绪
+        setTimeout(() => {
+            mutations.setCurrentTrackIndex(trackIndex);
+            // 如果有保存的播放进度，等待元数据加载后跳转
+            if (initialTime > 0) {
+                const unsubscribe = subscribe('timeChanged', ({ duration }) => {
+                    if (duration > 0) {
+                        window.dispatchEvent(new CustomEvent('seekTo', { detail: initialTime }));
+                        unsubscribe(); // 跳转后立即取消订阅
+                    }
+                });
+            }
+        }, 0);
+    } else {
+        // 如果没有播放列表，显示空状态并自动打开下载面板
+        ui.toggleEmptyState(true);
+        // 延迟打开，给用户一个视觉缓冲
+        setTimeout(() => ui.toggleDownloadPanel(), 600);
+        // 确保最终隐藏骨架屏
+        window.dispatchEvent(new CustomEvent('hideSkeleton'));
+    }
+
+    console.log("App initialized.");
 }
 
+// 确保在 DOM 加载完成后执行初始化
 document.addEventListener('DOMContentLoaded', init);
