@@ -119,12 +119,26 @@ export const mutations = {
         _notify('currentTrackIndexChanged', _state.currentTrackIndex);
     },
 
-    setCurrentTrackIndex(index) {
-        if (_state.currentTrackIndex === index && !_state.temporaryPlayingTrack) return;
+    // =========================================================================
+    // 【核心修复】增加 `force` 参数。
+    // 在应用启动时，即使加载的轨道索引与 state 中已存在的索引相同（例如都为0），
+    // 也需要强制触发 'currentTrackChanged' 事件，以确保播放器开始加载媒体。
+    // =========================================================================
+    /**
+     * 设置当前播放轨道的索引。
+     * @param {number} index - 新的轨道索引。
+     * @param {boolean} [force=false] - 是否强制触发更新通知。
+     */
+    setCurrentTrackIndex(index, force = false) {
+        // 如果索引未变，且没有临时曲目，并且不是强制更新，则直接返回以避免不必要的操作。
+        if (_state.currentTrackIndex === index && !_state.temporaryPlayingTrack && !force) {
+            return;
+        }
         _state.currentTrackIndex = index;
         _state.temporaryPlayingTrack = null;
         _notify('currentTrackChanged', getters.currentTrack());
     },
+    // =========================================================================
 
     setTemporaryPlayingTrack(track) {
         if (_state.temporaryPlayingTrack === track) return;
@@ -158,6 +172,25 @@ export const mutations = {
 
     cyclePlayMode() {
         _state.currentModeIndex = (_state.currentModeIndex + 1) % 3;
+        _notify('playModeChanged', _state.currentModeIndex);
+    },
+
+    /**
+     * 直接设置播放模式的索引。
+     * @param {number} index - 要设置的模式索引 (0: 列表, 1: 单曲, 2: 随机)。
+     */
+    setCurrentModeIndex(index) {
+        // 鲁棒性检查：确保索引是有效的数字且在范围内 [0, 1, 2]
+        const newIndex = parseInt(index, 10);
+        if (isNaN(newIndex) || newIndex < 0 || newIndex > 2) {
+            console.warn(`[State] Attempted to set invalid play mode index: ${index}`);
+            return;
+        }
+        // 如果新索引与当前索引相同，则不执行任何操作以避免不必要的通知
+        if (_state.currentModeIndex === newIndex) {
+            return;
+        }
+        _state.currentModeIndex = newIndex;
         _notify('playModeChanged', _state.currentModeIndex);
     },
 

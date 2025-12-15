@@ -139,7 +139,6 @@ function handleTrackChange(direction) {
 
 /**
  * 设置核心 UI 元素的事件监听器。
- * 修复：确保所有面板切换、菜单交互和核心控制按钮都已绑定。
  */
 function setupEventListeners() {
     // =========================================================================
@@ -192,7 +191,6 @@ function setupEventListeners() {
     // 歌词面板 (Lyrics)
     document.getElementById('lyrics-btn')?.addEventListener('click', ui.toggleLyricsPanel);
     document.getElementById('mobile-lyrics-btn')?.addEventListener('click', ui.toggleLyricsPanel);
-    // 歌词面板本身通常没有关闭按钮，而是再次点击图标或点击背景关闭，这在 ui.js 的 init 中已处理（点击背景）
 
     // 添加资源/下载面板 (Download)
     document.getElementById('download-panel-btn')?.addEventListener('click', ui.toggleDownloadPanel);
@@ -201,7 +199,6 @@ function setupEventListeners() {
     // 信息面板 (Info) - 按钮位于“更多选项”菜单中
     document.getElementById('info-btn')?.addEventListener('click', () => {
         ui.toggleInfoPanel();
-        // 点击菜单项后，关闭菜单本身
         document.getElementById('more-options-menu')?.classList.remove('visible');
     });
     document.getElementById('close-info-btn')?.addEventListener('click', ui.closeActivePanels);
@@ -270,6 +267,39 @@ function setupEventListeners() {
                 mutations.setIsPlaying(true);
             }
         }
+    });
+
+    // 为播放列表添加右键菜单事件监听
+    document.getElementById('playlist')?.addEventListener('contextmenu', (e) => {
+        // 查找被右击的具体列表项
+        const item = e.target.closest('.playlist-item[data-index]');
+        if (!item) return; // 如果右击的不是列表项，则不显示菜单
+
+        // 阻止浏览器默认的右键菜单
+        e.preventDefault();
+
+        const index = parseInt(item.dataset.index, 10);
+        if (isNaN(index)) return; // 鲁棒性检查
+
+        // 委托UI模块根据上下文渲染菜单内容
+        ui.renderContextMenu({ type: 'playlist-item', index: index });
+
+        // 定位并显示菜单
+        const contextMenu = dom.contextMenu;
+        if (!contextMenu) return;
+
+        // 确保菜单不会超出屏幕边界
+        const { clientX, clientY } = e;
+        const { innerWidth, innerHeight } = window;
+        const menuWidth = contextMenu.offsetWidth;
+        const menuHeight = contextMenu.offsetHeight;
+
+        const x = clientX + menuWidth > innerWidth ? innerWidth - menuWidth - 5 : clientX;
+        const y = clientY + menuHeight > innerHeight ? innerHeight - menuHeight - 5 : clientY;
+
+        contextMenu.style.left = `${x}px`;
+        contextMenu.style.top = `${y}px`;
+        contextMenu.style.display = 'block';
     });
 
     // 媒体库搜索过滤
@@ -384,7 +414,13 @@ async function init() {
         }
         // 使用 setTimeout 确保所有订阅者都已准备就绪
         setTimeout(() => {
-            mutations.setCurrentTrackIndex(trackIndex);
+            // =========================================================================
+            // 【核心修复】传入 `true` 作为第二个参数，强制触发 track changed 事件。
+            // 这解决了应用启动时，如果加载的轨道索引与默认值(0)相同，
+            // 导致播放器不加载媒体而卡在骨架屏的问题。
+            // =========================================================================
+            mutations.setCurrentTrackIndex(trackIndex, true);
+
             // 如果有保存的播放进度，等待元数据加载后跳转
             if (initialTime > 0) {
                 const unsubscribe = subscribe('timeChanged', ({ duration }) => {

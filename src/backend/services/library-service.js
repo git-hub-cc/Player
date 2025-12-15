@@ -54,9 +54,59 @@ export class LibraryService {
         return sanitized.replace(/-+/g, '-').replace(/^-+|-+$/g, '').trim();
     }
 
-    #generatePlaceholderArt(title) {
-        
-        // [原文件 #generatePlaceholderArt 函数的完整代码]
+    async #generateVideoThumbnail(videoPath, outputDir, filename) {
+        if (!this.#ffmpegPath) {
+            console.warn('[Library] FFmpeg 未安装，跳过视频截图生成。');
+            return null;
+        }
+        const outputFilename = `${filename}.jpg`;
+        const outputPath = path.join(outputDir, outputFilename);
+        const command = `"${this.#ffmpegPath}" -y -ss 00:00:01.000 -i "${videoPath}" -vframes 1 -q:v 2 "${outputPath}"`;
+
+        return new Promise((resolve) => {
+            exec(command, (error) => {
+                if (error) {
+                    const retryCommand = `"${this.#ffmpegPath}" -y -i "${videoPath}" -vframes 1 -q:v 2 "${outputPath}"`;
+                    exec(retryCommand, (retryError) => resolve(fs.existsSync(outputPath) ? outputFilename : null));
+                } else {
+                    resolve(fs.existsSync(outputPath) ? outputFilename : null);
+                }
+            });
+        });
+    }
+
+    async #scanDirectoryRecursive(dirPath) {
+        const fileGroups = new Map(); const audioExt = ['.mp3', '.flac', '.wav', '.m4a', '.ogg', '.opus']; const videoExt = ['.mp4', '.mkv', '.webm', '.mov', '.avi']; const artExt = ['.jpg', '.jpeg', '.png']; const lrcExt = '.lrc';
+        async function scan(currentDir) {
+            const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
+            for (const entry of entries) {
+                const fullPath = path.join(currentDir, entry.name);
+                if (entry.isDirectory()) { await scan(fullPath); }
+                else if (entry.isFile()) {
+                    const ext = path.extname(entry.name).toLowerCase(); const baseName = path.join(path.dirname(fullPath), path.basename(entry.name, ext));
+                    if (!fileGroups.has(baseName)) { fileGroups.set(baseName, { media: null, mediaType: null, lrc: null, art: null }); }
+                    const group = fileGroups.get(baseName);
+                    if (audioExt.includes(ext) && !group.media) { group.media = fullPath; group.mediaType = 'audio'; }
+                    else if (videoExt.includes(ext) && !group.media) { group.media = fullPath; group.mediaType = 'video'; }
+                    else if (lrcExt === ext && !group.lrc) group.lrc = fullPath;
+                    else if (artExt.includes(ext) && !group.art) group.art = fullPath;
+                }
+            }
+        }
+        await scan(dirPath); return fileGroups;
+    }
+
+    // --- 公共 API 方法 ---
+
+    /**
+     * =========================================================================
+     * 【核心修改】将此方法设为公共方法，以便其他服务可以调用它来生成占位图。
+     * =========================================================================
+     * 为给定的标题生成一个基于颜色哈希的占位封面图。
+     * @param {string} title - 用于生成颜色和文本的标题。
+     * @returns {string} - 返回 PNG 格式的 Base64 Data URL，如果 Canvas 不可用则返回空字符串。
+     */
+    generatePlaceholderArt(title) {
         if (!createCanvas) return '';
         const size = 1024;
         const canvas = createCanvas(size, size);
@@ -88,61 +138,11 @@ export class LibraryService {
         return canvas.toDataURL('image/png');
     }
 
-    async #generateVideoThumbnail(videoPath, outputDir, filename) {
-        if (!this.#ffmpegPath) {
-            console.warn('[Library] FFmpeg 未安装，跳过视频截图生成。');
-            return null;
-        }
-        const outputFilename = `${filename}.jpg`;
-        const outputPath = path.join(outputDir, outputFilename);
-        const command = `"${this.#ffmpegPath}" -y -ss 00:00:01.000 -i "${videoPath}" -vframes 1 -q:v 2 "${outputPath}"`;
-
-        return new Promise((resolve) => {
-            exec(command, (error) => {
-                if (error) {
-                    const retryCommand = `"${this.#ffmpegPath}" -y -i "${videoPath}" -vframes 1 -q:v 2 "${outputPath}"`;
-                    exec(retryCommand, (retryError) => resolve(fs.existsSync(outputPath) ? outputFilename : null));
-                } else {
-                    resolve(fs.existsSync(outputPath) ? outputFilename : null);
-                }
-            });
-        });
-    }
-
-    async #scanDirectoryRecursive(dirPath) {
-        
-        // [原文件 #scanDirectoryRecursive 函数的完整代码]
-        const fileGroups = new Map(); const audioExt = ['.mp3', '.flac', '.wav', '.m4a', '.ogg', '.opus']; const videoExt = ['.mp4', '.mkv', '.webm', '.mov', '.avi']; const artExt = ['.jpg', '.jpeg', '.png']; const lrcExt = '.lrc';
-        async function scan(currentDir) {
-            const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
-            for (const entry of entries) {
-                const fullPath = path.join(currentDir, entry.name);
-                if (entry.isDirectory()) { await scan(fullPath); }
-                else if (entry.isFile()) {
-                    const ext = path.extname(entry.name).toLowerCase(); const baseName = path.join(path.dirname(fullPath), path.basename(entry.name, ext));
-                    if (!fileGroups.has(baseName)) { fileGroups.set(baseName, { media: null, mediaType: null, lrc: null, art: null }); }
-                    const group = fileGroups.get(baseName);
-                    if (audioExt.includes(ext) && !group.media) { group.media = fullPath; group.mediaType = 'audio'; }
-                    else if (videoExt.includes(ext) && !group.media) { group.media = fullPath; group.mediaType = 'video'; }
-                    else if (lrcExt === ext && !group.lrc) group.lrc = fullPath;
-                    else if (artExt.includes(ext) && !group.art) group.art = fullPath;
-                }
-            }
-        }
-        await scan(dirPath); return fileGroups;
-    }
-
-    // --- 公共 API 方法 ---
-
     async getLocalPlaylist() {
-        
-        // [原文件 getLocalPlaylist 函数的完整代码]
         try { if (fs.existsSync(this.#config.PLAYLIST_PATH)) { const data = JSON.parse(fs.readFileSync(this.#config.PLAYLIST_PATH, 'utf-8')); return { success: true, data }; } else { return { success: true, data: [] }; } } catch (e) { return { success: false, error: e.message }; }
     }
 
     async handleDeleteTrack({ src: relativeSrc }) {
-        
-        // [原文件 handleDeleteTrack 函数的完整代码]
         if (!relativeSrc) return { success: false, error: '删除失败: 未提供曲目路径。' };
         try {
             let playlist = []; if (fs.existsSync(this.#config.PLAYLIST_PATH)) { playlist = JSON.parse(fs.readFileSync(this.#config.PLAYLIST_PATH, 'utf-8')); }
@@ -154,8 +154,6 @@ export class LibraryService {
     }
 
     async updateLocalPlaylist(newTracks) {
-        
-        // [原文件 updateLocalPlaylist 函数的完整代码]
         if (!newTracks || newTracks.length === 0) return; let playlist = [];
         try { if (fs.existsSync(this.#config.PLAYLIST_PATH)) { playlist = JSON.parse(fs.readFileSync(this.#config.PLAYLIST_PATH, 'utf-8')); } } catch (e) { console.error(`[Library] 读取旧播放列表失败:`, e); }
         const existingSrcs = new Set(playlist.map(track => track.src)); const uniqueNewTracks = newTracks.filter(track => !existingSrcs.has(track.src));
@@ -163,8 +161,6 @@ export class LibraryService {
     }
 
     async handleSeparateVideo(trackData) {
-        
-        // [原文件 handleSeparateVideo 函数的完整代码，注意替换 FFMPEG_PATH 和 CONFIG]
         if (!this.#ffmpegPath) { return { success: false, error: 'FFmpeg 未安装，无法执行分离操作。', reason: 'tool_missing', missing: 'ffmpeg' }; }
         if (!trackData || !trackData.src) { return { success: false, error: '无效的轨道数据。' }; }
         let sourceRelativePath = trackData.src.startsWith('media://') ? trackData.src.substring('media://'.length) : trackData.src; sourceRelativePath = decodeURIComponent(sourceRelativePath);
@@ -180,15 +176,19 @@ export class LibraryService {
             let playlist = JSON.parse(fs.readFileSync(this.#config.PLAYLIST_PATH, 'utf-8')); const originalIndex = playlist.findIndex(t => t.src === sourceRelativePath);
             if (originalIndex === -1) { return { success: false, error: '在播放列表中未找到原始轨道，无法更新。' }; }
             const videoOnlyTrack = { ...trackData, title: `${trackData.title} (仅视频)`, src: path.relative(this.#config.MEDIA_ROOT, videoOnlyPath).replace(/\\/g, '/'), albumArt: videoArtPath, };
-            const audioOnlyTrack = { ...trackData, title: `${trackData.title} (仅音频)`, src: path.relative(this.#config.MEDIA_ROOT, audioOnlyPath).replace(/\\/g, '/'), type: 'audio', lyrics: '', albumArt: '', };
+            // =========================================================================
+            // 【核心修改】为分离出的音频文件生成占位封面图，而不是留空。
+            // =========================================================================
+            const audioTitle = `${trackData.title} (仅音频)`;
+            const audioArtDataUrl = this.generatePlaceholderArt(audioTitle);
+            const audioOnlyTrack = { ...trackData, title: audioTitle, src: path.relative(this.#config.MEDIA_ROOT, audioOnlyPath).replace(/\\/g, '/'), type: 'audio', lyrics: '', albumArt: audioArtDataUrl, };
+            // =========================================================================
             playlist.splice(originalIndex + 1, 0, videoOnlyTrack, audioOnlyTrack); fs.writeFileSync(this.#config.PLAYLIST_PATH, JSON.stringify(playlist, null, 2), 'utf-8');
             return { success: true, data: playlist, message: '视频分离成功！' };
         } catch (error) { return { success: false, error: error.message }; }
     }
 
     async handleDroppedFiles(files, sendMessage) {
-        
-        // [原文件 handleDroppedFiles 函数的完整代码，注意替换 CONFIG]
         console.log('🔍 [Library Service] 开始处理拖拽文件...'); if (!files || files.length === 0) return { success: false, error: '未接收到文件。' };
         const audioExt = ['.mp3', '.flac', '.wav', '.m4a', '.ogg', '.opus']; const videoExt = ['.mp4', '.mkv', '.webm', '.mov', '.avi'];
         let importedCount = 0; const newPlaylistTracks = [];
@@ -202,7 +202,6 @@ export class LibraryService {
                 const targetDir = isVideo ? this.#config.VIDEOS_DIR : this.#config.MUSIC_DIR; const relativeDirName = isVideo ? 'videos' : 'music';
                 const newMediaPath = path.join(targetDir, `${safeFilename}${ext}`); await fs.promises.copyFile(originalPath, newMediaPath);
                 const newTrack = { title, artist: '拖拽导入', src: `${relativeDirName}/${path.basename(newMediaPath)}`, albumArt: '', lyrics: '', type: isVideo ? 'video' : 'audio', pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''), initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '') };
-                // ... (封面和歌词逻辑，与原文件相同) ...
                 if (isVideo) { const generatedImageName = await this.#generateVideoThumbnail(newMediaPath, this.#config.ALBUMART_DIR, safeFilename); if (generatedImageName) newTrack.albumArt = `albumArt/${generatedImageName}`; }
                 newPlaylistTracks.push(newTrack); importedCount++; sendMessage('new-track-added', newTrack);
             } catch (error) { console.error(`❌ [Library Service] 导入文件 ${file.name} 失败:`, error); }
@@ -212,15 +211,49 @@ export class LibraryService {
     }
 
     async handleLocalImport(directoryPath, sendMessage) {
-        
-        // [原文件 handleLocalImport 函数的完整代码，注意替换 CONFIG]
         if (!directoryPath) { return { success: false, error: '未提供目录。' }; } sendMessage('import-status', { message: '开始扫描目录...', type: 'default' });
         try {
             const fileGroups = await this.#scanDirectoryRecursive(directoryPath); const mediaTracks = Array.from(fileGroups.values()).filter(group => group.media);
             if (mediaTracks.length === 0) { sendMessage('import-status', { message: '未找到媒体文件', type: 'error' }); return { success: true, importedCount: 0 }; }
             sendMessage('import-status', { message: `发现 ${mediaTracks.length} 个文件，开始导入...` }); let importedCount = 0; const newPlaylistTracks = [];
             for (const group of mediaTracks) {
-                // ... (导入逻辑与原文件相同，注意使用 this.#config) ...
+                try {
+                    const { media, mediaType, lrc, art } = group;
+                    const ext = path.extname(media), title = path.basename(media, ext);
+                    const safeFilename = this.#sanitizeFilename(title);
+                    const isVideo = mediaType === 'video';
+                    const targetDir = isVideo ? this.#config.VIDEOS_DIR : this.#config.MUSIC_DIR;
+                    const newMediaPath = path.join(targetDir, `${safeFilename}${ext}`);
+                    await fs.promises.copyFile(media, newMediaPath);
+
+                    const newTrack = {
+                        title, artist: '本地导入', type: mediaType,
+                        src: path.relative(this.#config.MEDIA_ROOT, newMediaPath).replace(/\\/g, '/'),
+                        pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
+                        initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '')
+                    };
+
+                    if (lrc) {
+                        const newLrcPath = path.join(targetDir, `${safeFilename}.lrc`);
+                        await fs.promises.copyFile(lrc, newLrcPath);
+                        newTrack.lyrics = path.relative(this.#config.MEDIA_ROOT, newLrcPath).replace(/\\/g, '/');
+                    } else { newTrack.lyrics = ''; }
+
+                    if (art) {
+                        const newArtPath = path.join(this.#config.ALBUMART_DIR, `${safeFilename}${path.extname(art)}`);
+                        await fs.promises.copyFile(art, newArtPath);
+                        newTrack.albumArt = path.relative(this.#config.MEDIA_ROOT, newArtPath).replace(/\\/g, '/');
+                    } else if (isVideo) {
+                        const thumbName = await this.#generateVideoThumbnail(newMediaPath, this.#config.ALBUMART_DIR, safeFilename);
+                        newTrack.albumArt = thumbName ? `albumArt/${thumbName}` : '';
+                    } else { newTrack.albumArt = ''; }
+
+                    newPlaylistTracks.push(newTrack);
+                    importedCount++;
+                    sendMessage('import-status', { message: `[${importedCount}/${mediaTracks.length}] ${title}` });
+                } catch (e) {
+                    console.error(`导入 ${group.media} 失败:`, e);
+                }
             }
             if (newPlaylistTracks.length > 0) { await this.updateLocalPlaylist(newPlaylistTracks); }
             sendMessage('import-status', { message: `导入完成！成功导入 ${importedCount} 个文件。`, type: 'success' });
