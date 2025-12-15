@@ -5,7 +5,6 @@ import path from 'path';
 import { pinyin } from 'pinyin-pro';
 import * as gdstudio from '../providers/gdstudio.js';
 import { downloadFile } from './download-service.js';
-// 注意：不再直接导入 library-service，因为它会通过 DI 注入
 
 /**
  * @class OnlineService
@@ -17,7 +16,9 @@ export class OnlineService {
     #config;
     // #sendMessageCallback 用于向渲染进程发送消息
     #sendMessageCallback;
-    // #libraryService 用于更新本地播放列表
+    // =========================================================================
+    // 【核心修改】增加对 libraryService 的引用，用于生成占位封面图。
+    // =========================================================================
     #libraryService;
 
     /**
@@ -52,16 +53,28 @@ export class OnlineService {
         }
     }
 
-    async handleGetMusicUrl(trackInfo) {
-        if (!trackInfo || !trackInfo.id || !trackInfo.source) {
+    async handleGetMusicUrl(trackData) {
+        if (!trackData || !trackData.id || !trackData.source) {
             return { success: false, error: '获取 URL 失败: 缺少曲目 ID 或来源信息。' };
         }
         try {
+            // 并行获取音乐URL和封面真实URL
             const [musicUrl, albumArtUrl] = await Promise.all([
-                gdstudio.getMusicUrl(trackInfo),
-                gdstudio.resolvePicUrl(trackInfo.pic_id, trackInfo.source)
+                gdstudio.getMusicUrl(trackData),
+                gdstudio.resolvePicUrl(trackData.pic_id, trackData.source)
             ]);
-            return { success: true, url: musicUrl, albumArtUrl };
+
+            // =========================================================================
+            // 【核心修改】如果无法解析到封面图URL，则调用 libraryService 生成占位图。
+            // =========================================================================
+            let finalAlbumArtUrl = albumArtUrl;
+            if (!finalAlbumArtUrl) {
+                // generatePlaceholderArt 返回的是 Data URL，可以直接在前端使用
+                finalAlbumArtUrl = this.#libraryService.generatePlaceholderArt(trackData.title);
+            }
+            // =========================================================================
+
+            return { success: true, url: musicUrl, albumArtUrl: finalAlbumArtUrl };
         } catch (e) {
             console.error(`[Online] 获取音乐 URL 失败: ${e.message}`);
             return { success: false, error: e.message };
@@ -75,30 +88,53 @@ export class OnlineService {
         const downloadPromises = [];
 
         try {
-            // 音频下载
+            // 1. 音频下载
             let audioUrl = trackData.originalSrc;
-            if (!audioUrl && trackData.id) audioUrl = await gdstudio.getMusicUrl(trackData);
-            if (!audioUrl) throw new Error('无法获取音频下载链接。');
+            if (!audioUrl && trackData.id) {
+                audioUrl = await gdstudio.getMusicUrl(trackData);
+            }
+            if (!audioUrl) {
+                throw new Error('无法获取音频下载链接。');
+            }
             downloadPromises.push(downloadFile(audioUrl, this.#config.MUSIC_DIR, `${safeFilename}.mp3`));
 
-            // 封面下载
+            // 2. 封面处理
+            let finalAlbumArtPath = "";
             let artUrl = trackData.albumArt || trackData.originalAlbumArt;
-            if (!artUrl && trackData.pic_id) artUrl = await gdstudio.resolvePicUrl(trackData.pic_id, trackData.source);
-            if (artUrl) downloadPromises.push(downloadFile(artUrl, this.#config.ALBUMART_DIR, `${safeFilename}.jpg`));
 
-            // 歌词处理
+            // 如果 URL 是 http/https 链接，则下载
+            if (artUrl && artUrl.startsWith('http')) {
+                const coverPath = path.join(this.#config.ALBUMART_DIR, `${safeFilename}.jpg`);
+                downloadPromises.push(downloadFile(artUrl, this.#config.ALBUMART_DIR, `${safeFilename}.jpg`));
+                if (fs.existsSync(coverPath)) {
+                    finalAlbumArtPath = `albumArt/${safeFilename}.jpg`;
+                }
+                // 如果 URL 是 Data URL (来自占位图生成)，则直接保存为文件
+            } else if (artUrl && artUrl.startsWith('data:image/png;base64,')) {
+                const coverPath = path.join(this.#config.ALBUMART_DIR, `${safeFilename}.png`);
+                const base64Data = artUrl.replace(/^data:image\/png;base64,/, "");
+                fs.writeFileSync(coverPath, base64Data, 'base64');
+                finalAlbumArtPath = `albumArt/${safeFilename}.png`;
+            }
+
+            // 3. 歌词处理
             const lyricsPath = path.join(this.#config.MUSIC_DIR, `${safeFilename}.lrc`);
             if (trackData.lyricId) {
                 const lyricContent = await gdstudio.getLyric(trackData.lyricId, trackData.source);
-                if (lyricContent) fs.writeFileSync(lyricsPath, lyricContent, { encoding: 'utf-8', flag: 'w' });
+                if (lyricContent) {
+                    fs.writeFileSync(lyricsPath, lyricContent, { encoding: 'utf-8', flag: 'w' });
+                }
             }
 
+            // 等待所有下载完成
             await Promise.all(downloadPromises);
 
+            // 4. 构建最终的 newTrack 对象
             const newTrack = {
                 title, artist,
                 src: `music/${safeFilename}.mp3`,
-                albumArt: fs.existsSync(path.join(this.#config.ALBUMART_DIR, `${safeFilename}.jpg`)) ? `albumArt/${safeFilename}.jpg` : "",
+                // 确保即使下载失败，也能正确引用已存在的文件
+                albumArt: finalAlbumArtPath,
                 lyrics: fs.existsSync(lyricsPath) ? `music/${safeFilename}.lrc` : "",
                 type: "audio",
                 pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),

@@ -63,12 +63,16 @@ export async function configureContainer(app, sendMessageFunc) {
         ['config', 'ffmpegPath']
     );
 
-    // `OnlineService` 依赖 `config` 和 `sendMessageFunc`
+    // =========================================================================
+    // 【核心修改】为 OnlineService 添加 'libraryService' 依赖。
+    // =========================================================================
+    // `OnlineService` 现在依赖 `libraryService` 来生成占位封面图。
     container.register(
         'onlineService',
         OnlineService,
-        ['config', 'sendMessageFunc']
+        ['config', 'sendMessageFunc', 'libraryService']
     );
+    // =========================================================================
 
     console.log('[Bootstrap] 所有服务注册完成。');
     console.log('[Bootstrap] DI 容器配置成功！');

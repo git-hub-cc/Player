@@ -16,7 +16,6 @@
 
 .media-visualizer {
     /* 为媒体内容提供一些内边距，使其与边缘有呼吸空间 */
-    padding: 24px;
 }
 
 /* --- 视频元素自适应 --- */
@@ -293,14 +292,19 @@
     padding: 0; /* 移除内边距，使内容填满屏幕 */
 }
 
-/* 视频全屏样式 */
-.main-view.main-view-fullscreen #media-player {
+#media-player {
+    /* 新增：让 video 元素本身填满父容器 */
     width: 100%;
     height: 100%;
+    /* 新增：让视频内容保持比例缩放以适应元素框 */
+    object-fit: contain;
+
+    /* 保留原有样式 */
     max-width: 100%;
     max-height: 100%;
-    border-radius: 0;
-    object-fit: contain; /* 保持视频宽高比，完整显示 */
+    background-color: #000;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
 }
 
 /* 音频全屏样式 - 专辑封面 */

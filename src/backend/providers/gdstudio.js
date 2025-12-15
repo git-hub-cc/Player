@@ -68,7 +68,10 @@ export async function search(query, page = 1, count = 20, source = DEFAULT_SOURC
     try {
         // 1. 获取基础搜索列表
         const response = await apiClient.get(API_BASE_URL, {
-            params: makeParams('search', { name: query, pages: page, count, source })
+            // =========================================================================
+            // 【修复】API分页参数应为 'page' 而不是 'pages'
+            // =========================================================================
+            params: makeParams('search', { name: query, page: page, count, source })
         });
 
         const data = response.data;
