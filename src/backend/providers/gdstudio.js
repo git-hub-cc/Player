@@ -1,58 +1,152 @@
 // src/backend/providers/gdstudio.js
 
 import axios from 'axios';
+import { createHash } from 'crypto';
+import { URLSearchParams } from 'url';
 
 // --- 配置 ---
-const API_BASE_URL = 'https://music-api.gdstudio.xyz/api.php';
-const DEFAULT_SOURCE = 'joox'; // 默认源：netease, tencent, kugou 等
-const TIMEOUT = 20000; // 适当增加超时时间，因为现在涉及多次请求
+const MKPLAYER_VERSION = '2025.11.4';
+const TIMEOUT = 20000;
+const DEFAULT_SOURCE = 'netease';
 
-// 创建 Axios 实例
-const apiClient = axios.create({
-    timeout: TIMEOUT,
-    headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
-    }
-});
+// =========================================================================
+// 【核心修改区域】
+// 签名生成与 API 请求逻辑
+// =========================================================================
 
 /**
- * 构造通用的请求参数
+ * @private
+ * 根据系统代理选择合适的 API 域名。
+ * @param {string|null} systemProxy - 系统代理字符串。
+ * @returns {{hostname: string, apiUrl: string}} - 包含主机名和完整 API URL 的对象。
  */
-function makeParams(types, extra = {}) {
+function getApiEndpoints(systemProxy) {
+    // 逻辑：如果用户配置了系统代理，使用 .xyz 域名；否则，使用 .org 域名。
+    const hostname = systemProxy ? 'music.gdstudio.xyz' : 'music.gdstudio.org';
     return {
-        types,
-        source: extra.source || DEFAULT_SOURCE,
-        ...extra
+        hostname,
+        apiUrl: `https://${hostname}/api.php`,
     };
 }
 
 /**
- * =========================================================================
- * 【核心修改】导出此函数，以便 online-service 可以按需调用
- *
+ * @private
+ * 从喜马拉雅获取服务器时间戳，用于签名。
+ * @returns {Promise<string|null>} - 返回时间戳字符串或 null。
+ */
+async function getXimalayaTimestamp() {
+    try {
+        const response = await axios.get('https://www.ximalaya.com/revision/time', { timeout: 5000 });
+        return response.data.toString().trim();
+    } catch (error) {
+        console.error('[GDStudio Signature] 获取时间戳失败:', error.message);
+        return null;
+    }
+}
+
+/**
+ * @private
+ * 格式化版本号字符串，用于签名。
+ * 例如 "2025.11.4" -> "20251104"
+ * @param {string} versionStr - 版本号字符串。
+ * @returns {string} - 格式化后的版本号。
+ */
+function formatVersion(versionStr) {
+    return versionStr.split('.').map(part => part.padStart(2, '0')).join('');
+}
+
+/**
+ * @private
+ * 生成 API 请求所需的签名 `s` 参数。
+ * @param {string} hostname - API 的主机名。
+ * @param {string} searchTerm - 搜索关键词或请求ID。
+ * @returns {Promise<string|null>} - 成功则返回签名字符串，失败则返回 null。
+ */
+async function generateSignature(hostname, searchTerm) {
+    const timestamp = await getXimalayaTimestamp();
+    if (!timestamp) {
+        return null; // 时间戳获取失败，无法生成签名
+    }
+
+    const slicedTimestamp = timestamp.substring(0, 9);
+    const formattedVersion = formatVersion(MKPLAYER_VERSION);
+    // 关键：模拟 JavaScript 的 encodeURIComponent
+    const encodedSearchTerm = encodeURIComponent(searchTerm);
+
+    const stringToHash = `${hostname}|${formattedVersion}|${slicedTimestamp}|${encodedSearchTerm}`;
+    const md5Hash = createHash('md5').update(stringToHash).digest('hex');
+
+    // 截取最后8位并转为大写
+    return md5Hash.slice(-8).toUpperCase();
+}
+
+/**
+ * @private
+ * 执行一个带签名的 API 请求。
+ * @param {object} params - 请求参数对象。
+ * @param {string|null} systemProxy - 系统代理信息。
+ * @returns {Promise<any>} - 返回 API 响应的数据部分。
+ */
+async function signedApiRequest(params, systemProxy) {
+    const { hostname, apiUrl } = getApiEndpoints(systemProxy);
+    const searchTerm = params.name || params.id; // 签名基于搜索词或ID
+
+    if (!searchTerm) {
+        throw new Error('请求缺少必需的 name 或 id 参数用于生成签名。');
+    }
+
+    const signature = await generateSignature(hostname, searchTerm.toString());
+    if (!signature) {
+        throw new Error('无法生成请求签名，请检查网络连接。');
+    }
+
+    const payload = new URLSearchParams({
+        ...params,
+        s: signature
+    }).toString();
+
+    const response = await axios.post(apiUrl, payload, {
+        timeout: TIMEOUT,
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+    });
+
+    // 处理 JSONP 响应
+    let responseData = response.data;
+    if (typeof responseData === 'string' && responseData.startsWith('jQuery')) {
+        const jsonpData = responseData.substring(responseData.indexOf('(') + 1, responseData.lastIndexOf(')'));
+        return JSON.parse(jsonpData);
+    }
+    return responseData;
+}
+
+
+// --- 导出的公共函数 ---
+
+/**
  * 内部辅助函数：获取真实的图片链接
- * 因为该 API 的图片接口返回的是 JSON {"url": "...", "from": "..."}，
- * 而不是直接的图片流，所以必须先请求一次以获取 URL。
- * =========================================================================
  * @param {string|number} picId - 图片 ID
  * @param {string} source - 音乐源
+ * @param {string|null} systemProxy - 系统代理信息
  * @returns {Promise<string>} - 解析后的图片 URL 或空字符串
  */
-export async function resolvePicUrl(picId, source) {
+export async function resolvePicUrl(picId, source, systemProxy) {
     if (!picId) return '';
     try {
-        const response = await apiClient.get(API_BASE_URL, {
-            params: makeParams('pic', { id: picId, source })
-        });
-        // API 返回格式: { "url": "http://...", "from": "..." }
-        if (response.data && response.data.url) {
-            return response.data.url.replace(/^http:\/\//, 'https://');
+        const responseData = await signedApiRequest({
+            types: 'pic',
+            id: picId,
+            source: source || DEFAULT_SOURCE,
+        }, systemProxy);
+
+        if (responseData && responseData.url) {
+            return responseData.url.replace(/^http:\/\//, 'https://');
         }
         return '';
     } catch (error) {
-        // 图片获取失败不应阻塞整个流程，返回空字符串即可
-        // console.warn(`[GDStudio] Failed to resolve pic for ID ${picId}:`, error.message);
-        return '';
+        return ''; // 图片获取失败不应阻塞整个流程
     }
 }
 
@@ -62,51 +156,40 @@ export async function resolvePicUrl(picId, source) {
  * @param {number} page - 页码
  * @param {number} count - 每页数量
  * @param {string} source - 音乐源 (可选)
- * @returns {Promise<Array>} - 返回标准化的曲目列表
+ * @param {string|null} systemProxy - 系统代理信息
+ * @returns {Promise<object>} - 返回包含 { list, total } 的对象
  */
-export async function search(query, page = 1, count = 20, source = DEFAULT_SOURCE) {
+export async function search(query, page = 1, count = 20, source = DEFAULT_SOURCE, systemProxy) {
     try {
-        // 1. 获取基础搜索列表
-        const response = await apiClient.get(API_BASE_URL, {
-            // =========================================================================
-            // 【修复】API分页参数应为 'page' 而不是 'pages'
-            // =========================================================================
-            params: makeParams('search', { name: query, page: page, count, source })
-        });
+        const data = await signedApiRequest({
+            types: 'search',
+            name: query,
+            count,
+            source: source || DEFAULT_SOURCE,
+            pages: page // API文档中的分页参数是 'pages'
+        }, systemProxy);
 
-        const data = response.data;
         if (!Array.isArray(data)) {
-            console.warn('[GDStudio] Search returned non-array data:', data);
+            console.warn('[GDStudio] 搜索返回了非数组格式的数据:', data);
             return { list: [], total: 0 };
         }
 
-        // =========================================================================
-        // 【核心修改】移除对每首歌封面的二次请求，直接返回原始数据
-        //
-        // 1. 不再在搜索时立即获取所有封面图，显著减少 API 请求次数。
-        // 2. 直接将 `pic_id`, `lyric_id`, 和 `source` 返回给上层服务。
-        // 3. 封面图的 URL 将在用户播放或下载时按需获取。
-        // =========================================================================
         const rawList = data.map(item => ({
             id: item.id,
             source: item.source,
             title: item.name,
             artist: (item.artist || []).join(' / '),
             album: item.album,
-            pic_id: item.pic_id, // 保留图片 ID
-            lyricId: item.lyric_id, // 保留歌词 ID
+            pic_id: item.pic_id,
+            lyricId: item.lyric_id,
             albumArt: '' // 封面图 URL 初始为空
         }));
-        // =========================================================================
 
-        // 注意：该 API 分页信息不全，通常无法准确获取 total，
-        // 这里模拟一个 total，确保分页控件能显示下一页
-        const total = rawList.length < count ? (page - 1) * count + rawList.length : 9999;
-
+        const total = rawList.length < count ? (page - 1) * count + rawList.length : page * count + 1; // 模拟总数
         return { list: rawList, total };
 
     } catch (error) {
-        console.error('[GDStudio] Search error:', error.message);
+        console.error('[GDStudio] 搜索失败:', error.message);
         throw error;
     }
 }
@@ -114,28 +197,30 @@ export async function search(query, page = 1, count = 20, source = DEFAULT_SOURC
 /**
  * 获取音乐播放链接
  * @param {object} trackInfo - 曲目信息对象 (必须包含 id 和 source)
- * @param {string|number} br - 比特率 (默认 999 无损)
+ * @param {string|null} systemProxy - 系统代理信息
+ * @param {number} br - 比特率 (默认 999 无损)
  * @returns {Promise<string>} - 音乐 URL
  */
-export async function getMusicUrl(trackInfo, br = 999) {
+export async function getMusicUrl(trackInfo, systemProxy, br = 999) {
     if (!trackInfo.id || !trackInfo.source) {
-        throw new Error('Track ID and Source are required to fetch URL');
+        throw new Error('获取 URL 需要提供曲目 ID 和来源');
     }
 
     try {
-        const response = await apiClient.get(API_BASE_URL, {
-            params: makeParams('url', { id: trackInfo.id, source: trackInfo.source, br })
-        });
+        const data = await signedApiRequest({
+            types: 'url',
+            id: trackInfo.id,
+            source: trackInfo.source,
+            br
+        }, systemProxy);
 
-        const data = response.data;
         if (data && data.url) {
-            // 处理可能的 HTTP/HTTPS 混用问题，防止混合内容报错
             return data.url.replace(/^http:\/\//, 'https://');
         } else {
-            throw new Error('API returned empty URL');
+            throw new Error('API 返回的 URL 为空');
         }
     } catch (error) {
-        console.error(`[GDStudio] Get URL error for ${trackInfo.title}:`, error.message);
+        console.error(`[GDStudio] 获取 "${trackInfo.title}" 的 URL 失败:`, error.message);
         throw error;
     }
 }
@@ -144,37 +229,21 @@ export async function getMusicUrl(trackInfo, br = 999) {
  * 获取歌词
  * @param {string|number} lyricId - 歌词 ID
  * @param {string} source - 音乐源
+ * @param {string|null} systemProxy - 系统代理信息
  * @returns {Promise<string>} - LRC 格式歌词文本
  */
-export async function getLyric(lyricId, source = DEFAULT_SOURCE) {
+export async function getLyric(lyricId, source = DEFAULT_SOURCE, systemProxy) {
     if (!lyricId) return '';
-
     try {
-        const response = await apiClient.get(API_BASE_URL, {
-            params: makeParams('lyric', { id: lyricId, source })
-        });
+        const data = await signedApiRequest({
+            types: 'lyric',
+            id: lyricId,
+            source: source || DEFAULT_SOURCE,
+        }, systemProxy);
 
-        const data = response.data;
-        // API 返回 { lyric: "...", tlyric: "..." }
-        if (data.lyric) {
-            return data.lyric;
-        }
-        return '';
+        return data.lyric || '';
     } catch (error) {
-        console.error(`[GDStudio] Get lyric error for ID ${lyricId}:`, error.message);
+        console.error(`[GDStudio] 获取歌词 (ID: ${lyricId}) 失败:`, error.message);
         return ''; // 失败返回空歌词，不中断流程
-    }
-}
-
-/**
- * 验证 URL 是否有效 (辅助方法)
- */
-export async function validateUrl(url) {
-    if (!url) return false;
-    try {
-        const response = await apiClient.head(url);
-        return response.status >= 200 && response.status < 300;
-    } catch {
-        return false;
     }
 }

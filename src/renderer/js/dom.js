@@ -99,15 +99,8 @@ export let cancelBtn = document.getElementById('cancel-btn');
 export let contextMenu = document.getElementById('custom-context-menu');
 export let toastEl = document.getElementById('toast-notification');
 
-// --- 视频与故障效果 ---
+// --- 视频与UI辅助 ---
 export let fullscreenBtn = document.getElementById('fullscreen-btn');
-export let glitchOverlay = document.getElementById('glitch-overlay');
-export let glitchLinesGroup = document.getElementById('glitch-lines');
-export let glitchSpotifyShapesGroup = document.getElementById('glitch-spotify-shapes');
-export let feTurbulence = document.querySelector('#glitch-filter-spotify feTurbulence');
-export let feDisplacementMap = document.querySelector('#glitch-filter-spotify feDisplacementMap');
-export let feOffsetR = document.querySelector('#glitch-filter-spotify [result="red_offset"]');
-export let feOffsetB = document.querySelector('#glitch-filter-spotify [result="blue_offset"]');
 
 // --- 动态创建与底层元素 ---
 export let bgCanvas = document.createElement('canvas');
