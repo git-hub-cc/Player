@@ -115,13 +115,6 @@ export async function playTemporaryTrack(track) {
         if (dom.albumArtEl.complete) extractAndApplyGradient(dom.albumArtEl);
     }
 
-    // =========================================================================
-    // 【核心修复】在播放临时在线曲目时，主动获取其歌词
-    // 1. 清空当前歌词。
-    // 2. 检查曲目对象是否存在 `lyricId` 和 `source`。
-    // 3. 如果存在，则通过 `electronAPI` 调用主进程获取歌词。
-    // 4. 成功获取后，解析歌词并更新UI。
-    // =========================================================================
     state.setParsedLyrics([]);
     if (track.lyricId && track.source) {
         try {
@@ -136,7 +129,6 @@ export async function playTemporaryTrack(track) {
         }
     }
     renderLyrics();
-    // =========================================================================
 
     dom.albumArtContainer.style.display = 'flex';
     dom.mediaPlayer.style.display = 'none';

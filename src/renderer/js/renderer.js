@@ -4,6 +4,7 @@ import * as dom from './dom.js';
 import * as state from './state.js';
 import { PLAY_MODES } from './config.js';
 import { normalizeKey, formatTime } from './utils.js';
+import * as ICONS from './icons.js'; // 导入所有图标
 import { pinyin } from 'pinyin-pro';
 import {
     loadTrack,
@@ -46,6 +47,65 @@ import { setupDownloaderListeners, requestTrackDeletion } from './features/downl
 // --- 全局变量 ---
 const PLAYER_STATE_KEY = 'player_state'; // 用于 localStorage 的键名
 let initialTime = 0; // 应用启动时要加载的初始播放时间
+
+
+/**
+ * @function loadIcons
+ * @description 将所有 SVG 图标加载到其在 DOM 中的占位符位置。
+ *              此函数应在应用初始化时尽早调用。
+ */
+function loadIcons() {
+    // 将图标常量映射到其在 data-icon 属性中使用的键
+    const iconMap = {
+        // 面板与通用
+        FOLDER: ICONS.ICON_FOLDER,
+        CLOSE: ICONS.ICON_CLOSE,
+        ADD: ICONS.ICON_ADD,
+        DRAG_ADD: ICONS.ICON_DRAG_ADD,
+        // 主控制区
+        PREV: ICONS.ICON_PREV,
+        PLAY: ICONS.ICON_PLAY,
+        PAUSE: ICONS.ICON_PAUSE,
+        NEXT: ICONS.ICON_NEXT,
+        // 侧边控制区
+        MORE_OPTIONS: ICONS.ICON_MORE_OPTIONS,
+        KEYBOARD: ICONS.ICON_KEYBOARD,
+        INFO: ICONS.ICON_INFO,
+        LIST_LOOP: ICONS.ICON_LIST_LOOP,
+        SINGLE_LOOP: ICONS.ICON_SINGLE_LOOP,
+        SHUFFLE: ICONS.ICON_SHUFFLE,
+        LYRICS: ICONS.ICON_LYRICS,
+        FULLSCREEN_ENTER: ICONS.ICON_FULLSCREEN_ENTER,
+        FULLSCREEN_EXIT: ICONS.ICON_FULLSCREEN_EXIT,
+        PLAYLIST: ICONS.ICON_PLAYLIST,
+        VOLUME: ICONS.ICON_VOLUME,
+        MUTE: ICONS.ICON_MUTE,
+        // 移动端专用
+        MOBILE_LYRICS: ICONS.ICON_MOBILE_LYRICS,
+        MOBILE_PLAYLIST: ICONS.ICON_MOBILE_PLAYLIST,
+        // 动态模板
+        DOWNLOAD: ICONS.ICON_DOWNLOAD,
+        SPINNER: ICONS.ICON_SPINNER,
+        CACHED: ICONS.ICON_CACHED,
+        GALLERY_PLAY: ICONS.ICON_GALLERY_PLAY,
+    };
+
+    // 遍历所有占位符元素
+    document.querySelectorAll('.icon-placeholder').forEach(placeholder => {
+        const iconName = placeholder.dataset.icon;
+        if (iconMap[iconName]) {
+            // 使用 SVG 字符串替换占位符的内部 HTML
+            // 注意：此操作会移除占位符自身，只留下 SVG
+            placeholder.outerHTML = iconMap[iconName];
+        } else {
+            // 如果找不到对应的图标，则在控制台发出警告
+            console.warn(`未找到图标: ${iconName}`);
+            // 可以选择隐藏或移除无效的占位符
+            placeholder.remove();
+        }
+    });
+}
+
 
 /**
  * 保存当前播放器状态到 localStorage。
@@ -289,12 +349,15 @@ function setupDragAndDropListeners() {
         dragOverlay = document.createElement('div');
         dragOverlay.className = 'drag-overlay';
         dragOverlay.innerHTML = `
-            <svg class="drag-overlay-icon" viewBox="0 0 24 24">
-                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
-            </svg>
+            ${ICONS.ICON_DRAG_ADD}
             <div class="drag-overlay-text">拖拽文件到此处添加</div>
             <div class="drag-overlay-subtext">支持音频和视频文件</div>
         `;
+        // 更新 SVG 的 class 以应用样式
+        const svgElement = dragOverlay.querySelector('svg');
+        if (svgElement) {
+            svgElement.classList.add('drag-overlay-icon');
+        }
         dom.playerContainer.appendChild(dragOverlay);
     }
 
@@ -356,36 +419,52 @@ function setupDragAndDropListeners() {
  * 设置所有核心UI元素的事件监听器。
  */
 function setupEventListeners() {
+    // =========================================================================
+    // 【核心修复】在此函数作用域内创建局部变量来引用 DOM 元素。
+    // 这样可以确保我们使用的是 `loadIcons` 执行后的最新元素引用，
+    // 同时避免了对导入的 `dom` 模块进行非法的写操作。
+    // =========================================================================
+    const playPauseBtn = document.getElementById('play-pause-btn');
+    const prevBtn = document.getElementById('prev-btn');
+    const nextBtn = document.getElementById('next-btn');
+    const modeBtn = document.getElementById('mode-btn');
+    const openMediaFolderBtn = document.getElementById('open-media-folder-btn');
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+    const volumeBtn = document.getElementById('volume-btn');
+    const lyricsBtn = document.getElementById('lyrics-btn');
+    const mobileLyricsBtn = document.getElementById('mobile-lyrics-btn');
+    const playlistBtn = document.getElementById('playlist-btn');
+    const mobilePlaylistBtn = document.getElementById('mobile-playlist-btn');
+    const infoBtn = document.getElementById('info-btn');
+    const shortcutBtn = document.getElementById('shortcut-btn');
+    const downloadPanelBtn = document.getElementById('download-panel-btn');
+    const closePlaylistBtn = document.getElementById('close-playlist-btn');
+    const closeInfoBtn = document.getElementById('close-info-btn');
+    const closeShortcutBtn = document.getElementById('close-shortcut-btn');
+    const closeDownloadBtn = document.getElementById('close-download-btn');
+    const moreOptionsBtn = document.getElementById('more-options-btn');
+
+
     // --- 播放控制 ---
-    dom.playPauseBtn.addEventListener('click', togglePlayPause);
-    dom.prevBtn.addEventListener('click', () => { playPrevTrack(); savePlayerState(); });
-    dom.nextBtn.addEventListener('click', () => { playNextTrack(); savePlayerState(); });
-    dom.modeBtn.addEventListener('click', () => { cyclePlayMode(); savePlayerState(); });
+    playPauseBtn.addEventListener('click', togglePlayPause);
+    prevBtn.addEventListener('click', () => { playPrevTrack(); savePlayerState(); });
+    nextBtn.addEventListener('click', () => { playNextTrack(); savePlayerState(); });
+    modeBtn.addEventListener('click', () => { cyclePlayMode(); savePlayerState(); });
 
     // --- 其他按钮 ---
-    if (dom.openMediaFolderBtn) dom.openMediaFolderBtn.addEventListener('click', () => window.electronAPI.openMediaFolder());
+    if (openMediaFolderBtn) openMediaFolderBtn.addEventListener('click', () => window.electronAPI.openMediaFolder());
     if (dom.emptyStateSearchBtn) dom.emptyStateSearchBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleDownloadPanel(); setTimeout(() => { if (dom.urlOrSearchInput) dom.urlOrSearchInput.focus(); }, 500); });
     if (dom.emptyStateImportBtn) dom.emptyStateImportBtn.addEventListener('click', (e) => { e.stopPropagation(); if (dom.importLocalBtn) dom.importLocalBtn.click(); });
-    if (dom.fullscreenBtn) dom.fullscreenBtn.addEventListener('click', () => { if (!document.fullscreenElement) dom.mediaPlayer.requestFullscreen().catch(err => console.error(`进入全屏失败: ${err.message}`)); else document.exitFullscreen(); });
+    if (fullscreenBtn) fullscreenBtn.addEventListener('click', () => { if (!document.fullscreenElement) dom.mediaPlayer.requestFullscreen().catch(err => console.error(`进入全屏失败: ${err.message}`)); else document.exitFullscreen(); });
 
     // --- 双击进入沉浸模式 ---
     dom.mainView.addEventListener('dblclick', () => {
-        // 如果已处于原生全屏或屏保模式，则不响应双击
         if (document.fullscreenElement || state.isScreensaverMode) return;
-
-        // 切换主视图的全屏样式
         dom.mainView.classList.toggle('main-view-fullscreen');
-
-        // =========================================================================
-        // 【核心修改】同步切换背景画廊的可见性，防止在过渡时被看到
-        // =========================================================================
         dom.galleryContainer.classList.toggle('suppressed-by-fullscreen');
-        // =========================================================================
-
-        // 移除当前焦点，防止UI元素（如按钮）在全屏模式下依然有焦点轮廓
         if (document.activeElement) document.activeElement.blur();
     });
-    document.addEventListener('fullscreenchange', () => { if (dom.fullscreenBtn) dom.fullscreenBtn.classList.toggle('fullscreen-active', !!document.fullscreenElement); });
+    document.addEventListener('fullscreenchange', () => { if (fullscreenBtn) fullscreenBtn.classList.toggle('fullscreen-active', !!document.fullscreenElement); });
 
     // --- 媒体元素事件 ---
     dom.mediaPlayer.addEventListener('loadedmetadata', () => { updateProgress(); const seekTime = consumePendingSeek(); if (seekTime > 0 && dom.mediaPlayer.duration > seekTime) dom.mediaPlayer.currentTime = seekTime; });
@@ -400,41 +479,36 @@ function setupEventListeners() {
     dom.progressBar.addEventListener('change', (e) => { if (!isNaN(dom.mediaPlayer.duration)) dom.mediaPlayer.currentTime = (e.target.value / 100) * dom.mediaPlayer.duration; state.setIsScrubbing(false); if (state.isPlaying) dom.mediaPlayer.play(); });
 
     // --- 音量控制 ---
-    dom.volumeBtn.addEventListener('click', () => { dom.mediaPlayer.muted = !dom.mediaPlayer.muted; updateVolumeBarVisual(dom.mediaPlayer.volume, dom.mediaPlayer.muted); savePlayerState(); });
+    volumeBtn.addEventListener('click', () => { dom.mediaPlayer.muted = !dom.mediaPlayer.muted; updateVolumeBarVisual(dom.mediaPlayer.volume, dom.mediaPlayer.muted); savePlayerState(); });
     dom.volumeBar.addEventListener('input', (e) => { const newVolume = parseFloat(e.target.value); dom.mediaPlayer.volume = newVolume; dom.mediaPlayer.muted = newVolume === 0; updateVolumeBarVisual(newVolume, dom.mediaPlayer.muted); savePlayerState(); });
 
     // --- 面板开关 ---
-    [dom.lyricsBtn, dom.mobileLyricsBtn].forEach(btn => btn.addEventListener('click', toggleLyricsPanel));
-    [dom.playlistBtn, dom.mobilePlaylistBtn].forEach(btn => btn.addEventListener('click', togglePlaylistPanel));
-    // =========================================================================
-    // 【核心修复】修正菜单项的点击事件逻辑
-    // =========================================================================
-    dom.infoBtn.addEventListener('click', () => {
-        toggleInfoPanel(); // 打开信息面板
+    [lyricsBtn, mobileLyricsBtn].forEach(btn => btn.addEventListener('click', toggleLyricsPanel));
+    [playlistBtn, mobilePlaylistBtn].forEach(btn => btn.addEventListener('click', togglePlaylistPanel));
+    infoBtn.addEventListener('click', () => {
+        toggleInfoPanel();
         if (dom.moreOptionsMenu.classList.contains('visible')) {
-            dom.moreOptionsMenu.classList.remove('visible'); // 关闭“更多”菜单
+            dom.moreOptionsMenu.classList.remove('visible');
         }
     });
-    dom.shortcutBtn.addEventListener('click', () => {
-        toggleShortcutPanel(); // 打开快捷键面板
+    shortcutBtn.addEventListener('click', () => {
+        toggleShortcutPanel();
         if (dom.moreOptionsMenu.classList.contains('visible')) {
-            dom.moreOptionsMenu.classList.remove('visible'); // 关闭“更多”菜单
+            dom.moreOptionsMenu.classList.remove('visible');
         }
     });
-    // =========================================================================
-    dom.downloadPanelBtn.addEventListener('click', toggleDownloadPanel);
-    [dom.closePlaylistBtn, dom.closeInfoBtn, dom.closeShortcutBtn, dom.closeDownloadBtn].forEach(btn => btn.addEventListener('click', closeActivePanels));
+    downloadPanelBtn.addEventListener('click', toggleDownloadPanel);
+    [closePlaylistBtn, closeInfoBtn, closeShortcutBtn, closeDownloadBtn].forEach(btn => btn.addEventListener('click', closeActivePanels));
     [...dom.allSidePanels, dom.lyricsContainer].forEach(panel => panel.addEventListener('click', (e) => { if (e.target === panel) panel.classList.remove('active'); }));
     dom.mainView.addEventListener('click', (e) => { if (!dom.mainView.classList.contains('main-view-fullscreen')) closeActivePanels(); });
 
     // --- “更多选项”按钮事件 ---
-    dom.moreOptionsBtn.addEventListener('click', (e) => {
-        e.stopPropagation(); // 阻止事件冒泡到下方的全局点击监听器
+    moreOptionsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
         toggleMoreOptionsMenu();
     });
-    // 全局点击监听器，用于关闭打开的菜单
     document.addEventListener('click', (e) => {
-        if (dom.moreOptionsMenu.classList.contains('visible') && !dom.moreOptionsMenu.contains(e.target) && !dom.moreOptionsBtn.contains(e.target)) {
+        if (dom.moreOptionsMenu.classList.contains('visible') && !dom.moreOptionsMenu.contains(e.target) && !moreOptionsBtn.contains(e.target)) {
             dom.moreOptionsMenu.classList.remove('visible');
         }
         if (dom.contextMenu.style.display === 'block' && !dom.contextMenu.contains(e.target)) {
@@ -516,6 +590,8 @@ function setupEventListeners() {
  * 应用初始化函数。
  */
 async function init() {
+    // 关键：在操作 DOM 之前，先将所有图标占位符替换为实际的 SVG
+    loadIcons();
     showSkeleton();
     loadPlayerState();
 

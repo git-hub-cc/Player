@@ -16,7 +16,6 @@ export function closeActivePanels() {
     dom.allSidePanels.forEach(panel => {
         if (panel) panel.classList.remove('active');
     });
-    // 【核心修改】同时确保“更多选项”菜单也被关闭
     if (dom.moreOptionsMenu) {
         dom.moreOptionsMenu.classList.remove('visible');
     }
@@ -31,9 +30,6 @@ function manageSidePanel(panelToToggle) {
     }
 }
 
-// =========================================================================
-// 【核心修改】新增控制“更多选项”菜单的函数
-// =========================================================================
 /**
  * 切换“更多选项”弹出菜单的显示状态。
  * 如果其他面板是打开的，会先关闭它们。
@@ -41,16 +37,13 @@ function manageSidePanel(panelToToggle) {
 export function toggleMoreOptionsMenu() {
     if (!dom.moreOptionsMenu) return;
 
-    // 如果有任何侧边面板是打开的，先关闭它们
     const isAnyPanelActive = dom.allSidePanels.some(p => p.classList.contains('active'));
     if (isAnyPanelActive) {
         closeActivePanels();
     }
 
-    // 然后切换菜单的可见性
     dom.moreOptionsMenu.classList.toggle('visible');
 }
-// =========================================================================
 
 export function toggleEmptyState(isEmpty) {
     if (isEmpty) {
@@ -411,6 +404,14 @@ function createResultItem(track, index, isCached = false) {
     itemEl.querySelector('.playlist-title').textContent = track.title || '未知标题';
     itemEl.querySelector('.playlist-artist').textContent = track.artist || '未知艺术家';
     const downloadBtn = itemEl.querySelector('.playlist-download-btn');
+    // 重新加载图标，因为模板克隆出的也是占位符
+    const placeholders = itemEl.querySelectorAll('.icon-placeholder');
+    placeholders.forEach(ph => {
+        const iconName = ph.dataset.icon;
+        if (iconName === 'DOWNLOAD') ph.outerHTML = `<svg class="download-icon" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path></svg>`;
+        if (iconName === 'SPINNER') ph.outerHTML = `<svg class="spinner-icon" viewBox="0 0 24 24"><path d="M12,4a8,8,0,0,1,7.89,6.7A1.53,1.53,0,0,0,21.38,12h0a1.5,1.5,0,0,0,1.48-1.75,11,11,0,0,0-21.72,0A1.5,1.5,0,0,0,2.62,12h0a1.53,1.53,0,0,0,1.49-1.3A8,8,0,0,1,12,4Z"></path></svg>`;
+        if (iconName === 'CACHED') ph.outerHTML = `<svg class="cached-icon" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg>`;
+    });
     downloadBtn.classList.toggle('cached', isCached);
     return itemNode;
 }

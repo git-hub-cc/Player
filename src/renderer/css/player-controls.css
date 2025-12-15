@@ -56,6 +56,9 @@
     cursor: pointer;
     transition: color 0.2s;
     padding: 8px;
+    display: flex; /* 让SVG在按钮内居中 */
+    align-items: center;
+    justify-content: center;
 }
 .control-btn:hover {
     color: var(--text-primary);
@@ -71,9 +74,6 @@
     border-radius: 50%;
     width: 36px;
     height: 36px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
     transition: transform 0.1s ease-out;
     padding: 0;
 }
@@ -162,8 +162,6 @@
 }
 .player-container.video-mode #fullscreen-btn {
     display: flex;
-    align-items: center;
-    justify-content: center;
 }
 #fullscreen-btn .fullscreen-exit-icon {
     display: none;
@@ -175,12 +173,8 @@
     display: block;
 }
 
-/* ========================================================================= */
-/* 【核心修改】为“更多选项”的包裹容器添加样式 */
-/* ========================================================================= */
 .more-options-container {
-    position: relative; /* 关键：为内部的绝对定位菜单提供参考系 */
-    display: flex; /* 使其行为像 flex 布局中的一个项目 */
+    position: relative;
+    display: flex;
     align-items: center;
 }
-/* ========================================================================= */
