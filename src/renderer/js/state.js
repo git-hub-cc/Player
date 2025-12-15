@@ -195,7 +195,7 @@ export const mutations = {
     },
 
     setPlaybackRate(newRate) {
-        if (typeof newRate !== 'number' || newRate < 0.5 || newRate > 2.0) return;
+        if (typeof newRate !== 'number' || newRate < 0.2 || newRate > 5.0) return;
         _state.playbackRate = newRate;
         _notify('playbackRateChanged', _state.playbackRate);
     },

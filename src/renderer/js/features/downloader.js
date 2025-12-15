@@ -6,25 +6,20 @@
  * 负责处理“添加资源”面板的所有UI交互。
  * 它将用户的操作（如搜索、点击下载）转换为对 `mediaService` 的调用，
  * 并通过订阅 `state` 或监听 `electronAPI` 事件来更新UI。
- *
- * 特点:
- * - 纯UI层：不包含任何业务逻辑或直接的IPC调用。
- * - 职责单一：只关心下载面板的渲染和用户输入处理。
  */
 
 import * as dom from '../dom.js';
 import * as ui from '../ui.js';
 import * as mediaService from '../services/mediaService.js';
 import { pinyin } from 'pinyin-pro';
+import { getTemplate } from '../utils.js';
+import * as ICONS from '../icons.js';
 
 // --- 模块私有状态 ---
 let currentSearchResults = [];
 let currentSearchQuery = '';
 let currentPage = 1;
 let totalPages = 1;
-// =========================================================================
-// 【修复】将每页项目数与 gdstudio.js 中的 count 参数默认值 (20) 保持一致
-// =========================================================================
 const ITEMS_PER_PAGE = 20;
 
 // =========================================================================
@@ -105,7 +100,6 @@ function updateInputMode() {
 }
 
 function updateStatus(message, type = 'default', progress) {
-    // ... 此函数与之前相同，纯粹的UI操作
     const statusEl = dom.downloadStatusEl;
     const progressContainer = document.querySelector('.download-progress-container');
     const progressBar = document.querySelector('.download-progress-bar');
@@ -123,12 +117,47 @@ function updateStatus(message, type = 'default', progress) {
     }
 }
 
+/**
+ * 创建单个搜索结果项的 DOM 元素。
+ * @param {object} track - 轨道数据。
+ * @param {number} index - 轨道索引。
+ * @param {boolean} [isCached=false] - 是否已缓存。
+ * @returns {DocumentFragment} - 包含列表项的文档片段。
+ */
+function createResultItem(track, index, isCached = false) {
+    const itemNode = getTemplate('template-search-result-item');
+    const itemEl = itemNode.querySelector('.playlist-item');
+    itemEl.dataset.index = index;
+    itemEl.dataset.src = track.originalSrc || track.src;
+    itemEl.querySelector('.playlist-icon').textContent = '🎵';
+    itemEl.querySelector('.playlist-title').textContent = track.title || '未知标题';
+    itemEl.querySelector('.playlist-artist').textContent = track.artist || '未知艺术家';
+
+    const placeholders = itemEl.querySelectorAll('.icon-placeholder');
+    const iconMap = {
+        DOWNLOAD: ICONS.ICON_DOWNLOAD,
+        SPINNER: ICONS.ICON_SPINNER,
+        CACHED: ICONS.ICON_CACHED
+    };
+    placeholders.forEach(ph => {
+        const iconName = ph.dataset.icon;
+        if (iconMap[iconName]) {
+            ph.outerHTML = iconMap[iconName];
+        }
+    });
+
+    const downloadBtn = itemEl.querySelector('.playlist-download-btn');
+    downloadBtn.classList.toggle('cached', isCached);
+    return itemNode;
+}
+
+
 async function performSearch(query, page = 1) {
     if (!query) {
         ui.showToast('请输入歌曲名或歌手名！', 'error');
         return;
     }
-    if (page === 1) ui.clearSearchResults();
+    if (page === 1) ui.clearSearchResults(dom.searchResultsList);
 
     const searchBtn = dom.searchNeteaseBtn;
     searchBtn.disabled = true;
@@ -140,15 +169,15 @@ async function performSearch(query, page = 1) {
     if (data) {
         const { results, total } = data;
         currentSearchResults = results.map(transformApiData);
-        ui.renderSearchResults(currentSearchResults);
+        ui.renderSearchResults(dom.searchResultsList, currentSearchResults, createResultItem);
         currentSearchQuery = query;
         currentPage = page;
         totalPages = Math.ceil(total / ITEMS_PER_PAGE) || 1;
-        ui.renderPaginationControls(currentPage, totalPages);
+        ui.renderPaginationControls(dom.paginationControls, currentPage, totalPages);
         updateStatus(`搜索成功！显示 ${results.length} 首歌曲。`, 'success');
     } else {
         updateStatus('搜索失败，请检查网络或稍后重试。', 'error');
-        ui.renderPaginationControls(0, 0);
+        ui.renderPaginationControls(dom.paginationControls, 0, 0);
     }
     searchBtn.disabled = false;
     searchBtn.classList.remove('loading');
@@ -176,19 +205,18 @@ async function handleLocalImportClick() {
 }
 
 async function handleMissingTool(toolName, featureName) {
-    // ... 此函数与之前相同
     const toolDisplayName = toolName === 'ffmpeg' ? 'FFmpeg' : 'yt-dlp';
     try {
         await ui.showConfirmationModal(
             `${featureName}功能需要${toolDisplayName}组件。\n\n是否自动下载安装？`,
-            { confirmText: "自动下载", cancelText: "手动说明", showCloseButton: true }
+            { confirmText: "自动下载", cancelText: "手动说明" }
         );
         const result = await window.electronAPI.downloadCoreTool(toolName);
         if (result.success) ui.showToast(`${toolDisplayName}安装成功！请重试。`, 'success');
         else ui.showToast(`安装失败: ${result.error}`, 'error');
     } catch (rejectionType) {
         if (rejectionType === 'cancel') {
-            await ui.showConfirmationModal(`请将${toolDisplayName}放入应用数据目录。`, { confirmText: "打开目录" })
+            ui.showConfirmationModal(`请将${toolDisplayName}放入应用数据目录。`, { confirmText: "打开目录" })
                 .then(() => window.electronAPI.openToolsFolder()).catch(() => {});
         }
     }

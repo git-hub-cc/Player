@@ -3,15 +3,11 @@
 /**
  * @file 应用引导程序 (App Bootstrapper)
  * @description
- * 这是渲染进程的唯一入口。它的职责极其精简：
- * 1. 初始化所有核心模块（UI, Player, Services, Features）。
- * 2. 绑定顶层用户输入事件，作为“总装配车间”将 UI 事件连接到 State 或 Services。
- * 3. 加载应用的初始数据。
+ * 渲染进程的唯一入口。负责初始化所有模块，绑定顶层事件，并加载初始数据。
  */
 
 import * as dom from './dom.js';
 import { getters, mutations, subscribe } from './state.js';
-import { PLAY_MODES } from './config.js'; // 导入播放模式常量用于上一首/下一首逻辑
 import * as player from './player.js';
 import * as ui from './ui.js';
 import * as mediaService from './services/mediaService.js';
@@ -20,12 +16,10 @@ import { loadShortcuts, setupShortcutListeners } from './features/shortcuts.js';
 import * as backgroundGallery from './features/gallery.js';
 import { setupDownloaderListeners } from './features/downloader.js';
 
-// --- 常量 ---
 const PLAYER_STATE_KEY = 'player_state';
 
 /**
  * 将所有 SVG 图标加载到 DOM 中。
- * 这是应用启动时最先执行的视觉操作之一，确保后续 JS 获取元素时图标已存在。
  */
 function loadIcons() {
     try {
@@ -42,12 +36,7 @@ function loadIcons() {
         };
         document.querySelectorAll('.icon-placeholder').forEach(p => {
             const iconName = p.dataset.icon;
-            if (iconMap[iconName]) {
-                p.outerHTML = iconMap[iconName];
-            } else {
-                console.warn(`Icon not found for placeholder: ${iconName}`);
-                p.remove();
-            }
+            if (iconMap[iconName]) p.outerHTML = iconMap[iconName];
         });
     } catch (error) {
         console.error("Failed to load icons:", error);
@@ -64,12 +53,9 @@ function savePlayerState() {
     }
     try {
         const stateToSave = {
-            trackIndex: getters.currentTrackIndex(),
-            currentTime: getters.currentTime(),
-            volume: getters.volume(),
-            muted: getters.isMuted(),
-            modeIndex: getters.currentModeIndex(),
-            playbackRate: getters.playbackRate(),
+            trackIndex: getters.currentTrackIndex(), currentTime: getters.currentTime(),
+            volume: getters.volume(), muted: getters.isMuted(),
+            modeIndex: getters.currentModeIndex(), playbackRate: getters.playbackRate(),
         };
         localStorage.setItem(PLAYER_STATE_KEY, JSON.stringify(stateToSave));
     } catch (error) {
@@ -94,7 +80,7 @@ function loadPlayerState() {
             mutations.setPlaybackRate(parsedState.playbackRate || 1.0);
             initialTime = parsedState.currentTime || 0;
         } catch (error) {
-            console.error("Failed to parse player state from localStorage:", error);
+            console.error("Failed to parse player state:", error);
             localStorage.removeItem(PLAYER_STATE_KEY);
         }
     }
@@ -102,282 +88,118 @@ function loadPlayerState() {
 }
 
 /**
- * 辅助函数：处理“下一首/上一首”的逻辑。
- * 因为 player.js 现在只负责核心控制，所以列表跳转逻辑在此处作为“调度者”处理。
- * @param {number} direction - 1 为下一首，-1 为上一首。
- */
-function handleTrackChange(direction) {
-    const playlist = getters.playlist();
-    const len = playlist.length;
-
-    // 如果播放列表为空且没有临时曲目，不操作
-    if (len === 0 && !getters.temporaryPlayingTrack()) return;
-
-    // 如果正在播放临时曲目，按下切换则回到列表第一首
-    if (getters.temporaryPlayingTrack()) {
-        mutations.clearPlayingTrackInfo();
-        if (len > 0) mutations.setCurrentTrackIndex(0);
-        return;
-    }
-
-    const currentMode = PLAY_MODES[getters.currentModeIndex()];
-    let newIndex;
-
-    if (currentMode === 'shuffle') {
-        // 随机模式：随机选择一个非当前的索引
-        do {
-            newIndex = Math.floor(Math.random() * len);
-        } while (len > 1 && newIndex === getters.currentTrackIndex());
-    } else {
-        // 列表/单曲循环模式：按顺序切换（单曲模式下切歌也应切到下一首）
-        newIndex = (getters.currentTrackIndex() + direction + len) % len;
-    }
-
-    mutations.setCurrentTrackIndex(newIndex);
-    mutations.setIsPlaying(true);
-}
-
-/**
  * 设置核心 UI 元素的事件监听器。
  */
 function setupEventListeners() {
-    // =========================================================================
-    // 1. 播放控制栏 (Play Control Bar)
-    // =========================================================================
+    // --- 播放控制 ---
+    dom.playPauseBtn?.addEventListener('click', mutations.togglePlayState);
+    dom.prevBtn?.addEventListener('click', async () => new (await import('./features/shortcuts.js')).PrevTrackCommand().execute());
+    dom.nextBtn?.addEventListener('click', async () => new (await import('./features/shortcuts.js')).NextTrackCommand().execute());
+    dom.modeBtn?.addEventListener('click', mutations.cyclePlayMode);
 
-    // 播放/暂停
-    document.getElementById('play-pause-btn')?.addEventListener('click', mutations.togglePlayState);
+    // --- 进度条 ---
+    dom.progressBar?.addEventListener('mousedown', () => mutations.setIsScrubbing(true));
+    dom.progressBar?.addEventListener('change', (e) => {
+        const duration = getters.duration();
+        if (!isNaN(duration) && duration > 0) {
+            window.dispatchEvent(new CustomEvent('seekTo', { detail: (e.target.value / 100) * duration }));
+        }
+        mutations.setIsScrubbing(false);
+    });
 
-    // 上一首 / 下一首
-    document.getElementById('prev-btn')?.addEventListener('click', () => handleTrackChange(-1));
-    document.getElementById('next-btn')?.addEventListener('click', () => handleTrackChange(1));
-
-    // 播放模式切换
-    document.getElementById('mode-btn')?.addEventListener('click', mutations.cyclePlayMode);
-
-    // 进度条拖拽与跳转
-    const progressBar = document.getElementById('progress-bar');
-    if (progressBar) {
-        progressBar.addEventListener('mousedown', () => mutations.setIsScrubbing(true));
-        // 使用 'change' 事件在拖拽结束时触发跳转
-        progressBar.addEventListener('change', (e) => {
-            const duration = getters.duration();
-            if (!isNaN(duration) && duration > 0) {
-                const newTime = (e.target.value / 100) * duration;
-                window.dispatchEvent(new CustomEvent('seekTo', { detail: newTime }));
-            }
-            mutations.setIsScrubbing(false);
-        });
-        // 'input' 事件在 ui.js 中处理（视觉更新），此处无需重复绑定
-    }
-
-    // 音量控制
-    document.getElementById('volume-btn')?.addEventListener('click', () => mutations.setIsMuted(!getters.isMuted()));
-    document.getElementById('volume-bar')?.addEventListener('input', (e) => {
+    // --- 音量控制 ---
+    dom.volumeBtn?.addEventListener('click', () => mutations.setIsMuted(!getters.isMuted()));
+    dom.volumeBar?.addEventListener('input', (e) => {
         const newVolume = parseFloat(e.target.value);
         mutations.setVolume(newVolume);
         mutations.setIsMuted(newVolume === 0);
     });
 
-    // =========================================================================
-    // 2. 侧边面板切换与关闭 (Side Panels)
-    // =========================================================================
+    // --- 面板切换 ---
+    dom.playlistBtn?.addEventListener('click', ui.togglePlaylistPanel);
+    dom.mobilePlaylistBtn?.addEventListener('click', ui.togglePlaylistPanel);
+    dom.closePlaylistBtn?.addEventListener('click', ui.closeActivePanels);
+    dom.lyricsBtn?.addEventListener('click', ui.toggleLyricsPanel);
+    dom.mobileLyricsBtn?.addEventListener('click', ui.toggleLyricsPanel);
+    dom.downloadPanelBtn?.addEventListener('click', ui.toggleDownloadPanel);
+    dom.closeDownloadBtn?.addEventListener('click', ui.closeActivePanels);
+    dom.infoBtn?.addEventListener('click', () => { ui.toggleInfoPanel(); dom.moreOptionsMenu?.classList.remove('visible'); });
+    dom.closeInfoBtn?.addEventListener('click', ui.closeActivePanels);
+    dom.shortcutBtn?.addEventListener('click', () => { ui.toggleShortcutPanel(); dom.moreOptionsMenu?.classList.remove('visible'); });
+    dom.closeShortcutBtn?.addEventListener('click', ui.closeActivePanels);
 
-    // 媒体库面板 (Playlist)
-    document.getElementById('playlist-btn')?.addEventListener('click', ui.togglePlaylistPanel);
-    document.getElementById('mobile-playlist-btn')?.addEventListener('click', ui.togglePlaylistPanel);
-    document.getElementById('close-playlist-btn')?.addEventListener('click', ui.closeActivePanels);
-
-    // 歌词面板 (Lyrics)
-    document.getElementById('lyrics-btn')?.addEventListener('click', ui.toggleLyricsPanel);
-    document.getElementById('mobile-lyrics-btn')?.addEventListener('click', ui.toggleLyricsPanel);
-
-    // 添加资源/下载面板 (Download)
-    document.getElementById('download-panel-btn')?.addEventListener('click', ui.toggleDownloadPanel);
-    document.getElementById('close-download-btn')?.addEventListener('click', ui.closeActivePanels);
-
-    // 信息面板 (Info) - 按钮位于“更多选项”菜单中
-    document.getElementById('info-btn')?.addEventListener('click', () => {
-        ui.toggleInfoPanel();
-        document.getElementById('more-options-menu')?.classList.remove('visible');
-    });
-    document.getElementById('close-info-btn')?.addEventListener('click', ui.closeActivePanels);
-
-    // 快捷键面板 (Shortcut) - 按钮位于“更多选项”菜单中
-    document.getElementById('shortcut-btn')?.addEventListener('click', () => {
-        ui.toggleShortcutPanel();
-        document.getElementById('more-options-menu')?.classList.remove('visible');
-    });
-    document.getElementById('close-shortcut-btn')?.addEventListener('click', ui.closeActivePanels);
-
-    // =========================================================================
-    // 3. 菜单与更多选项 (Menus)
-    // =========================================================================
-
-    // “更多选项”按钮
-    const moreOptionsBtn = document.getElementById('more-options-btn');
-    moreOptionsBtn?.addEventListener('click', (e) => {
-        e.stopPropagation(); // 阻止冒泡，防止被全局点击关闭
-        ui.toggleMoreOptionsMenu();
-    });
-
-    // 全局点击：关闭“更多选项”菜单和右键菜单
+    // --- 菜单 ---
+    dom.moreOptionsBtn?.addEventListener('click', (e) => { e.stopPropagation(); ui.toggleMoreOptionsMenu(); });
     document.addEventListener('click', (e) => {
-        const moreMenu = document.getElementById('more-options-menu');
-        const contextMenu = document.getElementById('custom-context-menu');
-
-        // 如果点击的不是“更多”按钮且菜单是打开的，则关闭
-        if (moreMenu?.classList.contains('visible') && !moreOptionsBtn?.contains(e.target) && !moreMenu.contains(e.target)) {
-            moreMenu.classList.remove('visible');
+        if (dom.moreOptionsMenu?.classList.contains('visible') && !dom.moreOptionsBtn?.contains(e.target)) {
+            ui.closeActivePanels();
         }
-
-        // 关闭右键菜单
-        if (contextMenu?.style.display === 'block' && !contextMenu.contains(e.target)) {
+        if (dom.contextMenu?.style.display === 'block' && !dom.contextMenu.contains(e.target)) {
             ui.hideContextMenu();
         }
     });
 
-    // 右键菜单交互（委托给服务层处理复杂逻辑）
-    document.getElementById('custom-context-menu')?.addEventListener('click', (e) => {
-        const target = e.target.closest('li[data-action]');
-        if (!target) return;
-
-        ui.hideContextMenu();
-        const action = target.dataset.action;
-        const index = parseInt(target.dataset.index, 10);
-
-        if (action === 'separate-video' && !isNaN(index)) {
-            mediaService.separateVideo(index);
-        } else if (action === 'delete-track' && !isNaN(index)) {
-            mediaService.deleteTrack(index);
-        }
-    });
-
-    // =========================================================================
-    // 4. 媒体库功能 (Library Features)
-    // =========================================================================
-
-    // 播放列表项点击
-    document.getElementById('playlist')?.addEventListener('click', (e) => {
+    // --- 媒体库交互 ---
+    dom.playlistEl?.addEventListener('click', (e) => {
         const item = e.target.closest('.playlist-item[data-index]');
         if (item) {
             const newIndex = parseInt(item.dataset.index, 10);
-            if (!isNaN(newIndex)) {
-                mutations.setCurrentTrackIndex(newIndex);
-                mutations.setIsPlaying(true);
-            }
+            if (!isNaN(newIndex)) { mutations.setCurrentTrackIndex(newIndex); mutations.setIsPlaying(true); }
         }
     });
-
-    // 为播放列表添加右键菜单事件监听
-    document.getElementById('playlist')?.addEventListener('contextmenu', (e) => {
-        // 查找被右击的具体列表项
+    dom.playlistEl?.addEventListener('contextmenu', (e) => {
         const item = e.target.closest('.playlist-item[data-index]');
-        if (!item) return; // 如果右击的不是列表项，则不显示菜单
-
-        // 阻止浏览器默认的右键菜单
-        e.preventDefault();
-
+        if (!item) return; e.preventDefault();
         const index = parseInt(item.dataset.index, 10);
-        if (isNaN(index)) return; // 鲁棒性检查
-
-        // 委托UI模块根据上下文渲染菜单内容
+        if (isNaN(index)) return;
         ui.renderContextMenu({ type: 'playlist-item', index: index });
-
-        // 定位并显示菜单
-        const contextMenu = dom.contextMenu;
-        if (!contextMenu) return;
-
-        // 确保菜单不会超出屏幕边界
         const { clientX, clientY } = e;
         const { innerWidth, innerHeight } = window;
-        const menuWidth = contextMenu.offsetWidth;
-        const menuHeight = contextMenu.offsetHeight;
-
-        const x = clientX + menuWidth > innerWidth ? innerWidth - menuWidth - 5 : clientX;
-        const y = clientY + menuHeight > innerHeight ? innerHeight - menuHeight - 5 : clientY;
-
-        contextMenu.style.left = `${x}px`;
-        contextMenu.style.top = `${y}px`;
-        contextMenu.style.display = 'block';
+        const menuWidth = dom.contextMenu.offsetWidth, menuHeight = dom.contextMenu.offsetHeight;
+        dom.contextMenu.style.left = `${clientX + menuWidth > innerWidth ? innerWidth - menuWidth - 5 : clientX}px`;
+        dom.contextMenu.style.top = `${clientY + menuHeight > innerHeight ? innerHeight - menuHeight - 5 : clientY}px`;
+        dom.contextMenu.style.display = 'block';
     });
-
-    // 媒体库搜索过滤
-    document.getElementById('playlist-search')?.addEventListener('input', ui.filterPlaylist);
-
-    // 打开本地媒体文件夹
-    document.getElementById('open-media-folder-btn')?.addEventListener('click', () => {
-        window.electronAPI.openMediaFolder();
+    dom.contextMenu?.addEventListener('click', (e) => {
+        const target = e.target.closest('li[data-action]');
+        if (!target) return;
+        ui.hideContextMenu();
+        const action = target.dataset.action, index = parseInt(target.dataset.index, 10);
+        if (action === 'separate-video' && !isNaN(index)) mediaService.separateVideo(index);
+        else if (action === 'delete-track' && !isNaN(index)) mediaService.deleteTrack(index);
     });
+    dom.playlistSearchInput?.addEventListener('input', ui.filterPlaylist);
+    dom.openMediaFolderBtn?.addEventListener('click', () => window.electronAPI.openMediaFolder());
 
-    // =========================================================================
-    // 5. 视图控制与杂项 (View & Misc)
-    // =========================================================================
-
-    // 全屏控制
-    const fullscreenBtn = document.getElementById('fullscreen-btn');
-    fullscreenBtn?.addEventListener('click', () => {
-        if (!document.fullscreenElement) {
-            document.getElementById('media-player')?.requestFullscreen().catch(e => console.error("Fullscreen error:", e));
-        } else {
-            document.exitFullscreen();
-        }
+    // --- 视图与杂项 ---
+    dom.fullscreenBtn?.addEventListener('click', () => {
+        if (!document.fullscreenElement) dom.mediaPlayer?.requestFullscreen().catch(console.error);
+        else document.exitFullscreen();
     });
-
-    // 双击主视图切换沉浸模式
-    document.querySelector('.main-view')?.addEventListener('dblclick', () => {
+    dom.mainView?.addEventListener('dblclick', () => {
         if (document.fullscreenElement || getters.isScreensaverMode()) return;
-        const mainView = document.querySelector('.main-view');
-        const galleryContainer = document.getElementById('gallery-container');
-
-        mainView.classList.toggle('main-view-fullscreen');
-        galleryContainer.classList.toggle('suppressed-by-fullscreen');
-
-        // 关闭可能打开的面板
-        if (mainView.classList.contains('main-view-fullscreen')) {
-            ui.closeActivePanels();
-        }
+        dom.mainView.classList.toggle('main-view-fullscreen');
+        dom.galleryContainer.classList.toggle('suppressed-by-fullscreen');
+        if (dom.mainView.classList.contains('main-view-fullscreen')) ui.closeActivePanels();
     });
-
-    // 监听全屏变化，同步退出屏保模式
     window.electronAPI.onFullscreenChange((isFullscreen) => {
-        if (!isFullscreen && getters.isScreensaverMode()) {
-            mutations.setScreensaverMode(false);
-        }
+        if (!isFullscreen && getters.isScreensaverMode()) mutations.setScreensaverMode(false);
     });
-
-    // 空状态页面按钮
-    document.getElementById('empty-state-search-btn')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        ui.toggleDownloadPanel();
-        // 自动聚焦输入框
-        setTimeout(() => document.getElementById('url-or-search-input')?.focus(), 500);
+    dom.emptyStateSearchBtn?.addEventListener('click', (e) => {
+        e.stopPropagation(); ui.toggleDownloadPanel();
+        setTimeout(() => dom.urlOrSearchInput?.focus(), 500);
     });
-
-    // 页面卸载前保存状态
     window.addEventListener('beforeunload', savePlayerState);
-
-    // 全局按键：ESC 关闭面板/屏保
     window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            ui.hideContextMenu();
-            ui.closeActivePanels();
-            if (getters.isScreensaverMode()) {
-                mutations.setScreensaverMode(false);
-                window.electronAPI.toggleFullscreen(false);
-            }
+            ui.hideContextMenu(); ui.closeActivePanels();
+            if (getters.isScreensaverMode()) { mutations.setScreensaverMode(false); window.electronAPI.toggleFullscreen(false); }
         }
-        // F11 屏保模式切换
         if (e.key === 'F11') {
             e.preventDefault();
             const isSaver = getters.isScreensaverMode();
-            if (isSaver) {
-                mutations.setScreensaverMode(false);
-                window.electronAPI.toggleFullscreen(false);
-            } else if (getters.playlist().length > 0) {
-                mutations.setScreensaverMode(true);
-                window.electronAPI.toggleFullscreen(true);
-            }
+            if (isSaver) { mutations.setScreensaverMode(false); window.electronAPI.toggleFullscreen(false); }
+            else if (getters.playlist().length > 0) { mutations.setScreensaverMode(true); window.electronAPI.toggleFullscreen(true); }
         }
     });
 }
@@ -386,62 +208,40 @@ function setupEventListeners() {
  * 应用初始化函数。
  */
 async function init() {
-    // 1. 渲染基础UI
     loadIcons();
-
-    // 2. 初始化所有模块
     ui.init();
     player.init();
     mediaService.init();
     backgroundGallery.init();
     loadShortcuts();
-
-    // 3. 绑定所有事件监听
     setupEventListeners();
     setupDownloaderListeners();
     setupShortcutListeners();
 
-    // 4. 加载持久化状态和初始数据
     const initialTime = loadPlayerState();
     await mediaService.loadInitialData();
 
-    // 5. 根据初始数据决定最终UI状态
     const playlist = getters.playlist();
     if (playlist.length > 0) {
         let trackIndex = getters.currentTrackIndex();
-        if (trackIndex >= playlist.length || trackIndex < 0) {
-            trackIndex = 0;
-        }
-        // 使用 setTimeout 确保所有订阅者都已准备就绪
+        if (trackIndex >= playlist.length || trackIndex < 0) trackIndex = 0;
         setTimeout(() => {
-            // =========================================================================
-            // 【核心修复】传入 `true` 作为第二个参数，强制触发 track changed 事件。
-            // 这解决了应用启动时，如果加载的轨道索引与默认值(0)相同，
-            // 导致播放器不加载媒体而卡在骨架屏的问题。
-            // =========================================================================
-            mutations.setCurrentTrackIndex(trackIndex, true);
-
-            // 如果有保存的播放进度，等待元数据加载后跳转
+            mutations.setCurrentTrackIndex(trackIndex, true); // 强制触发更新
             if (initialTime > 0) {
                 const unsubscribe = subscribe('timeChanged', ({ duration }) => {
                     if (duration > 0) {
                         window.dispatchEvent(new CustomEvent('seekTo', { detail: initialTime }));
-                        unsubscribe(); // 跳转后立即取消订阅
+                        unsubscribe();
                     }
                 });
             }
         }, 0);
     } else {
-        // 如果没有播放列表，显示空状态并自动打开下载面板
         ui.toggleEmptyState(true);
-        // 延迟打开，给用户一个视觉缓冲
         setTimeout(() => ui.toggleDownloadPanel(), 600);
-        // 确保最终隐藏骨架屏
         window.dispatchEvent(new CustomEvent('hideSkeleton'));
     }
-
     console.log("App initialized.");
 }
 
-// 确保在 DOM 加载完成后执行初始化
 document.addEventListener('DOMContentLoaded', init);
