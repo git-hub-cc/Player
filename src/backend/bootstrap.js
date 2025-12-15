@@ -64,13 +64,14 @@ export async function configureContainer(app, sendMessageFunc) {
     );
 
     // =========================================================================
-    // 【核心修改】为 OnlineService 添加 'libraryService' 依赖。
+    // 【核心修改】为 OnlineService 添加 'libraryService' 和 'systemProxy' 依赖。
     // =========================================================================
-    // `OnlineService` 现在依赖 `libraryService` 来生成占位封面图。
+    // `OnlineService` 现在依赖 `libraryService` 来生成占位封面图，
+    // 并依赖 `systemProxy` 来选择正确的音乐 API 域名。
     container.register(
         'onlineService',
         OnlineService,
-        ['config', 'sendMessageFunc', 'libraryService']
+        ['config', 'sendMessageFunc', 'libraryService', 'systemProxy']
     );
     // =========================================================================
 

@@ -130,31 +130,6 @@
 
             <div id="seek-feedback" class="seek-feedback"></div>
             <div id="speed-feedback" class="speed-feedback"></div>
-
-            <svg id="glitch-overlay" class="glitch-overlay" aria-hidden="true">
-                <defs>
-                    <filter id="glitch-filter-spotify">
-                        <feTurbulence type="fractalNoise" baseFrequency="0.8 0.8" numOctaves="1" result="turbulence" seed="0"></feTurbulence>
-                        <feDisplacementMap in="SourceGraphic" in2="turbulence" scale="0" xChannelSelector="R" yChannelSelector="B" result="displacement"></feDisplacementMap>
-                        <feColorMatrix in="displacement" type="matrix"
-                                       values="1 0 0 0 0
-                                0 0 0 0 0
-                                0 0 0 0 0
-                                0 0 0 1 0" result="red_channel" />
-                        <feOffset in="red_channel" dx="0" dy="0" result="red_offset" />
-                        <feColorMatrix in="displacement" type="matrix"
-                                       values="0 0 0 0 0
-                                0 0 0 0 0
-                                0 0 1 0 0
-                                0 0 0 1 0" result="blue_channel" />
-                        <feOffset in="blue_channel" dx="0" dy="0" result="blue_offset" />
-                        <feBlend in="red_offset" in2="blue_offset" mode="screen" result="color_aberration"/>
-                        <feBlend in="displacement" in2="color_aberration" mode="lighten"/>
-                    </filter>
-                </defs>
-                <g id="glitch-spotify-shapes"></g>
-                <g id="glitch-lines"></g>
-            </svg>
         </main>
 
         <!-- 媒体库面板 (原播放列表) -->
