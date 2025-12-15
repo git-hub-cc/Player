@@ -11,12 +11,8 @@ let currentPage = 1;
 let totalPages = 1;
 const ITEMS_PER_PAGE = 10;
 
-// =========================================================================
-// 【核心新增】获取 DOM 元素的引用
-// =========================================================================
 const downloadProgressContainer = document.querySelector('.download-progress-container');
 const downloadProgressBar = document.querySelector('.download-progress-bar');
-// =========================================================================
 
 
 /**
@@ -94,7 +90,7 @@ function updateInputMode() {
 
 
 /**
- * 【核心修改】更新下载面板底部的状态信息，并处理进度条显示。
+ * 更新下载面板底部的状态信息，并处理进度条显示。
  * @param {string} message - 要显示的消息文本。
  * @param {string} type - 消息类型 ('default', 'success', 'error', 'progress')。
  * @param {number|undefined} progress - 下载进度 (0-1)。
@@ -332,14 +328,12 @@ async function handleMissingTool(toolName, featureName) {
     const cancelBtn = document.getElementById('cancel-btn');
     const confirmBtn = document.getElementById('confirm-btn');
 
-    // 临时修改按钮文本和行为
     const originalCancelText = cancelBtn.textContent;
     const originalConfirmText = confirmBtn.textContent;
 
     cancelBtn.textContent = "手动下载说明";
     confirmBtn.textContent = "自动下载";
 
-    // 创建一个额外的“取消”按钮用于关闭
     let closeBtn = document.getElementById('temp-close-btn');
     if (!closeBtn) {
         closeBtn = document.createElement('button');
@@ -373,7 +367,6 @@ async function handleMissingTool(toolName, featureName) {
     };
 
     return new Promise((resolve) => {
-        // 自动下载
         confirmBtn.onclick = async () => {
             cleanup();
             const progressModal = document.getElementById('download-progress-modal');
@@ -393,7 +386,6 @@ async function handleMissingTool(toolName, featureName) {
             resolve(true);
         };
 
-        // 手动说明
         cancelBtn.onclick = async () => {
             cleanup();
             setTimeout(async () => {
@@ -406,7 +398,6 @@ async function handleMissingTool(toolName, featureName) {
             resolve(false);
         };
 
-        // 取消
         closeBtn.onclick = () => {
             cleanup();
             resolve(false);
@@ -435,7 +426,6 @@ export function setupDownloaderListeners() {
     setupPaginationListener();
 
     window.electronAPI.onDownloadStatus((status) => {
-        // 【核心修改】处理新的 IPC 消息格式
         if (status.type === 'error' && status.reason === 'tool_missing') {
             const toolName = status.missing;
             let featureName = "该";
@@ -445,10 +435,8 @@ export function setupDownloaderListeners() {
             handleMissingTool(toolName, featureName);
             updateStatus(`需要安装 ${toolName} 才能继续。`, 'default');
         } else if (status.type === 'progress') {
-            // 当消息类型为 'progress' 时，更新状态和进度条
             updateStatus(status.message, 'progress', status.progress);
         } else {
-            // 其他类型的消息，只更新状态文本
             updateStatus(status.message, status.type);
         }
 
