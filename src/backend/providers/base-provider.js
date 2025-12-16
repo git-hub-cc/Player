@@ -27,6 +27,12 @@ export class BaseProvider {
         this.ytDlpPath = dependencies.ytDlpPath;
         this.systemProxy = dependencies.systemProxy;
         this.libraryService = dependencies.libraryService; // 保存 libraryService 实例
+
+        // =========================================================================
+        // 【核心优化】通用 User-Agent
+        // 在基类中定义，供所有子类使用，确保下载、爬虫逻辑也能享受到伪装的好处。
+        // =========================================================================
+        this.spoofedUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
     }
 
     /**

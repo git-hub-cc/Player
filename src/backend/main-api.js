@@ -12,6 +12,10 @@ let mainWindow;
 let diContainer; // 用于持有 DI 容器的实例
 let initialFileToOpen = null; // 用于存储应用启动时需要打开的文件路径
 
+// --- 常量配置 ---
+// 伪装的 User-Agent，模拟标准 Chrome 浏览器，防止被服务器识别为 Electron 爬虫而限速
+const SPOOF_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
 // 将自定义的 'media' 协议注册为特权协议
 protocol.registerSchemesAsPrivileged([
     { scheme: 'media', privileges: { standard: true, secure: true, supportFetch: true, corsEnabled: true } }
@@ -230,6 +234,22 @@ function registerGlobalShortcuts() {
  * 应用主入口点。
  */
 app.whenReady().then(async () => {
+    // =========================================================================
+    // 【核心优化】全局请求拦截与 User-Agent 伪装
+    // 在应用启动的最早阶段，拦截所有发出的 HTTP/HTTPS 请求，
+    // 强制将 User-Agent 修改为标准 Chrome 浏览器标识。
+    // 这对于解决 <video> 标签加载流媒体慢、API 403 Forbidden、服务端限速等问题至关重要。
+    // =========================================================================
+    session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+        details.requestHeaders['User-Agent'] = SPOOF_USER_AGENT;
+        // 同时移除可能暴露身份的 Electron 默认 Header
+        delete details.requestHeaders['X-Electron-Version'];
+        delete details.requestHeaders['Electron'];
+        callback({ cancel: false, requestHeaders: details.requestHeaders });
+    });
+    console.log('[Main API] 全局 User-Agent 伪装已激活。');
+    // =========================================================================
+
     setupLogging();
 
     nativeTheme.themeSource = 'dark';

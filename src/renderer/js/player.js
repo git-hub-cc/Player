@@ -43,47 +43,67 @@ function _setupAudioContext() {
 
 /**
  * 加载一个已经完全准备好的轨道对象到媒体播放器。
+ *
+ * 【核心优化】
+ * 此函数现在将音频播放作为第一优先级。
+ * 歌词的获取和解析被移入独立的异步 Promise 中，不阻塞音频的加载和播放。
+ * 这将显著提升点击歌曲后的响应速度。
+ *
  * @private
  * @param {object | null} track - 包含可直接播放的 `src` 的轨道对象，或 null 以清空播放器。
  */
 async function _loadTrack(track) {
+    // 1. 重置播放器和歌词状态，防止上一首的残留
+    mutations.setParsedLyrics([]);
+    mutations.setDuration(0);
+
     if (!track || !track.src) {
         dom.mediaPlayer.removeAttribute('src'); // 清空播放器源
-        mutations.setParsedLyrics([]);
-        mutations.setDuration(0);
         mutations.setIsPlaying(false);
         return;
     }
 
-    // 应用当前状态到媒体元素
+    // 2. 立即设置媒体参数 (音频优先策略)
     dom.mediaPlayer.playbackRate = getters.playbackRate();
     dom.mediaPlayer.currentTime = 0;
+    dom.mediaPlayer.src = track.src;
 
-    // 异步加载歌词
-    try {
-        let lrcText = '';
-        if (track.lyrics) {
-            // 处理 Base64 Data URL 格式的歌词
-            if (track.lyrics.startsWith('data:')) {
-                lrcText = decodeURIComponent(track.lyrics.substring('data:text/plain,'.length));
-                // 处理自定义 `media://` 协议的本地歌词
-            } else if (track.lyrics.startsWith('media://')) {
-                const result = await window.electronAPI.getLrcContent(decodeURIComponent(track.lyrics.substring('media://'.length)));
+    // 3. 异步加载歌词 (非阻塞)
+    // 将整个歌词获取逻辑包装在一个立即执行的异步函数中
+    (async () => {
+        try {
+            let lrcText = '';
+            // 检查当前轨道是否有歌词信息
+            if (track.lyrics) {
+                // 情况 A: 歌词是内嵌的 Data URL
+                if (track.lyrics.startsWith('data:')) {
+                    lrcText = decodeURIComponent(track.lyrics.substring('data:text/plain,'.length));
+
+                    // 情况 B: 歌词是本地文件 (media://)
+                } else if (track.lyrics.startsWith('media://')) {
+                    const result = await window.electronAPI.getLrcContent(decodeURIComponent(track.lyrics.substring('media://'.length)));
+                    if (result.success) lrcText = result.data;
+                }
+
+                // 情况 C: 在线歌曲，通过 ID 实时获取歌词
+            } else if (track.lyricId && track.source) {
+                const result = await window.electronAPI.getOnlineLyric(track.lyricId, track.source);
                 if (result.success) lrcText = result.data;
             }
-            // 如果是临时在线歌曲，则通过IPC获取在线歌词
-        } else if (track.lyricId && track.source) {
-            const result = await window.electronAPI.getOnlineLyric(track.lyricId, track.source);
-            if (result.success) lrcText = result.data;
-        }
-        mutations.setParsedLyrics(parseLRC(lrcText));
-    } catch (error) {
-        console.error("加载歌词失败:", error);
-        mutations.setParsedLyrics([]); // 即使失败也清空旧歌词
-    }
 
-    // 设置媒体源并加载
-    dom.mediaPlayer.src = track.src;
+            // 4. 解析并更新歌词状态
+            // 此时音频可能已经播放了几百毫秒，歌词会无缝“闪现”出来
+            if (lrcText) {
+                mutations.setParsedLyrics(parseLRC(lrcText));
+            }
+        } catch (error) {
+            console.warn("[Player] 加载歌词失败 (非致命错误):", error);
+            // 歌词加载失败不影响播放，保持空歌词状态即可
+            mutations.setParsedLyrics([]);
+        }
+    })();
+
+    // 5. 开始加载音频
     dom.mediaPlayer.load();
 }
 
@@ -120,11 +140,8 @@ function onIsPlayingChanged(isPlaying) {
  * @param {object | null} track - 新的当前轨道对象。
  */
 function onCurrentTrackChanged(track) {
-    if (track) {
-        _loadTrack(track);
-    } else {
-        _loadTrack(null); // 如果没有轨道，则清空播放器
-    }
+    // 无论有没有 track，都调用 _loadTrack 进行处理（加载或清空）
+    _loadTrack(track || null);
 }
 
 /**
@@ -176,13 +193,8 @@ async function onMediaEnded() {
         dom.mediaPlayer.currentTime = 0;
         mutations.setIsPlaying(true);
     } else {
-        // =========================================================================
-        // 【核心修复】修复生产环境打包后动态导入失败的问题。
-        // 直接导入整个模块，然后通过属性访问获取类，避免解构赋值在打包优化后失效。
-        // =========================================================================
         const shortcutsModule = await import('./features/shortcuts.js');
         new shortcutsModule.NextTrackCommand().execute();
-        // =========================================================================
     }
 }
 
@@ -193,7 +205,10 @@ function onMediaError() {
     // 如果没有设置src，则忽略错误（例如在清空播放器时）
     if (!dom.mediaPlayer.getAttribute('src')) return;
     const track = getters.currentTrack();
-    _notify('showToast', { message: `播放失败: ${track?.title || '未知'}`, type: 'error' });
+    // 只有在真的有错误时才通知，避免一些比如 load() 中断的假警报
+    if (dom.mediaPlayer.error) {
+        _notify('showToast', { message: `播放失败: ${track?.title || '未知'}`, type: 'error' });
+    }
 }
 
 
@@ -222,9 +237,6 @@ export function init() {
         if (!isNaN(dom.mediaPlayer.duration)) {
             // 跳转到指定时间，并确保不超出范围
             dom.mediaPlayer.currentTime = Math.max(0, Math.min(dom.mediaPlayer.duration, time));
-            // 【核心修复】移除此处的 mutations.setCurrentTime() 调用。
-            // 媒体元素的 currentTime 改变后会自动触发 'timeupdate' 事件，
-            // 由 onMediaTimeUpdate 统一处理状态同步，从而避免无限循环。
         }
     });
 

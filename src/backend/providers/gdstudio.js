@@ -3,6 +3,7 @@
 import axios from 'axios';
 import { createHash } from 'crypto';
 import { URLSearchParams } from 'url';
+import https from 'https'; // 引入 https 模块用于 Keep-Alive Agent
 
 // --- 配置 ---
 const MKPLAYER_VERSION = '2025.11.4';
@@ -10,7 +11,20 @@ const TIMEOUT = 20000;
 const DEFAULT_SOURCE = 'netease';
 
 // =========================================================================
-// 【核心修改区域】
+// 【核心优化】网络层配置
+// 1. 全局 Agent：启用 Keep-Alive，复用 TCP 连接，减少 SSL 握手开销。
+// 2. UA 伪装：硬编码 Chrome UA。
+// =========================================================================
+const keepAliveAgent = new https.Agent({ keepAlive: true });
+const SPOOF_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+// --- 模块级状态：时间戳校准 ---
+// 用于存储本地时间与服务器时间的差值 (serverTime - localTime)
+// 避免每次请求都访问喜马拉雅接口，显著减少网络开销
+let timeOffset = 0;
+let isTimeCalibrated = false;
+
+// =========================================================================
 // 签名生成与 API 请求逻辑
 // =========================================================================
 
@@ -32,17 +46,47 @@ function getApiEndpoints(systemProxy) {
 
 /**
  * @private
- * 从喜马拉雅获取服务器时间戳，用于签名。
- * @returns {Promise<string|null>} - 返回时间戳字符串或 null。
+ * 初始化或获取时间偏移量。
+ * 仅在首次调用时请求服务器时间，后续使用偏移量计算。
+ * @returns {Promise<number>} - 本地时间与服务器时间的差值 (ms)。
  */
-async function getXimalayaTimestamp() {
-    try {
-        const response = await axios.get('https://www.ximalaya.com/revision/time', { timeout: 5000 });
-        return response.data.toString().trim();
-    } catch (error) {
-        console.error('[GDStudio Signature] 获取时间戳失败:', error.message);
-        return null;
+async function getTimeOffset() {
+    if (isTimeCalibrated) {
+        return timeOffset;
     }
+
+    try {
+        const start = Date.now();
+        // 【核心优化】
+        // 1. 设置极短的超时 (1500ms)，如果喜马拉雅因为反爬虫延迟响应，直接放弃。
+        // 2. 显式禁用 proxy (proxy: false)，防止 Axios 在 Windows 上进行缓慢的自动代理探测。
+        // 3. 使用伪装 UA。
+        const response = await axios.get('https://www.ximalaya.com/revision/time', {
+            timeout: 1500,
+            proxy: false, // 强制禁用自动代理检测
+            httpsAgent: keepAliveAgent,
+            headers: { 'User-Agent': SPOOF_USER_AGENT }
+        });
+        const serverTimeStr = response.data.toString().trim();
+        const serverTime = parseInt(serverTimeStr, 10);
+
+        const end = Date.now();
+        // 粗略计算网络延迟的一半
+        const latency = (end - start) / 2;
+
+        // 计算偏移量
+        if (!isNaN(serverTime)) {
+            timeOffset = serverTime - (Date.now() - latency); // 近似对齐
+            isTimeCalibrated = true;
+            console.log(`[GDStudio] 时间戳校准完成，偏移量: ${timeOffset}ms`);
+        } else {
+            console.warn('[GDStudio] 获取的时间戳格式无效，使用本地时间。');
+        }
+    } catch (error) {
+        console.warn('[GDStudio] 获取校准时间戳失败/超时，将使用本地时间:', error.message);
+        // 失败时不阻止流程，直接使用本地时间（偏移量保持 0）
+    }
+    return timeOffset;
 }
 
 /**
@@ -64,12 +108,16 @@ function formatVersion(versionStr) {
  * @returns {Promise<string|null>} - 成功则返回签名字符串，失败则返回 null。
  */
 async function generateSignature(hostname, searchTerm) {
-    const timestamp = await getXimalayaTimestamp();
-    if (!timestamp) {
-        return null; // 时间戳获取失败，无法生成签名
-    }
+    // 1. 获取时间偏移量（仅首次请求网络）
+    await getTimeOffset();
 
-    const slicedTimestamp = timestamp.substring(0, 9);
+    // 2. 基于偏移量计算当前的“服务器时间”
+    const estimatedServerTime = Date.now() + timeOffset;
+    const timestampStr = estimatedServerTime.toString();
+
+    // 保持原有截取逻辑 (0, 9)
+    const slicedTimestamp = timestampStr.substring(0, 9);
+
     const formattedVersion = formatVersion(MKPLAYER_VERSION);
     // 关键：模拟 JavaScript 的 encodeURIComponent
     const encodedSearchTerm = encodeURIComponent(searchTerm);
@@ -106,13 +154,39 @@ async function signedApiRequest(params, systemProxy) {
         s: signature
     }).toString();
 
-    const response = await axios.post(apiUrl, payload, {
+    // =========================================================================
+    // 【核心优化】Axios 请求配置
+    // =========================================================================
+    const axiosConfig = {
         timeout: TIMEOUT,
         headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+            'User-Agent': SPOOF_USER_AGENT, // 伪装 UA
             'Content-Type': 'application/x-www-form-urlencoded',
         },
-    });
+        httpsAgent: keepAliveAgent, // 复用连接
+    };
+
+    // 关键：如果没有明确的系统代理，必须显式设置 proxy: false，
+    // 否则 Axios 会在 Windows 上尝试读取注册表或环境变量，这在某些环境下非常慢（几秒延迟）。
+    if (systemProxy) {
+        // systemProxy 格式通常是 "http://127.0.0.1:7890"
+        // Axios 需要对象格式 { host, port, protocol }
+        try {
+            const proxyUrl = new URL(systemProxy);
+            axiosConfig.proxy = {
+                host: proxyUrl.hostname,
+                port: parseInt(proxyUrl.port, 10),
+                protocol: proxyUrl.protocol
+            };
+        } catch (e) {
+            console.warn('[GDStudio] 代理配置解析失败，将直连:', e);
+            axiosConfig.proxy = false;
+        }
+    } else {
+        axiosConfig.proxy = false;
+    }
+
+    const response = await axios.post(apiUrl, payload, axiosConfig);
 
     // 处理 JSONP 响应
     let responseData = response.data;

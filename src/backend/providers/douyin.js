@@ -27,9 +27,10 @@ export class DouyinProvider extends BaseProvider {
         const partitionName = `persist:douyin_session_${Date.now()}`;
         const douyinSession = session.fromPartition(partitionName);
 
-        // 1. 核心修复：强制该会话的所有流量（包括重定向）不经过任何代理
+        // 1. 基础网络配置：强制直连，绕过可能的代理问题
         await douyinSession.setProxy({ proxyRules: 'direct://' });
 
+        // 创建隐形窗口用于加载页面
         const win = new BrowserWindow({
             show: false,
             webPreferences: {
@@ -40,6 +41,43 @@ export class DouyinProvider extends BaseProvider {
             }
         });
         win.webContents.setAudioMuted(true);
+
+        // =========================================================================
+        // 【核心修改】方案二：使用导航锁 (Navigation Locking)
+        // 相比于 webRequest，直接在导航层面拦截更有效，能阻止 JS 触发的协议跳转
+        // =========================================================================
+
+        // 定义导航过滤规则：仅允许 http/https 协议
+        const preventExternalProtocols = (event, url) => {
+            // 如果 url 只是改变了 hash (例如 #锚点)，通常不需要拦截
+            if (url === win.webContents.getURL()) return;
+
+            const lowerUrl = url.toLowerCase();
+            const isSafeProtocol = lowerUrl.startsWith('http://') ||
+                lowerUrl.startsWith('https://') ||
+                lowerUrl.startsWith('devtools://');
+
+            if (!isSafeProtocol) {
+                // 拦截 bitbrowser:// 等自定义协议，防止弹出系统提示框
+                event.preventDefault();
+                // console.log(`[Douyin Provider] 已阻止非标准导航: ${url}`);
+            }
+        };
+
+        // 1. 拦截主框架的导航 (如 window.location = '...')
+        win.webContents.on('will-navigate', preventExternalProtocols);
+
+        // 2. 拦截服务器端重定向
+        win.webContents.on('will-redirect', preventExternalProtocols);
+
+        // 3. 拦截 iframe 内部的导航 (部分广告或统计脚本可能会在 iframe 里搞事)
+        win.webContents.on('will-frame-navigate', preventExternalProtocols);
+
+        // 4. 禁止页面打开任何新窗口 (window.open)
+        // win.webContents.setWindowOpenHandler(() => {
+        //     return { action: 'deny' };
+        // });
+        // =========================================================================
 
         try {
             const apiResponsePromise = this._interceptApiResponse(win);
