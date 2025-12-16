@@ -131,8 +131,6 @@ export function init() {
     visuals.init();
 
     // 监听来自其他模块派发的自定义UI事件
-    window.addEventListener('showSkeleton', () => document.getElementById('skeleton-overlay')?.classList.add('active'));
-    window.addEventListener('hideSkeleton', () => document.getElementById('skeleton-overlay')?.classList.remove('active'));
     window.addEventListener('showToast', (e) => {
         if (e.detail && e.detail.message) {
             modals.showToast(e.detail.message, e.detail.type);

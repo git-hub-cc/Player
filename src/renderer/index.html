@@ -59,50 +59,6 @@
         </div>
         <!-- ========================================================================= -->
 
-        <!-- 骨架屏 overlay - 在内容加载前显示 -->
-        <div id="skeleton-overlay" class="skeleton-overlay active">
-            <!-- 模拟主视图区域的骨架 -->
-            <div class="skeleton-main-view">
-                <div class="skeleton-block skeleton-album-art"></div>
-            </div>
-            <!-- 模拟底部播放控制条的骨架 -->
-            <div class="skeleton-controls">
-                <div class="skeleton-track-info">
-                    <div class="skeleton-block skeleton-album-thumb"></div>
-                    <div>
-                        <div class="skeleton-block skeleton-text-line"></div>
-                        <div class="skeleton-block skeleton-text-line"></div>
-                    </div>
-                </div>
-                <div class="skeleton-main-controls">
-                    <div class="skeleton-buttons">
-                        <div class="skeleton-block skeleton-button mobile-only small"></div>
-                        <div class="skeleton-block skeleton-button small"></div>
-                        <div class="skeleton-block skeleton-button"></div>
-                        <div class="skeleton-block skeleton-button small"></div>
-                        <div class="skeleton-block skeleton-button mobile-only small"></div>
-                    </div>
-                    <div class="progress-container">
-                        <span></span>
-                        <div class="skeleton-block skeleton-progress-bar"></div>
-                        <span></span>
-                    </div>
-                </div>
-                <div class="skeleton-side-controls">
-                    <div class="skeleton-block skeleton-button small"></div>
-                    <div class="skeleton-block skeleton-button small"></div>
-                    <div class="skeleton-block skeleton-button small"></div>
-                    <div class="skeleton-block skeleton-button small"></div>
-                    <div class="skeleton-block skeleton-button small"></div>
-                    <div class="volume-container">
-                        <div class="skeleton-block skeleton-button small"></div>
-                        <div class="skeleton-block skeleton-volume-bar"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <!-- 骨架屏结束 -->
-
         <!-- 主视图区域：仅包含媒体、封面和歌词 -->
         <main class="main-view">
             <!-- 正常播放时的媒体可视区域 -->
@@ -215,7 +171,7 @@
             <div id="download-panel-content" class="download-panel-content">
                 <div id="downloader-view" class="downloader-view">
                     <div class="downloader-input-area">
-                        <p class="panel-description">输入歌曲名进行在线搜索，或粘贴 抖音/B站/Jable/YouTube 链接进行本地下载。</p>
+                        <p class="panel-description">输入歌曲名进行在线搜索，或粘贴 抖音/B站 链接进行本地下载。</p>
                         <textarea id="url-or-search-input" placeholder="粘贴链接 或 输入歌曲/歌手名..."></textarea>
                         <div id="download-actions-container" class="download-actions-container">
                             <button id="import-local-btn" class="action-btn">
