@@ -111,7 +111,7 @@ function updateInputMode() {
     } else if (url) {
         dom.panelDescription.textContent = '检测到未知链接，将尝试作为抖音视频处理...';
     } else {
-        dom.panelDescription.textContent = '输入歌曲名进行在线搜索，或粘贴 抖音/B站/Jable/YouTube 链接进行本地下载。';
+        dom.panelDescription.textContent = '输入歌曲名进行在线搜索，或粘贴 抖音/B站 链接进行本地下载。';
     }
 }
 

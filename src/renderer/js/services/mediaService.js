@@ -11,6 +11,7 @@ import { mutations, getters } from '../state.js';
 import { showToast, showConfirmationModal } from '../ui/modals.js';
 import { pinyin } from 'pinyin-pro';
 import path from 'path-browserify'; // 使用 path-browserify 在浏览器环境中使用 path API
+import { DEFAULT_ART } from '../config.js'; // 导入默认封面
 
 // --- 缓存与请求锁定配置 ---
 const CACHE_EXPIRATION_MS = 30 * 60 * 1000; // 缓存过期时间: 30分钟
@@ -156,20 +157,60 @@ export async function resolvePlayableUrl(trackInfo) {
 
 /**
  * 临时播放在线搜索结果中的曲目。
+ *
+ * 【核心优化】 UI 乐观更新策略
+ * 1. 立即设置一个只有元数据的临时轨道，让UI立刻响应（切换封面、标题、显示加载中）。
+ * 2. 异步请求后端解析真实URL。
+ * 3. 解析成功后，无缝替换为可播放的轨道。
+ *
  * @param {object} track - 从搜索结果中选择的轨道对象。
  */
 export async function playTemporaryTrack(track) {
-    const resolved = await resolvePlayableUrl(track);
-    if (resolved) {
-        const playableTrack = {
-            ...track,
-            src: resolved.playableSrc,
-            albumArt: resolved.albumArtUrl,
-        };
-        mutations.setTemporaryPlayingTrack(playableTrack);
-        mutations.setIsPlaying(true);
-    } else {
-        showToast(`无法播放在线曲目: "${track.title}"`, 'error');
+    // 1. 构造一个用于“占位”的轨道对象
+    // 这个对象没有 src，无法播放，但包含所有 UI 显示所需的信息
+    // 我们暂时使用 DEFAULT_ART 作为封面，或者如果 track 中有缩略图/pic_id，后续会自动更新
+    const placeholderTrack = {
+        ...track,
+        // 使用一个空的 src 或者特殊的标记，防止播放器报错，但能触发UI切换
+        // 注意：在 player.js 中如果检测到无 src 会清空播放器，但 UI 会保留信息
+        src: '',
+        albumArt: track.albumArt || DEFAULT_ART,
+        // 标记为正在加载，UI 可以根据这个字段显示 loading 动画（可选）
+        isLoading: true
+    };
+
+    // 2. 立即更新状态，触发 UI 刷新
+    // 此时用户会看到播放器底部切到了新歌的标题和封面，感觉到“已响应”
+    mutations.setTemporaryPlayingTrack(placeholderTrack);
+    // 此时还不能 setPlaying(true)，因为没有源
+
+    // 3. 开始异步解析真实 URL
+    try {
+        const resolved = await resolvePlayableUrl(track);
+
+        if (resolved) {
+            // 4. 解析成功，构造最终的可播放轨道
+            const playableTrack = {
+                ...track,
+                src: resolved.playableSrc,
+                // 如果解析出了高清封面，使用它；否则保留原来的
+                albumArt: resolved.albumArtUrl || track.albumArt || DEFAULT_ART,
+                isLoading: false
+            };
+
+            // 5. 再次更新状态，此时播放器检测到 src 变化且有效，会开始加载
+            // 由于 temporaryPlayingTrack 的引用变化，UI 会重新渲染，但视觉上是连贯的
+            mutations.setTemporaryPlayingTrack(playableTrack);
+            mutations.setIsPlaying(true);
+        } else {
+            // 解析失败，回退状态
+            showToast(`无法播放: "${track.title}"`, 'error');
+            // 可以选择清空，或者保留当前显示但不播放
+            // mutations.clearPlayingTrackInfo();
+        }
+    } catch (error) {
+        console.error("临时播放流程异常:", error);
+        showToast(`播放出错: ${error.message}`, 'error');
     }
 }
 

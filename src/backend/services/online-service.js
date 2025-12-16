@@ -6,6 +6,12 @@ import { pinyin } from 'pinyin-pro';
 import * as gdstudio from '../providers/gdstudio.js';
 import { downloadFile } from './download-service.js';
 
+// --- 配置 ---
+// URL 缓存有效期：20分钟 (毫秒)
+const URL_CACHE_TTL = 20 * 60 * 1000;
+// URL 缓存最大条目数，防止内存无限增长
+const URL_CACHE_MAX_SIZE = 200;
+
 /**
  * @class OnlineService
  * @description 负责处理所有与在线音乐服务相关的业务逻辑，
@@ -20,6 +26,8 @@ export class OnlineService {
     #libraryService;
     // #systemProxy 存储系统代理信息
     #systemProxy;
+    // #urlCache 用于缓存获取到的真实播放链接，减少重复 API 请求
+    #urlCache = new Map();
 
     /**
      * @param {object} config - 应用的全局配置对象。
@@ -56,24 +64,57 @@ export class OnlineService {
         }
     }
 
+    /**
+     * 获取音乐播放 URL。
+     * 包含缓存逻辑：如果同一首歌曲在短时间内被重复请求，直接从内存返回，加速响应。
+     */
     async handleGetMusicUrl(trackData) {
         if (!trackData || !trackData.id || !trackData.source) {
             return { success: false, error: '获取 URL 失败: 缺少曲目 ID 或来源信息。' };
         }
+
+        const cacheKey = `${trackData.source}_${trackData.id}`;
+
         try {
-            // 并行获取音乐URL和封面真实URL，并将代理信息传递下去
+            // 1. 检查缓存
+            if (this.#urlCache.has(cacheKey)) {
+                const cached = this.#urlCache.get(cacheKey);
+                const now = Date.now();
+                if (now - cached.timestamp < URL_CACHE_TTL) {
+                    // console.log(`[Online Service] 命中 URL 缓存: ${trackData.title}`);
+                    // 即使命中音乐URL缓存，如果之前封面没获取到，可能还可以重试封面，
+                    // 但为了极致速度，这里假设缓存的数据就是完整的。
+                    return { success: true, url: cached.url, albumArtUrl: cached.albumArtUrl };
+                } else {
+                    this.#urlCache.delete(cacheKey); // 缓存过期，删除
+                }
+            }
+
+            // 2. 并行获取音乐URL和封面真实URL，并将代理信息传递下去
             const [musicUrl, albumArtUrl] = await Promise.all([
                 gdstudio.getMusicUrl(trackData, this.#systemProxy),
                 gdstudio.resolvePicUrl(trackData.pic_id, trackData.source, this.#systemProxy)
             ]);
 
-            // 如果封面图URL获取失败，则生成一个占位图的 Data URL
+            // 3. 处理封面图占位
             let finalAlbumArtUrl = albumArtUrl;
             if (!finalAlbumArtUrl) {
                 const safeFilename = this.#sanitizeFilename(`${trackData.artist} - ${trackData.title}`);
                 // 注意：这里生成的是 Base64 格式的 Data URL，用于临时显示
                 finalAlbumArtUrl = this.#libraryService.generateAndSavePlaceholderArt(trackData.title, safeFilename);
             }
+
+            // 4. 存入缓存
+            if (this.#urlCache.size >= URL_CACHE_MAX_SIZE) {
+                // 简单清理：删除最早加入的一个
+                const firstKey = this.#urlCache.keys().next().value;
+                this.#urlCache.delete(firstKey);
+            }
+            this.#urlCache.set(cacheKey, {
+                url: musicUrl,
+                albumArtUrl: finalAlbumArtUrl,
+                timestamp: Date.now()
+            });
 
             return { success: true, url: musicUrl, albumArtUrl: finalAlbumArtUrl };
         } catch (e) {
@@ -101,7 +142,7 @@ export class OnlineService {
             // 将音频下载任务添加到 Promise 数组
             downloadPromises.push(downloadFile(audioUrl, this.#config.MUSIC_DIR, `${safeFilename}.mp3`));
 
-            // --- 2. 封面处理 (核心修改) ---
+            // --- 2. 封面处理 ---
             let artUrl = trackData.albumArt || trackData.originalAlbumArt;
             let finalAlbumArtPath = ""; // 这是最终要保存到 playlist.json 的相对路径
 
