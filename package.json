@@ -31,6 +31,7 @@
     "electron-squirrel-startup": "^1.0.1",
     "m3u8-parser": "^7.1.0",
     "p-limit": "^6.1.0",
+    "path-browserify": "^1.0.1",
     "pinyin-pro": "^3.19.6",
     "winreg": "^1.2.4",
     "yt-dlp-wrap-plus": "^2.4.3"
@@ -38,6 +39,7 @@
   "devDependencies": {
     "@electron-forge/cli": "^7.10.2",
     "@electron-forge/maker-deb": "^7.10.2",
+    "@electron-forge/maker-dmg": "^7.10.2",
     "@electron-forge/maker-rpm": "^7.10.2",
     "@electron-forge/maker-squirrel": "^7.10.2",
     "@electron-forge/maker-zip": "^7.10.2",

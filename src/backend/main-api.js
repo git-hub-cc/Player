@@ -10,6 +10,7 @@ import * as setupService from './services/setup-service.js'; // 仅用于下载�
 // --- 全局变量 ---
 let mainWindow;
 let diContainer; // 用于持有 DI 容器的实例
+let initialFileToOpen = null; // 用于存储应用启动时需要打开的文件路径
 
 // 将自定义的 'media' 协议注册为特权协议
 protocol.registerSchemesAsPrivileged([
@@ -20,6 +21,69 @@ protocol.registerSchemesAsPrivileged([
 if (started) {
     app.quit();
 }
+
+// =========================================================================
+// 【核心新增】处理通过文件关联打开应用的核心逻辑
+// =========================================================================
+
+/**
+ * 解析命令行参数，寻找文件路径。
+ * @param {string[]} argv - 命令行参数数组 (通常是 process.argv)。
+ * @returns {string|null} - 返回找到的第一个有效文件路径，否则返回 null。
+ */
+function findFilePathInArgs(argv) {
+    // 在生产环境中，文件路径通常是启动参数的最后一个
+    // 在开发环境中，参数会更多，需要更智能的过滤
+    const potentialPath = argv.slice(app.isPackaged ? 1 : 2).find(arg =>
+        !arg.startsWith('-') && // 过滤掉 Electron 或 Chromium 的开关参数
+        fs.existsSync(arg) // 确保路径存在
+    );
+    return potentialPath || null;
+}
+
+/**
+ * 将文件路径发送到渲染进程进行处理。
+ * @param {string} filePath - 要打开的文件的绝对路径。
+ */
+function sendFileToRenderer(filePath) {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
+        console.log(`[Main API] 发送文件到渲染进程: ${filePath}`);
+        mainWindow.webContents.send('open-file', filePath);
+    } else {
+        console.log(`[Main API] 窗口尚未准备好，暂存待打开的文件: ${filePath}`);
+        initialFileToOpen = filePath; // 如果窗口还没创建，则暂存路径
+    }
+}
+
+// --- 单一实例锁 ---
+// 确保应用只有一个实例在运行。如果用户尝试打开第二个实例，则将焦点给到现有实例。
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+    app.quit(); // 如果获取锁失败，说明已有实例在运行，则退出当前这个新实例
+} else {
+    // 当第二个实例被启动时，此事件会在第一个实例中触发
+    app.on('second-instance', (event, commandLine, workingDirectory) => {
+        if (mainWindow) {
+            // 将现有窗口置于前台
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.focus();
+
+            // 处理新实例带来的文件路径
+            const filePath = findFilePathInArgs(commandLine);
+            if (filePath) {
+                sendFileToRenderer(filePath);
+            }
+        }
+    });
+
+    // 处理应用首次通过文件关联启动的情况
+    const initialFilePath = findFilePathInArgs(process.argv);
+    if (initialFilePath) {
+        initialFileToOpen = initialFilePath;
+    }
+}
+// =========================================================================
 
 /**
  * 向渲染进程发送消息。
@@ -49,6 +113,17 @@ const createWindow = () => {
     } else {
         mainWindow.loadFile(path.join(__dirname, '../renderer/main_window/index.html'));
     }
+
+    // =========================================================================
+    // 【核心新增】窗口内容加载完成后，处理被暂存的待打开文件
+    // =========================================================================
+    mainWindow.webContents.on('did-finish-load', () => {
+        if (initialFileToOpen) {
+            sendFileToRenderer(initialFileToOpen);
+            initialFileToOpen = null; // 处理后清空
+        }
+    });
+    // =========================================================================
 
     mainWindow.on('enter-full-screen', () => sendMessage('fullscreen-change', true));
     mainWindow.on('leave-full-screen', () => sendMessage('fullscreen-change', false));
