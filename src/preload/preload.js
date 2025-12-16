@@ -19,18 +19,37 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openToolsFolder: () => ipcRenderer.invoke('open-tools-folder'),
 
     // --- 文件拖拽接口 ---
+    // 【核心修复】使用 webUtils.getPathForFile 获取真实文件路径
     handleFileDrop: (files) => {
         if (!Array.isArray(files)) {
             console.error('[Preload] handleFileDrop 接收到的不是一个数组:', files);
             return Promise.resolve({ success: false, error: 'Preload Error: Invalid file list.' });
         }
         try {
-            const fileListPayload = files.map(file => ({
-                name: file.name,
-                path: file.path, // 对于从 webkitGetAsEntry() 得到的 File 对象，其 path 属性是可用的
-                type: file.type,
-                size: file.size
-            })).filter(f => f.path);
+            // 在渲染进程中直接访问 File 对象的 .path 属性可能会得到 undefined
+            // 必须在 Preload 环节使用 Electron 的 webUtils 来解析真实路径
+            const fileListPayload = files.map(file => {
+                let filePath = '';
+                try {
+                    filePath = webUtils.getPathForFile(file);
+                } catch (e) {
+                    console.warn(`[Preload] 无法解析文件路径: ${file.name}`, e);
+                    // 尝试回退到 file.path，尽管通常是 undefined
+                    filePath = file.path;
+                }
+
+                return {
+                    name: file.name,
+                    path: filePath,
+                    type: file.type,
+                    size: file.size
+                };
+            }).filter(f => f.path); // 过滤掉无法获取路径的文件
+
+            if (fileListPayload.length === 0) {
+                return Promise.resolve({ success: false, error: 'No valid file paths found.' });
+            }
+
             return ipcRenderer.invoke('handle-file-drop', fileListPayload);
         } catch (e) {
             console.error('[Preload] 处理文件拖拽时发生错误:', e);

@@ -79,11 +79,10 @@ export let searchResultsList = document.getElementById('search-results-list');
 export let paginationControls = document.getElementById('pagination-controls');
 export let importLocalBtn = document.getElementById('import-local-btn');
 
-// --- 空状态与骨架屏 ---
+// --- 空状态 ---
 export let emptyStateView = document.getElementById('empty-state-view');
 export let emptyStateSearchBtn = document.getElementById('empty-state-search-btn');
 export let emptyStateImportBtn = document.getElementById('empty-state-import-btn');
-export let skeletonOverlay = document.getElementById('skeleton-overlay');
 
 // --- 背景画廊 ---
 export let galleryContainer = document.getElementById('gallery-container');

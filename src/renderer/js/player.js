@@ -16,8 +16,6 @@ import { parseLRC } from './utils.js';
 
 // 标记 AudioContext 是否已初始化，避免重复创建
 let audioContextInitialized = false;
-// 用于在加载慢时显示骨架屏的计时器
-let skeletonTimer = null;
 
 // --- 辅助函数 ---
 
@@ -122,10 +120,7 @@ function onIsPlayingChanged(isPlaying) {
  * @param {object | null} track - 新的当前轨道对象。
  */
 function onCurrentTrackChanged(track) {
-    clearTimeout(skeletonTimer); // 清除上一个轨道的骨架屏计时器
     if (track) {
-        // 延迟显示骨架屏，如果加载很快则不会闪烁
-        skeletonTimer = setTimeout(() => _notify('showSkeleton'), 300);
         _loadTrack(track);
     } else {
         _loadTrack(null); // 如果没有轨道，则清空播放器
@@ -166,8 +161,6 @@ function onMediaTimeUpdate() {
  * 当媒体可以开始播放时触发。
  */
 function onMediaCanPlay() {
-    clearTimeout(skeletonTimer); // 媒体已加载，隐藏骨架屏
-    _notify('hideSkeleton');
     // 如果状态为播放，则确保媒体开始播放
     if (getters.isPlaying()) {
         onIsPlayingChanged(true);
@@ -197,8 +190,6 @@ async function onMediaEnded() {
  * 当媒体加载或播放出错时触发。
  */
 function onMediaError() {
-    clearTimeout(skeletonTimer); // 隐藏骨架屏
-    _notify('hideSkeleton');
     // 如果没有设置src，则忽略错误（例如在清空播放器时）
     if (!dom.mediaPlayer.getAttribute('src')) return;
     const track = getters.currentTrack();

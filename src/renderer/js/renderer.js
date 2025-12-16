@@ -94,45 +94,19 @@ function setupDragAndDropListeners() {
     const dragOverlay = document.getElementById('drag-overlay');
     if (!dragOverlay) return;
 
-    async function traverseFileTree(entry) {
-        let files = [];
-        if (entry.isFile) {
-            return new Promise((resolve, reject) => {
-                entry.file(file => resolve([file]), reject);
-            });
-        } else if (entry.isDirectory) {
-            return new Promise((resolve, reject) => {
-                const dirReader = entry.createReader();
-                let allEntries = [];
-                const readEntries = () => {
-                    dirReader.readEntries(async (entries) => {
-                        if (entries.length === 0) {
-                            try {
-                                const nestedFiles = await Promise.all(allEntries.map(e => traverseFileTree(e)));
-                                resolve(nestedFiles.flat());
-                            } catch (err) {
-                                reject(err);
-                            }
-                        } else {
-                            allEntries = allEntries.concat(entries);
-                            readEntries();
-                        }
-                    }, reject);
-                };
-                readEntries();
-            });
-        }
-        return files;
-    }
-
+    // 阻止浏览器默认行为（如下载或打开文件）
     window.addEventListener('dragover', (e) => e.preventDefault(), false);
     window.addEventListener('drop', (e) => e.preventDefault(), false);
 
     let dragCounter = 0;
+
+    // 监听进入窗口区域
     window.addEventListener('dragenter', () => {
         dragCounter++;
         dragOverlay.classList.add('active');
     });
+
+    // 监听离开窗口区域
     window.addEventListener('dragleave', () => {
         dragCounter--;
         if (dragCounter === 0) {
@@ -140,29 +114,30 @@ function setupDragAndDropListeners() {
         }
     });
 
+    // 监听文件放下
     window.addEventListener('drop', async (e) => {
-        dragCounter = 0;
+        dragCounter = 0; // 重置计数器
         dragOverlay.classList.remove('active');
-        const items = e.dataTransfer.items;
-        if (!items || items.length === 0) return;
-        ui.showToast('正在处理拖拽的文件/文件夹...', 'info');
-        try {
-            const promises = Array.from(items)
-                .map(item => item.webkitGetAsEntry())
-                .filter(Boolean)
-                .map(entry => traverseFileTree(entry));
-            const nestedFiles = await Promise.all(promises);
-            const allFiles = nestedFiles.flat();
-            if (allFiles.length > 0) {
-                // Electron Forge 的 Vite 插件会自动处理 File 对象的 path
-                await window.electronAPI.handleFileDrop(allFiles);
-                ui.showToast(`已开始处理 ${allFiles.length} 个文件...`, 'info');
-            } else {
-                ui.showToast('未在拖拽项中找到支持的媒体文件。', 'error');
+
+        // 【核心修复】直接使用 dataTransfer.files 获取文件列表
+        // 这样可以确保获取到原生的 File 对象，Preload 脚本中的 webUtils 需要这些对象来解析路径
+        const files = Array.from(e.dataTransfer.files);
+
+        console.log('[DragDrop] 接收到的文件对象:', files);
+
+        if (files.length > 0) {
+            try {
+                ui.showToast(`已开始处理 ${files.length} 个文件...`, 'info');
+
+                // 直接将 File 对象数组传递给 preload API
+                // 注意：在渲染进程中 files[i].path 可能是 undefined，
+                // 但传递给 preload 后，preload 脚本可以使用 Electron 的 webUtils 提取真实路径
+                await window.electronAPI.handleFileDrop(files);
+
+            } catch (error) {
+                console.error('处理拖拽文件失败:', error);
+                ui.showToast(`文件处理失败: ${error.message}`, 'error');
             }
-        } catch (error) {
-            console.error('处理拖拽文件/文件夹失败:', error);
-            ui.showToast(`处理失败: ${error.message}`, 'error');
         }
     });
 }
