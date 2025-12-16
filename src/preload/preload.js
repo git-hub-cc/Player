@@ -12,49 +12,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
     selectImportDirectory: () => ipcRenderer.invoke('select-import-directory'),
     startLocalImport: (dirPath) => ipcRenderer.invoke('start-local-import', dirPath),
     separateVideo: (trackData) => ipcRenderer.invoke('separate-video', trackData),
-    // =========================================================================
-    // 【核心新增】暴露获取在线歌词的接口给渲染进程
-    // =========================================================================
     getOnlineLyric: (lyricId, source) => ipcRenderer.invoke('get-online-lyric', { lyricId, source }),
-    // =========================================================================
 
     // --- 核心工具 ---
     downloadCoreTool: (toolName) => ipcRenderer.invoke('download-core-tool', toolName),
     openToolsFolder: () => ipcRenderer.invoke('open-tools-folder'),
 
-    // --- 文件拖拽处理 ---
+    // --- 文件拖拽接口 ---
     handleFileDrop: (files) => {
-        console.group('🔍 [Preload] handleFileDrop Log');
-        console.log('1. Files array received:', files);
-
+        if (!Array.isArray(files)) {
+            console.error('[Preload] handleFileDrop 接收到的不是一个数组:', files);
+            return Promise.resolve({ success: false, error: 'Preload Error: Invalid file list.' });
+        }
         try {
-            const fileList = files.map((file, index) => {
-                let filePath = null;
-                try {
-                    // 获取物理路径
-                    filePath = webUtils.getPathForFile(file);
-                    console.log(`   - File[${index}]: name="${file.name}", path="${filePath}"`);
-                } catch (pathError) {
-                    console.error(`   - ❌ File[${index}] getPathForFile failed:`, pathError);
-                }
-
-                // 返回普通对象给主进程
-                return {
-                    name: file.name,
-                    path: filePath,
-                    type: file.type,
-                    size: file.size
-                };
-            });
-
-            console.log('2. Sending payload to Main:', fileList);
-            console.groupEnd();
-
-            return ipcRenderer.invoke('handle-file-drop', fileList);
-
+            const fileListPayload = files.map(file => ({
+                name: file.name,
+                path: file.path, // 对于从 webkitGetAsEntry() 得到的 File 对象，其 path 属性是可用的
+                type: file.type,
+                size: file.size
+            })).filter(f => f.path);
+            return ipcRenderer.invoke('handle-file-drop', fileListPayload);
         } catch (e) {
-            console.error('❌ Preload processing error:', e);
-            console.groupEnd();
+            console.error('[Preload] 处理文件拖拽时发生错误:', e);
             return Promise.resolve({ success: false, error: `Preload Error: ${e.message}` });
         }
     },
@@ -94,4 +73,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('download-finished', (event, ...args) => callback(...args));
         return () => ipcRenderer.removeAllListeners('download-finished');
     },
+
+    // =========================================================================
+    // 【核心新增】暴露一个用于监听“打开文件”事件的接口
+    // =========================================================================
+    /**
+     * 注册一个回调函数，当主进程通过文件关联请求打开文件时被调用。
+     * @param {function(string): void} callback - 接收文件路径作为参数的回调函数。
+     * @returns {Function} - 一个用于取消监听的函数。
+     */
+    onOpenFile: (callback) => {
+        const handler = (event, filePath) => callback(filePath);
+        ipcRenderer.on('open-file', handler);
+        // 返回一个清理函数，用于在组件卸载时移除监听器
+        return () => ipcRenderer.removeListener('open-file', handler);
+    },
+    // =========================================================================
 });

@@ -10,6 +10,7 @@
 import { mutations, getters } from '../state.js';
 import { showToast, showConfirmationModal } from '../ui/modals.js';
 import { pinyin } from 'pinyin-pro';
+import path from 'path-browserify'; // 使用 path-browserify 在浏览器环境中使用 path API
 
 // --- 缓存与请求锁定配置 ---
 const CACHE_EXPIRATION_MS = 30 * 60 * 1000; // 缓存过期时间: 30分钟
@@ -34,8 +35,8 @@ function _makeTrackPlayable(track) {
     // 转换 src, albumArt, lyrics 字段
     ['src', 'albumArt', 'lyrics'].forEach(key => {
         const value = playableTrack[key];
-        // 仅转换非http、非data URL的本地相对路径
-        if (value && !value.startsWith('http') && !value.startsWith('data:')) {
+        // 仅转换非http、非data URL、非file URL的本地相对路径
+        if (value && !value.startsWith('http') && !value.startsWith('data:') && !value.startsWith('file:')) {
             playableTrack[key] = `media://${encode(value)}`;
         }
     });
@@ -57,31 +58,15 @@ function _makeTrackPlayable(track) {
  */
 export function init() {
     window.electronAPI.onNewTrack((newTrack) => {
-        // =========================================================================
-        // 【核心修改】检查当前播放列表是否为空，若为空则自动刷新
-        // =========================================================================
         const wasEmpty = getters.playlist().length === 0;
 
         if (wasEmpty) {
-            // 如果这是添加的第一首歌曲，则自动重新加载页面，
-            // 以确保UI从“空状态”正确过渡到“播放状态”。
             showToast(`"${newTrack.title}" 已添加！正在刷新媒体库...`, 'success');
-            setTimeout(() => window.location.reload(), 1500); // 延迟一点给用户看提示
-            return; // 阻止后续代码执行
+            setTimeout(() => window.location.reload(), 1500);
+            return;
         }
-        // =========================================================================
-
-        // 如果播放列表不为空，则执行常规的动态更新逻辑
         const track = _makeTrackPlayable(newTrack);
-        const oldPlaylist = getters.playlist();
-
-        // 将新轨道添加到播放列表的开头
-        mutations.setPlaylist([track, ...oldPlaylist]);
-
-        // 保持当前播放的歌曲不变（通过增加索引）
-        const newCurrentIndex = getters.currentTrackIndex() + 1;
-        mutations.setCurrentTrackIndex(newCurrentIndex);
-
+        mutations.prependTrackWhilePlaying(track);
         showToast(`已添加 "${track.title}" 到媒体库！`, 'success');
     });
     console.log("Media Service initialized.");
@@ -218,17 +203,11 @@ export async function deleteTrack(index) {
         mutations.removeTrack(index);
         showToast(`"${track.title}" 已删除`);
 
-        // =========================================================================
-        // 【核心修改】当删除最后一首歌后，自动刷新页面以返回欢迎页。
-        // =========================================================================
         if (getters.playlist().length === 0) {
-            // 短暂延迟后刷新，让用户看到“已删除”的提示
             setTimeout(() => window.location.reload(), 1500);
-            return; // 刷新将重置状态，无需再手动更新播放状态
+            return;
         }
-        // =========================================================================
 
-        // 如果列表不为空，则更新播放状态
         if (isDeletingCurrent) {
             const nextIndex = Math.min(index, getters.playlist().length - 1);
             mutations.setCurrentTrackIndex(nextIndex);
@@ -236,7 +215,7 @@ export async function deleteTrack(index) {
         }
 
     } catch (err) {
-        // 用户点击了“取消”，无需任何操作
+        // 用户取消
     }
 }
 
@@ -263,6 +242,62 @@ export async function separateVideo(index) {
             showToast(`分离失败: ${result.error}`, 'error');
         }
     } catch (err) {
-        // 用户取消操作
+        // 用户取消
     }
 }
+
+// =========================================================================
+// 【核心新增】处理通过文件关联打开的本地文件
+// =========================================================================
+/**
+ * 处理从主进程接收到的文件路径，并开始播放。
+ * @param {string} filePath - 文件的绝对路径。
+ */
+export function playFileFromPath(filePath) {
+    if (!filePath) return;
+
+    // 隐藏可能显示的“空状态”视图
+    const mainView = document.querySelector('.main-view');
+    if (mainView?.classList.contains('is-empty')) {
+        mainView.classList.remove('is-empty');
+    }
+
+    try {
+        const ext = path.extname(filePath).toLowerCase();
+        const baseName = path.basename(filePath, ext);
+
+        const videoExts = ['.mp4', '.mkv', '.webm'];
+        const audioExts = ['.mp3', '.flac', '.wav', '.m4a', '.ogg'];
+
+        let type = 'unknown';
+        if (videoExts.includes(ext)) type = 'video';
+        else if (audioExts.includes(ext)) type = 'audio';
+        else {
+            showToast(`不支持的文件类型: ${ext}`, 'error');
+            return;
+        }
+
+        // 构造一个新的轨道对象
+        const newTrack = {
+            title: baseName,
+            artist: '本地文件',
+            // 使用 file:// 协议，让 <video> 元素能直接加载本地文件
+            src: `file://${filePath.replace(/\\/g, '/')}`,
+            albumArt: '',
+            lyrics: '',
+            type: type,
+            // 标记这是一个外部文件，不属于媒体库
+            isExternal: true,
+        };
+
+        // 使用临时播放功能，不污染现有播放列表
+        mutations.setTemporaryPlayingTrack(newTrack);
+        mutations.setIsPlaying(true);
+        showToast(`正在播放: ${newTrack.title}`);
+
+    } catch (error) {
+        console.error('处理外部文件失败:', error);
+        showToast(`无法播放文件: ${error.message}`, 'error');
+    }
+}
+// =========================================================================

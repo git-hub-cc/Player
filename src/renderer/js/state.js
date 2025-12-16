@@ -120,10 +120,46 @@ export const mutations = {
     },
 
     // =========================================================================
-    // 【核心修复】增加 `force` 参数。
-    // 在应用启动时，即使加载的轨道索引与 state 中已存在的索引相同（例如都为0），
-    // 也需要强制触发 'currentTrackChanged' 事件，以确保播放器开始加载媒体。
+    // 【核心新增】添加一个在不中断播放的情况下向列表头部添加曲目的方法
     // =========================================================================
+    /**
+     * 在播放列表头部“静默”地插入一个新轨道，同时保持当前播放的轨道不变。
+     * 此方法仅会触发 'playlistChanged' 通知，不会触发 'currentTrackChanged'，
+     * 从而避免了不必要的播放器重载。
+     * @param {object} newTrack - 要添加的新轨道对象。
+     */
+    prependTrackWhilePlaying(newTrack) {
+        if (!newTrack || typeof newTrack !== 'object') {
+            console.warn('[State] prependTrackWhilePlaying: 提供了无效的轨道对象。');
+            return;
+        }
+
+        // 1. 记住当前正在播放的轨道（通过其 src 作为唯一标识）
+        const currentPlayingTrack = getters.currentTrack();
+        const currentSrc = currentPlayingTrack ? currentPlayingTrack.src : null;
+
+        // 2. 将新轨道添加到播放列表的开头
+        _state.playlist.unshift(newTrack);
+
+        // 3. 重新计算当前播放轨道的索引
+        if (currentSrc) {
+            // 在更新后的播放列表中找到旧轨道的 newIndex
+            const newCurrentIndex = _state.playlist.findIndex(track => track.src === currentSrc);
+            // 更新内部状态中的索引
+            _state.currentTrackIndex = newCurrentIndex;
+        } else {
+            // 如果之前没有歌曲在播放，但有一个有效的索引（例如索引为0的歌曲暂停中），
+            // 则由于在前面插入了新歌，旧索引需要加一。
+            if (_state.currentTrackIndex > -1) {
+                _state.currentTrackIndex++;
+            }
+        }
+
+        // 4. 只通知UI播放列表已发生变化，让UI自行重绘
+        _notify('playlistChanged', _state.playlist);
+    },
+    // =========================================================================
+
     /**
      * 设置当前播放轨道的索引。
      * @param {number} index - 新的轨道索引。
@@ -138,7 +174,6 @@ export const mutations = {
         _state.temporaryPlayingTrack = null;
         _notify('currentTrackChanged', getters.currentTrack());
     },
-    // =========================================================================
 
     setTemporaryPlayingTrack(track) {
         if (_state.temporaryPlayingTrack === track) return;

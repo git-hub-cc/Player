@@ -47,6 +47,18 @@
 
 <div class="container">
     <div class="player-container">
+        <!-- ========================================================================= -->
+        <!-- 【核心新增】文件拖拽覆盖层 -->
+        <!-- ========================================================================= -->
+        <div id="drag-overlay" class="drag-overlay">
+            <div class="drag-overlay-icon">
+                <span class="icon-placeholder" data-icon="DRAG_ADD"></span>
+            </div>
+            <p class="drag-overlay-text">拖拽到此处添加</p>
+            <p class="drag-overlay-subtext">支持音频、视频文件</p>
+        </div>
+        <!-- ========================================================================= -->
+
         <!-- 骨架屏 overlay - 在内容加载前显示 -->
         <div id="skeleton-overlay" class="skeleton-overlay active">
             <!-- 模拟主视图区域的骨架 -->
