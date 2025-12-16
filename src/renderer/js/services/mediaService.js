@@ -57,24 +57,36 @@ function _makeTrackPlayable(track) {
  */
 export function init() {
     window.electronAPI.onNewTrack((newTrack) => {
+        // =========================================================================
+        // 【核心修改】检查当前播放列表是否为空，若为空则自动刷新
+        // =========================================================================
+        const wasEmpty = getters.playlist().length === 0;
+
+        if (wasEmpty) {
+            // 如果这是添加的第一首歌曲，则自动重新加载页面，
+            // 以确保UI从“空状态”正确过渡到“播放状态”。
+            showToast(`"${newTrack.title}" 已添加！正在刷新媒体库...`, 'success');
+            setTimeout(() => window.location.reload(), 1500); // 延迟一点给用户看提示
+            return; // 阻止后续代码执行
+        }
+        // =========================================================================
+
+        // 如果播放列表不为空，则执行常规的动态更新逻辑
         const track = _makeTrackPlayable(newTrack);
         const oldPlaylist = getters.playlist();
+
         // 将新轨道添加到播放列表的开头
         mutations.setPlaylist([track, ...oldPlaylist]);
 
-        if (oldPlaylist.length === 0) {
-            // 如果原列表为空，直接播放新添加的曲目
-            mutations.setCurrentTrackIndex(0);
-            mutations.setIsPlaying(true);
-        } else {
-            // 如果原列表不为空，将当前播放索引+1，以保持当前播放的歌曲不变
-            const newCurrentIndex = getters.currentTrackIndex() + 1;
-            mutations.setCurrentTrackIndex(newCurrentIndex);
-        }
+        // 保持当前播放的歌曲不变（通过增加索引）
+        const newCurrentIndex = getters.currentTrackIndex() + 1;
+        mutations.setCurrentTrackIndex(newCurrentIndex);
+
         showToast(`已添加 "${track.title}" 到媒体库！`, 'success');
     });
     console.log("Media Service initialized.");
 }
+
 
 /**
  * 加载应用的初始数据，即本地播放列表。
@@ -101,66 +113,40 @@ export async function loadInitialData() {
  * @returns {Promise<object|null>} - 成功时返回搜索结果数据，否则返回 null。
  */
 export async function searchOnline(query, page) {
-    // 1. 生成唯一的请求标识符，作为缓存和锁的键
     const requestKey = `${query}_${page}`;
-
-    // 2. 检查缓存中是否存在有效数据
     if (apiCache.has(requestKey)) {
         const cachedEntry = apiCache.get(requestKey);
-        // 2.1 检查缓存是否过期
         if (Date.now() - cachedEntry.timestamp < CACHE_EXPIRATION_MS) {
-            console.log(`[缓存命中] 返回 "${requestKey}" 的缓存数据`);
-            return cachedEntry.data; // 返回未过期的缓存数据
+            return cachedEntry.data;
         } else {
-            // 2.2 缓存已过期，将其删除
             apiCache.delete(requestKey);
-            console.log(`[缓存过期] 已移除 "${requestKey}" 的数据`);
         }
     }
-
-    // 3. 检查是否有完全相同的请求正在进行中
     if (inFlightRequests.has(requestKey)) {
-        console.warn(`[请求锁定] 阻止了对 "${requestKey}" 的重复请求`);
         showToast('正在搜索中，请勿频繁操作...', 'info');
-        return null; // 阻止请求，返回 null
+        return null;
     }
-
-    // 4. 执行实际的API调用
     try {
-        // 4.1. 添加请求锁
         inFlightRequests.add(requestKey);
-
         const result = await window.electronAPI.searchOnline(query, page);
-
         if (result.success) {
-            // 5. API调用成功，处理缓存
-            // 5.1. 如果缓存已满，则按“先进先出”原则淘汰最旧的条目
             if (apiCache.size >= CACHE_MAX_SIZE) {
                 const oldestKey = apiCache.keys().next().value;
                 apiCache.delete(oldestKey);
-                console.log(`[缓存淘汰] 已移除最旧条目 "${oldestKey}"`);
             }
-            // 5.2. 将新数据存入缓存
-            const cacheEntry = { data: result.data, timestamp: Date.now() };
-            apiCache.set(requestKey, cacheEntry);
-            console.log(`[缓存存储] 已缓存 "${requestKey}" 的新数据`);
-
+            apiCache.set(requestKey, { data: result.data, timestamp: Date.now() });
             return result.data;
         } else {
-            // API返回了错误
             throw new Error(result.error || "未知搜索错误");
         }
     } catch (error) {
-        // 6. 统一处理所有异常
         console.error("在线搜索失败:", error);
         showToast(`搜索失败: ${error.message}`, "error");
         return null;
     } finally {
-        // 7. 无论成功与否，最后都必须释放请求锁
         inFlightRequests.delete(requestKey);
     }
 }
-
 
 /**
  * 解析在线曲目的可播放URL。
@@ -218,12 +204,9 @@ export async function deleteTrack(index) {
     const track = getters.playlist()[index];
     if (!track) return;
     try {
-        // 弹出确认对话框，防止误删
         await showConfirmationModal(`确定要删除 "${track.title}" 吗？\n文件将从磁盘中永久移除。`);
         const wasPlaying = getters.isPlaying();
         const isDeletingCurrent = getters.currentTrackIndex() === index;
-
-        // 从 'media://' URL 中解码出相对路径
         const decodedRelativeSrc = decodeURIComponent(track.src.substring('media://'.length));
         const result = await window.electronAPI.deleteTrack({ src: decodedRelativeSrc });
 
@@ -232,18 +215,26 @@ export async function deleteTrack(index) {
             return;
         }
 
-        // 从前端状态中移除轨道
         mutations.removeTrack(index);
+        showToast(`"${track.title}" 已删除`);
 
-        // 更新播放状态
+        // =========================================================================
+        // 【核心修改】当删除最后一首歌后，自动刷新页面以返回欢迎页。
+        // =========================================================================
         if (getters.playlist().length === 0) {
-            mutations.clearPlayingTrackInfo();
-        } else if (isDeletingCurrent) {
+            // 短暂延迟后刷新，让用户看到“已删除”的提示
+            setTimeout(() => window.location.reload(), 1500);
+            return; // 刷新将重置状态，无需再手动更新播放状态
+        }
+        // =========================================================================
+
+        // 如果列表不为空，则更新播放状态
+        if (isDeletingCurrent) {
             const nextIndex = Math.min(index, getters.playlist().length - 1);
             mutations.setCurrentTrackIndex(nextIndex);
             if (wasPlaying) mutations.setIsPlaying(true);
         }
-        showToast(`"${track.title}" 已删除`);
+
     } catch (err) {
         // 用户点击了“取消”，无需任何操作
     }
@@ -262,11 +253,9 @@ export async function separateVideo(index) {
         const result = await window.electronAPI.separateVideo(track);
 
         if (result.success) {
-            // 成功后，用主进程返回的最新播放列表数据更新前端状态
             const updatedPlaylist = result.data.map(_makeTrackPlayable);
             const currentSrc = getters.currentTrack()?.src;
             const newIndex = updatedPlaylist.findIndex(t => t.src === currentSrc);
-
             mutations.setPlaylist(updatedPlaylist);
             mutations.setCurrentTrackIndex(newIndex > -1 ? newIndex : 0);
             showToast(result.message || '视频分离成功！', 'success');

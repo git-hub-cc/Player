@@ -22,7 +22,8 @@ const DEFAULT_SOURCE = 'netease';
  */
 function getApiEndpoints(systemProxy) {
     // 逻辑：如果用户配置了系统代理，使用 .xyz 域名；否则，使用 .org 域名。
-    const hostname = systemProxy ? 'music.gdstudio.xyz' : 'music.gdstudio.org';
+    // const hostname = systemProxy ? 'music.gdstudio.xyz' : 'music.gdstudio.org';
+    const hostname = 'music.gdstudio.org';
     return {
         hostname,
         apiUrl: `https://${hostname}/api.php`,

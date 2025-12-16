@@ -11,6 +11,7 @@
 import * as dom from '../dom.js';
 import * as ui from '../ui.js';
 import * as mediaService from '../services/mediaService.js';
+import { subscribe } from '../state.js';
 import { pinyin } from 'pinyin-pro';
 import { getTemplate } from '../utils.js';
 import * as ICONS from '../icons.js';
@@ -200,12 +201,11 @@ async function performSearch(query, page = 1) {
         totalPages = Math.ceil(total / ITEMS_PER_PAGE) || 1;
         ui.renderPaginationControls(dom.paginationControls, currentPage, totalPages);
         updateStatus(`搜索成功！显示 ${results.length} 首歌曲。`, 'success');
-    } else if (!inFlightRequests.has(`${query}_${page}`)) {
-        // 如果 data 为 null 且不是因为请求被锁定，说明是API错误
+    } else {
+        // 如果 data 为 null，说明是API错误或请求被锁定，mediaService已显示相应提示
         updateStatus('搜索失败，请检查网络或稍后重试。', 'error');
         ui.renderPaginationControls(dom.paginationControls, 0, 0);
     }
-    // 如果是请求被锁定，mediaService 已经显示了提示，此处无需额外操作
 
     searchBtn.disabled = false;
     searchBtn.classList.remove('loading');
@@ -321,13 +321,32 @@ export function setupDownloaderListeners() {
         }
     });
 
-    window.electronAPI.onImportStatus(async (status) => {
+    // =========================================================================
+    // 【核心修改】移除导入成功后的确认弹窗，直接自动刷新页面。
+    // =========================================================================
+    window.electronAPI.onImportStatus((status) => {
         updateStatus(status.message, status.type);
-        if (status.type === 'success') {
-            try {
-                await ui.showConfirmationModal(`成功导入${status.importedCount}个文件！\n是否立即刷新以加载新内容？`, { confirmText: "立即刷新" });
-                window.location.reload();
-            } catch (e) { /* 用户取消刷新 */ }
+        if (status.type === 'success' && status.importedCount > 0) {
+            // 只要成功导入了至少一个文件，就自动刷新
+            window.location.reload();
         }
+    });
+    // =========================================================================
+
+    // 订阅播放列表变化事件，以便在下载成功后更新UI
+    subscribe('playlistChanged', (newPlaylist) => {
+        if (currentSearchResults.length === 0 || !dom.searchResultsList) return;
+        const resultItems = dom.searchResultsList.querySelectorAll('.playlist-item');
+        resultItems.forEach(item => {
+            const index = parseInt(item.dataset.index, 10);
+            if (isNaN(index) || !currentSearchResults[index]) return;
+            const searchResultTrack = currentSearchResults[index];
+            const isNowCached = newPlaylist.some(pTrack =>
+                pTrack.id === searchResultTrack.id && pTrack.source === searchResultTrack.source
+            );
+            if (isNowCached) {
+                ui.updateSearchResultItemStatus(item, 'cached');
+            }
+        });
     });
 }
