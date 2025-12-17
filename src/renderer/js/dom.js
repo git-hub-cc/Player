@@ -52,13 +52,11 @@ export let openMediaFolderBtn = document.getElementById('open-media-folder-btn')
 
 // --- 信息面板 ---
 export let infoPanel = document.getElementById('info-panel');
-// 【核心修改】直接引用菜单项中的按钮，确保事件监听有效
 export let infoBtn = document.getElementById('info-btn');
 export let closeInfoBtn = document.getElementById('close-info-btn');
 
 // --- 快捷键面板 ---
 export let shortcutPanel = document.getElementById('shortcut-panel');
-// 【核心修改】直接引用菜单项中的按钮
 export let shortcutBtn = document.getElementById('shortcut-btn');
 export let closeShortcutBtn = document.getElementById('close-shortcut-btn');
 export let shortcutListEl = document.getElementById('shortcut-list');
@@ -71,13 +69,18 @@ export let urlOrSearchInput = document.getElementById('url-or-search-input');
 export let downloadStatusEl = document.getElementById('download-status');
 export let downloadActionsContainer = document.getElementById('download-actions-container');
 export let startDownloadBtn = document.getElementById('start-download-btn');
-export let searchNeteaseBtn = document.getElementById('search-netease-btn');
+export let searchOnlineBtn = document.getElementById('search-online-btn');
 export let downloaderView = document.getElementById('downloader-view');
 export let panelDescription = downloaderView.querySelector('.panel-description');
 export let searchResultsContainer = document.getElementById('search-results-container');
 export let searchResultsList = document.getElementById('search-results-list');
 export let paginationControls = document.getElementById('pagination-controls');
 export let importLocalBtn = document.getElementById('import-local-btn');
+// =========================================================================
+// 【核心修改】移除对平台选择器的引用
+// 由于平台选择器已从 HTML 中移除，此处引用也需要同步删除。
+// =========================================================================
+
 
 // --- 空状态 ---
 export let emptyStateView = document.getElementById('empty-state-view');
@@ -111,12 +114,9 @@ export let docElement = document.documentElement;
 export let seekFeedbackEl = document.getElementById('seek-feedback');
 export let speedFeedbackEl = document.getElementById('speed-feedback');
 
-// =========================================================================
-// 【核心修改】新增对“更多选项”按钮和菜单的引用
-// =========================================================================
+// --- "更多选项" 菜单 ---
 export let moreOptionsBtn = document.getElementById('more-options-btn');
 export let moreOptionsMenu = document.getElementById('more-options-menu');
-// =========================================================================
 
 export const allSidePanels = [playlistPanel, infoPanel, shortcutPanel, downloadPanel];
 

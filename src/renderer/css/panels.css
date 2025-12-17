@@ -172,12 +172,24 @@
     flex-grow: 1;
     overflow: hidden;
 }
+/* ========================================================================= */
+/* 【核心修改】调整下载输入区域的样式 */
+/* 减小元素间距，使布局在移除平台选择器后更紧凑、美观。 */
+/* ========================================================================= */
 .downloader-input-area {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px; /* 减小间距 */
     flex-shrink: 0;
+    padding-top: 8px;
 }
+
+.panel-description {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
 .downloader-view textarea {
     min-height: 80px;
     height: 80px;
