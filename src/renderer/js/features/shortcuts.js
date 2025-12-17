@@ -4,7 +4,7 @@
  * @file 快捷键管理器 (Shortcut Manager)
  * @description
  * 负责处理所有全局快捷键的注册、监听和执行。
- * 采用命令模式将每个快捷键动作解耦为独立的对象，增强了可扩展性。
+ * 包含冲突检测逻辑，防止组合键触发单键功能。
  */
 
 import * as dom from '../dom.js';
@@ -37,7 +37,7 @@ class TogglePlayCommand extends Command {
     execute() { mutations.togglePlayState(); }
 }
 
-export class NextTrackCommand extends Command { // Export for player.js
+export class NextTrackCommand extends Command {
     execute() {
         const playlist = getters.playlist();
         const len = playlist.length;
@@ -106,6 +106,26 @@ class SpeedCommand extends Command {
     }
 }
 
+class ResetSpeedCommand extends Command {
+    execute() {
+        mutations.setPlaybackRate(1.0);
+        ui.showSpeedFeedback();
+    }
+}
+
+class RotateCommand extends Command {
+    constructor(degrees) { super(); this.degrees = degrees; }
+    execute() {
+        const currentRotation = getters.videoRotation();
+        const newRotation = currentRotation + this.degrees;
+        mutations.setVideoRotation(newRotation);
+
+        let displayAngle = newRotation % 360;
+        if (displayAngle < 0) displayAngle += 360;
+        ui.showSeekFeedback(`旋转 ${displayAngle}°`);
+    }
+}
+
 class ToggleMuteCommand extends Command {
     execute() { mutations.setIsMuted(!getters.isMuted()); }
 }
@@ -119,12 +139,21 @@ class TogglePlaylistCommand extends Command {
 }
 
 const commandMap = {
-    'toggle-play': new TogglePlayCommand(), 'next-track': new NextTrackCommand(),
-    'prev-track': new PrevTrackCommand(), 'seek-forward': new SeekCommand(SEEK_STEP_SHORT),
-    'seek-backward': new SeekCommand(-SEEK_STEP_SHORT), 'volume-up': new VolumeCommand(0.1),
-    'volume-down': new VolumeCommand(-0.1), 'speed-up': new SpeedCommand(0.1),
-    'speed-down': new SpeedCommand(-0.1), 'toggle-mute': new ToggleMuteCommand(),
-    'toggle-lyrics': new ToggleLyricsCommand(), 'toggle-playlist': new TogglePlaylistCommand(),
+    'toggle-play': new TogglePlayCommand(),
+    'next-track': new NextTrackCommand(),
+    'prev-track': new PrevTrackCommand(),
+    'seek-forward': new SeekCommand(SEEK_STEP_SHORT),
+    'seek-backward': new SeekCommand(-SEEK_STEP_SHORT),
+    'volume-up': new VolumeCommand(0.1),
+    'volume-down': new VolumeCommand(-0.1),
+    'speed-up': new SpeedCommand(0.1),
+    'speed-down': new SpeedCommand(-0.1),
+    'speed-reset': new ResetSpeedCommand(),
+    'rotate-cw': new RotateCommand(90),
+    'rotate-ccw': new RotateCommand(-90),
+    'toggle-mute': new ToggleMuteCommand(),
+    'toggle-lyrics': new ToggleLyricsCommand(),
+    'toggle-playlist': new TogglePlaylistCommand(),
 };
 
 // =========================================================================
@@ -170,12 +199,28 @@ function saveShortcuts() {
 
 export function loadShortcuts() {
     const saved = localStorage.getItem('player-shortcuts');
+    let settings;
     try {
-        const newSettings = saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(defaultShortcuts));
-        mutations.setShortcutSettings(newSettings);
+        settings = saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(defaultShortcuts));
     } catch (e) {
-        mutations.setShortcutSettings(JSON.parse(JSON.stringify(defaultShortcuts)));
+        settings = JSON.parse(JSON.stringify(defaultShortcuts));
     }
+
+    // =========================================================================
+    // 【核心修复】强制合并/更新旋转快捷键配置
+    // 防止 LocalStorage 中缓存了旧的或错误的按键配置，导致代码更新不生效。
+    // =========================================================================
+    for (const [key, value] of Object.entries(defaultShortcuts)) {
+        // 如果缓存中没有这个键，或者键名以 'rotate-' 开头（强制更新旋转逻辑），则覆盖
+        if (!settings[key] || key.startsWith('rotate-')) {
+            settings[key] = value;
+        }
+    }
+    // =========================================================================
+
+    mutations.setShortcutSettings(settings);
+    // 可选：如果修改了配置，最好保存回去，保持同步
+    saveShortcuts();
     renderShortcutList();
 }
 
@@ -232,14 +277,32 @@ function executeShortcut(actionId) {
     if (command) command.execute();
 }
 
+/**
+ * 辅助函数：判断当前按下的键是否与所需键完全匹配。
+ * @param {Set<string>} requiredKeys - 快捷键配置要求的键集合
+ * @returns {boolean}
+ */
+function isExactKeyMatch(requiredKeys) {
+    if (requiredKeys.size !== pressedShortcutKeys.size) return false;
+    for (let key of requiredKeys) {
+        if (!pressedShortcutKeys.has(key)) return false;
+    }
+    return true;
+}
+
 function handleGlobalKeyDown(e) {
     if (e.repeat || getters.isRecordingShortcut() || ['input', 'textarea'].includes(e.target.tagName.toLowerCase()) || getters.playlist().length === 0) return;
     pressedShortcutKeys.add(normalizeKey(e.key));
     const settings = getters.shortcutSettings();
     for (const actionId in settings) {
         const requiredKeys = new Set(settings[actionId].keys);
-        if (requiredKeys.size > 0 && requiredKeys.size === pressedShortcutKeys.size && [...requiredKeys].every(key => pressedShortcutKeys.has(key))) {
+
+        // 【核心逻辑】使用 isExactKeyMatch 进行严格匹配
+        // 如果定义了 Alt+Right，而只按了 Right，这里 requiredKeys.size(2) !== pressed.size(1)，不会误触
+        if (requiredKeys.size > 0 && isExactKeyMatch(requiredKeys)) {
             e.preventDefault();
+
+            // 处理长按逻辑
             if (actionId === 'seek-forward' || actionId === 'seek-backward') {
                 isLongPressActive = false;
                 longPressTimer = setTimeout(() => {
@@ -247,7 +310,9 @@ function handleGlobalKeyDown(e) {
                     dom.mediaPlayer.playbackRate = LONG_PRESS_RATE;
                     ui.showSeekFeedback('倍速播放');
                 }, LONG_PRESS_THRESHOLD);
-            } else { executeShortcut(actionId); }
+            } else {
+                executeShortcut(actionId);
+            }
             break;
         }
     }
@@ -257,19 +322,29 @@ function handleGlobalKeyUp(e) {
     if (getters.isRecordingShortcut()) return;
     clearTimeout(longPressTimer); longPressTimer = null;
     const normalizedKey = normalizeKey(e.key);
+
     const settings = getters.shortcutSettings();
     const seekForwardKeys = new Set(settings['seek-forward']?.keys || []);
     const seekBackwardKeys = new Set(settings['seek-backward']?.keys || []);
-    if (seekForwardKeys.has(normalizedKey) && [...seekForwardKeys].every(k => pressedShortcutKeys.has(k))) {
+
+    // 【核心修复】在按键松开时，也必须进行严格匹配。
+    // 如果用户松开 Alt+Right 组合键中的 Right 键，此时 pressed 集合中还剩下 Alt。
+    // 而 'seek-forward' 只需要 Right。如果不严格检查，可能会被系统误判。
+    // isExactKeyMatch 确保只有在当前按下的键 *仅仅* 是 'Right' 时（即普通快进操作结束时），才触发 seek-forward 的逻辑。
+    if (seekForwardKeys.has(normalizedKey) && isExactKeyMatch(seekForwardKeys)) {
         if (isLongPressActive) {
             dom.mediaPlayer.playbackRate = getters.playbackRate();
             ui.showSeekFeedback('恢复正常');
-        } else { executeShortcut('seek-forward'); }
-    } else if (seekBackwardKeys.has(normalizedKey) && [...seekBackwardKeys].every(k => pressedShortcutKeys.has(k))) {
+        } else {
+            executeShortcut('seek-forward');
+        }
+    } else if (seekBackwardKeys.has(normalizedKey) && isExactKeyMatch(seekBackwardKeys)) {
         if (isLongPressActive) {
             dom.mediaPlayer.playbackRate = getters.playbackRate();
             ui.showSeekFeedback('恢复正常');
-        } else { executeShortcut('seek-backward'); }
+        } else {
+            executeShortcut('seek-backward');
+        }
     }
     isLongPressActive = false;
     pressedShortcutKeys.delete(normalizedKey);
