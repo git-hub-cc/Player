@@ -119,8 +119,7 @@ function setupDragAndDropListeners() {
         dragCounter = 0; // 重置计数器
         dragOverlay.classList.remove('active');
 
-        // 【核心修复】直接使用 dataTransfer.files 获取文件列表
-        // 这样可以确保获取到原生的 File 对象，Preload 脚本中的 webUtils 需要这些对象来解析路径
+        // 使用 dataTransfer.files 获取文件列表
         const files = Array.from(e.dataTransfer.files);
 
         console.log('[DragDrop] 接收到的文件对象:', files);
@@ -130,8 +129,6 @@ function setupDragAndDropListeners() {
                 ui.showToast(`已开始处理 ${files.length} 个文件...`, 'info');
 
                 // 直接将 File 对象数组传递给 preload API
-                // 注意：在渲染进程中 files[i].path 可能是 undefined，
-                // 但传递给 preload 后，preload 脚本可以使用 Electron 的 webUtils 提取真实路径
                 await window.electronAPI.handleFileDrop(files);
 
             } catch (error) {
@@ -283,14 +280,12 @@ async function init() {
     setupShortcutListeners();
     setupDragAndDropListeners();
 
-    // =========================================================================
-    // 【核心新增】监听主进程通过文件关联打开文件的事件
-    // =========================================================================
+    // 监听主进程通过文件关联打开文件的事件
+    // 注意：此回调通常在 loadInitialData 之前或期间触发
     window.electronAPI.onOpenFile((filePath) => {
         console.log(`[Renderer] 接收到文件路径: ${filePath}`);
         mediaService.playFileFromPath(filePath);
     });
-    // =========================================================================
 
     const initialTime = loadPlayerState();
     await mediaService.loadInitialData();
@@ -299,13 +294,29 @@ async function init() {
     if (playlist.length > 0) {
         let trackIndex = getters.currentTrackIndex();
         if (trackIndex >= playlist.length || trackIndex < 0) trackIndex = 0;
+
+        // 使用 setTimeout 将逻辑移入下一个事件循环
         setTimeout(() => {
-            // 仅在没有通过文件关联启动时，才恢复上次播放的轨道
-            if (!getters.currentTrack()) {
-                mutations.setCurrentTrackIndex(trackIndex, true); // 强制触发更新
+            // 检查当前是否正在播放临时轨道（即通过文件关联打开的文件）
+            const isPlayingExternalFile = !!getters.temporaryPlayingTrack();
+
+            if (!isPlayingExternalFile) {
+                mutations.setCurrentTrackIndex(trackIndex, true); // force=true 强制播放器加载
             }
+
+            // 【核心修复】恢复记忆进度的逻辑
+            // 如果有记忆的播放时间，我们注册一个监听器
             if (initialTime > 0) {
                 const unsubscribe = subscribe('timeChanged', ({ duration }) => {
+                    // 【关键点】在执行跳转前，再次检查是否正在播放临时文件。
+                    // 如果因为竞态条件（Race Condition），文件关联事件在 loadPlayerState 之后才触发，
+                    // 那么此时 getters.temporaryPlayingTrack() 就会为真。
+                    // 这种情况下，我们必须取消跳转，让外部文件从头播放。
+                    if (getters.temporaryPlayingTrack()) {
+                        unsubscribe(); // 取消订阅，不执行跳转
+                        return;
+                    }
+
                     if (duration > 0) {
                         window.dispatchEvent(new CustomEvent('seekTo', { detail: initialTime }));
                         unsubscribe();
@@ -315,8 +326,8 @@ async function init() {
         }, 0);
     } else {
         ui.toggleEmptyState(true);
-        // 如果播放列表为空，但有文件要打开，则不自动打开下载面板
-        if (!getters.currentTrack()) {
+        // 如果播放列表为空，但有文件要打开（temporaryPlayingTrack不为空），则不自动打开下载面板
+        if (!getters.temporaryPlayingTrack()) {
             setTimeout(() => ui.toggleDownloadPanel(), 600);
         }
         window.dispatchEvent(new CustomEvent('hideSkeleton'));
