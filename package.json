@@ -8,6 +8,7 @@
     "start": "chcp 65001 && electron-forge start",
     "clean": "npm cache clean --force && rmdir /s /q node_modules && del package-lock.json",
     "package": "electron-forge package",
+    "proxy_make": "$env:HTTP_PROXY='http://127.0.0.1:7890'&& $env:HTTPS_PROXY='http://127.0.0.1:7890' && electron-forge make ",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "echo \"No linting configured\""
