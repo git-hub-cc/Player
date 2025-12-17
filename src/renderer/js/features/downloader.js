@@ -63,6 +63,7 @@ const downloadStrategies = [new BilibiliStrategy(), new JableStrategy(), new You
  * @returns {DownloadStrategy|null} - 匹配的策略实例或 null。
  */
 function findStrategyFor(url) {
+    if (!url) return null;
     return downloadStrategies.find(s => s.isApplicable(url)) || null;
 }
 
@@ -93,17 +94,73 @@ function transformApiData(apiTrack) {
 }
 
 /**
+ * =========================================================================
+ * 【核心新增】智能 URL 提取与补全工具
+ * 用于处理 Chrome 等浏览器复制时丢失 https:// 和 www. 的情况
+ * =========================================================================
+ * @param {string} input - 用户输入的原始文本
+ * @returns {string} - 标准化后的 URL 或空字符串
+ */
+function extractUrlFromInput(input) {
+    const text = input.trim();
+    if (!text) return '';
+
+    // 1. 优先：如果文本中已经包含 http:// 或 https://，直接提取
+    const protocolMatch = text.match(/https?:\/\/[^\s]+/);
+    if (protocolMatch) return protocolMatch[0];
+
+    // 2. 补全：定义支持补全的域名规则
+    // 即使前面有任意字符（例如 "看这个视频 bilibili.com/..."），也能识别
+    const domainRules = [
+        { domain: 'bilibili.com', prefix: 'https://www.' },
+        { domain: 'douyin.com', prefix: 'https://www.' },
+        { domain: 'iesdouyin.com', prefix: 'https://www.' },
+        { domain: 'jable.tv', prefix: 'https://www.' },
+        { domain: 'youtube.com', prefix: 'https://www.' },
+        { domain: 'youtu.be', prefix: 'https://' } // 短链接通常不需要 www
+    ];
+
+    for (const rule of domainRules) {
+        // 构建正则：忽略前面任意字符 (.*?)，捕获域名及其后续直到遇到空白字符
+        // String.replace('.', '\\.') 是为了转义点号
+        const regex = new RegExp(`.*?(${rule.domain.replace('.', '\\.')}[^\\s]*)`, 'i');
+        const match = text.match(regex);
+
+        if (match) {
+            // match[1] 是捕获到的链接部分 (例如 "bilibili.com/video/BV...")
+            let capturedUrl = match[1];
+
+            // 如果捕获的部分已经以 www. 开头，就只补 https://
+            if (capturedUrl.toLowerCase().startsWith('www.')) {
+                return 'https://' + capturedUrl;
+            }
+
+            // 否则补全完整的前缀 (https://www.)
+            return rule.prefix + capturedUrl;
+        }
+    }
+
+    return '';
+}
+
+/**
  * 根据输入框内容更新UI模式（搜索模式 vs 下载模式）。
+ * =========================================================================
+ * 【核心修改】使用 extractUrlFromInput 替代简单的正则匹配
+ * =========================================================================
  */
 function updateInputMode() {
-    const text = dom.urlOrSearchInput.value.trim();
-    const urlMatch = text.match(/https?:\/\/[^\s]+/);
-    const url = urlMatch ? urlMatch[0] : '';
+    const text = dom.urlOrSearchInput.value;
+    // 使用新的提取逻辑
+    const url = extractUrlFromInput(text);
+    console.log(url)
     const strategy = findStrategyFor(url);
 
     // 动态显示/隐藏“搜索”和“下载”按钮
-    dom.startDownloadBtn.style.display = strategy || url ? 'flex' : 'none';
-    dom.searchNeteaseBtn.style.display = strategy || url ? 'none' : 'flex';
+    // 只要提取出了URL，或者找到了特定的策略，就显示下载按钮
+    const isUrlMode = !!strategy || !!url;
+    dom.startDownloadBtn.style.display = isUrlMode ? 'flex' : 'none';
+    dom.searchNeteaseBtn.style.display = isUrlMode ? 'none' : 'flex';
 
     // 更新面板顶部的描述文本
     if (strategy) {
@@ -267,8 +324,14 @@ export function setupDownloaderListeners() {
     // UI交互事件
     dom.urlOrSearchInput.addEventListener('input', updateInputMode);
     dom.searchNeteaseBtn.addEventListener('click', () => performSearch(dom.urlOrSearchInput.value.trim(), 1));
+
+    // =========================================================================
+    // 【核心修改】点击下载按钮时，同样应用智能补全逻辑
+    // =========================================================================
     dom.startDownloadBtn.addEventListener('click', () => {
-        const url = dom.urlOrSearchInput.value.trim().match(/https?:\/\/[^\s]+/)?.[0];
+        // 获取并补全 URL
+        const url = extractUrlFromInput(dom.urlOrSearchInput.value);
+
         if (!url) {
             updateStatus('请输入有效的URL。', 'error');
             return;
@@ -279,6 +342,7 @@ export function setupDownloaderListeners() {
         dom.startDownloadBtn.disabled = true;
         dom.startDownloadBtn.classList.add('loading');
     });
+
     dom.importLocalBtn.addEventListener('click', handleLocalImportClick);
 
     // --- 使用事件委托处理搜索结果列表的交互 ---
@@ -321,9 +385,6 @@ export function setupDownloaderListeners() {
         }
     });
 
-    // =========================================================================
-    // 【核心修改】移除导入成功后的确认弹窗，直接自动刷新页面。
-    // =========================================================================
     window.electronAPI.onImportStatus((status) => {
         updateStatus(status.message, status.type);
         if (status.type === 'success' && status.importedCount > 0) {
@@ -331,7 +392,6 @@ export function setupDownloaderListeners() {
             window.location.reload();
         }
     });
-    // =========================================================================
 
     // 订阅播放列表变化事件，以便在下载成功后更新UI
     subscribe('playlistChanged', (newPlaylist) => {
