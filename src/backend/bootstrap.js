@@ -6,6 +6,8 @@ import { DownloadService } from './services/download-service.js';
 import { LibraryService } from './services/library-service.js';
 import { OnlineService } from './services/online-service.js';
 import { ProviderRegistry } from './providers/provider-registry.js';
+// 【核心新增】导入新的 MusicApiService
+import { MusicApiService } from './services/music-api-service.js';
 
 /**
  * @module bootstrap
@@ -64,14 +66,26 @@ export async function configureContainer(app, sendMessageFunc) {
     );
 
     // =========================================================================
-    // 【核心修改】为 OnlineService 添加 'libraryService' 和 'systemProxy' 依赖。
+    // 【核心新增】注册新的 MusicApiService
+    // 它负责所有与在线音乐平台（通过 Meting）的交互。
     // =========================================================================
-    // `OnlineService` 现在依赖 `libraryService` 来生成占位封面图，
-    // 并依赖 `systemProxy` 来选择正确的音乐 API 域名。
+    container.register(
+        'musicApiService',
+        MusicApiService,
+        ['config', 'systemProxy']
+    );
+    // =========================================================================
+
+    // =========================================================================
+    // 【核心修改】为 OnlineService 注入新的 MusicApiService
+    // =========================================================================
+    // `OnlineService` 现在依赖 `musicApiService` 来处理在线搜索和资源获取，
+    // 同时保留对 `libraryService` 的依赖以生成占位图。
     container.register(
         'onlineService',
         OnlineService,
-        ['config', 'sendMessageFunc', 'libraryService', 'systemProxy']
+        // 注入 'musicApiService'，替换原来对 gdstudio 的直接依赖
+        ['config', 'sendMessageFunc', 'libraryService', 'musicApiService']
     );
     // =========================================================================
 

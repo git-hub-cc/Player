@@ -3,47 +3,33 @@
 import fs from 'fs';
 import path from 'path';
 import { pinyin } from 'pinyin-pro';
-import * as gdstudio from '../providers/gdstudio.js';
 import { downloadFile } from './download-service.js';
-
-// --- 配置 ---
-// URL 缓存有效期：20分钟 (毫秒)
-const URL_CACHE_TTL = 20 * 60 * 1000;
-// URL 缓存最大条目数，防止内存无限增长
-const URL_CACHE_MAX_SIZE = 200;
 
 /**
  * @class OnlineService
- * @description 负责处理所有与在线音乐服务相关的业务逻辑，
- *              包括搜索、获取播放链接、下载缓存以及歌词处理。
+ * @description 负责协调在线音乐相关的业务逻辑。
+ *              它作为应用层和底层音乐API服务（MusicApiService）之间的桥梁，
+ *              处理如搜索、获取播放链接、缓存等高级任务。
  */
 export class OnlineService {
-    // #config 存储应用的路径配置
     #config;
-    // #sendMessageCallback 用于向渲染进程发送消息
     #sendMessageCallback;
-    // #libraryService 用于生成占位封面图
     #libraryService;
-    // #systemProxy 存储系统代理信息
-    #systemProxy;
-    // #urlCache 用于缓存获取到的真实播放链接，减少重复 API 请求
-    #urlCache = new Map();
+    #musicApiService;
 
     /**
      * @param {object} config - 应用的全局配置对象。
      * @param {function} sendMessageFunc - 向渲染进程发送消息的回调函数。
      * @param {import('./library-service.js').LibraryService} libraryService - 媒体库服务实例。
-     * @param {string|null} systemProxy - 系统代理设置。
+     * @param {import('./music-api-service.js').MusicApiService} musicApiService - 音乐API服务实例。
      */
-    constructor(config, sendMessageFunc, libraryService, systemProxy) {
+    constructor(config, sendMessageFunc, libraryService, musicApiService) {
         this.#config = config;
         this.#sendMessageCallback = sendMessageFunc;
         this.#libraryService = libraryService;
-        this.#systemProxy = systemProxy; // 保存 systemProxy 实例
-        console.log(`[Online Service] 服务已实例化。代理: ${this.#systemProxy || '无'}`);
+        this.#musicApiService = musicApiService;
+        console.log(`[Online Service] 服务已实例化，并已连接到 MusicApiService。`);
     }
-
-    // --- 私有辅助方法 ---
 
     #sanitizeFilename(filename) {
         if (!filename) return 'untitled';
@@ -51,12 +37,9 @@ export class OnlineService {
         return sanitized.replace(/-+/g, '-').replace(/^-+|-+$/g, '').trim();
     }
 
-    // --- 公共 API 方法 ---
-
     async handleSearchRequest({ query, page = 1 }) {
         try {
-            // 将代理信息传递给 gdstudio 模块
-            const { list, total } = await gdstudio.search(query, page, 20, 'netease', this.#systemProxy);
+            const { list, total } = await this.#musicApiService.search(query, { page, limit: 20 });
             return { success: true, data: { results: list, total } };
         } catch (error) {
             console.error(`[Online] 在线搜索失败: ${error.message}`);
@@ -65,120 +48,103 @@ export class OnlineService {
     }
 
     /**
-     * 获取音乐播放 URL。
-     * 包含缓存逻辑：如果同一首歌曲在短时间内被重复请求，直接从内存返回，加速响应。
+     * 获取音乐播放 URL 和封面图。
+     * 此方法现在会处理普通和会员歌曲两种情况。
      */
     async handleGetMusicUrl(trackData) {
-        if (!trackData || !trackData.id || !trackData.source) {
-            return { success: false, error: '获取 URL 失败: 缺少曲目 ID 或来源信息。' };
+        if (!trackData || !trackData.id) {
+            return { success: false, error: '获取 URL 失败: 缺少曲目 ID。' };
         }
 
-        const cacheKey = `${trackData.source}_${trackData.id}`;
-
         try {
-            // 1. 检查缓存
-            if (this.#urlCache.has(cacheKey)) {
-                const cached = this.#urlCache.get(cacheKey);
-                const now = Date.now();
-                if (now - cached.timestamp < URL_CACHE_TTL) {
-                    // console.log(`[Online Service] 命中 URL 缓存: ${trackData.title}`);
-                    // 即使命中音乐URL缓存，如果之前封面没获取到，可能还可以重试封面，
-                    // 但为了极致速度，这里假设缓存的数据就是完整的。
-                    return { success: true, url: cached.url, albumArtUrl: cached.albumArtUrl };
-                } else {
-                    this.#urlCache.delete(cacheKey); // 缓存过期，删除
-                }
-            }
-
-            // 2. 并行获取音乐URL和封面真实URL，并将代理信息传递下去
-            const [musicUrl, albumArtUrl] = await Promise.all([
-                gdstudio.getMusicUrl(trackData, this.#systemProxy),
-                gdstudio.resolvePicUrl(trackData.pic_id, trackData.source, this.#systemProxy)
+            // 1. 并行获取歌曲元信息（可能包含试听URL）和封面真实URL
+            const [urlInfo, picUrl] = await Promise.all([
+                this.#musicApiService.getTrackUrl(trackData),
+                this.#musicApiService.getPicUrl(trackData)
             ]);
 
-            // 3. 处理封面图占位
-            let finalAlbumArtUrl = albumArtUrl;
+            if (!urlInfo || !urlInfo.url) {
+                throw new Error('API未能返回有效的播放链接，可能是版权或地区限制。');
+            }
+
+            // 2. 处理封面图
+            let finalAlbumArtUrl = picUrl;
             if (!finalAlbumArtUrl) {
                 const safeFilename = this.#sanitizeFilename(`${trackData.artist} - ${trackData.title}`);
-                // 注意：这里生成的是 Base64 格式的 Data URL，用于临时显示
                 finalAlbumArtUrl = this.#libraryService.generateAndSavePlaceholderArt(trackData.title, safeFilename);
             }
 
-            // 4. 存入缓存
-            if (this.#urlCache.size >= URL_CACHE_MAX_SIZE) {
-                // 简单清理：删除最早加入的一个
-                const firstKey = this.#urlCache.keys().next().value;
-                this.#urlCache.delete(firstKey);
-            }
-            this.#urlCache.set(cacheKey, {
-                url: musicUrl,
-                albumArtUrl: finalAlbumArtUrl,
-                timestamp: Date.now()
-            });
-
-            return { success: true, url: musicUrl, albumArtUrl: finalAlbumArtUrl };
+            // 3. 构造并返回包含所有必要信息的响应对象
+            return {
+                success: true,
+                url: urlInfo.url, // 对VIP歌曲是试听URL，对普通歌曲是最终URL
+                isVip: urlInfo.isVip,
+                originalTrackInfo: urlInfo.originalTrackInfo, // 仅在VIP歌曲时存在
+                albumArtUrl: finalAlbumArtUrl
+            };
         } catch (e) {
             console.error(`[Online] 获取音乐 URL 失败: ${e.message}`);
             return { success: false, error: e.message };
         }
     }
 
+    // =========================================================================
+    // 【核心新增】处理获取会员歌曲正式URL的请求
+    // =========================================================================
+    /**
+     * 处理获取会员歌曲真实播放链接的请求。
+     * 此方法会调用 MusicApiService 中带缓存的逻辑。
+     * @param {object} trackInfo - 从前端传来的原始轨道信息。
+     * @returns {Promise<object>} - 包含 { success, url } 的对象。
+     */
+    async handleGetVipMusicUrl(trackInfo) {
+        if (!trackInfo || !trackInfo.id) {
+            return { success: false, error: '获取 VIP URL 失败: 缺少曲目 ID。' };
+        }
+        try {
+            const url = await this.#musicApiService.getVipTrackUrl(trackInfo);
+            if (url) {
+                return { success: true, url };
+            } else {
+                throw new Error('无法从上游服务获取有效的播放链接。');
+            }
+        } catch (error) {
+            console.error(`[Online] 获取VIP音乐URL失败: ${error.message}`);
+            return { success: false, error: error.message };
+        }
+    }
+    // =========================================================================
+
     async handleCacheRequest(trackData) {
         const title = trackData.title || 'Unknown';
-        const artist = trackData.artist || 'Unknown';
+        const artist = Array.isArray(trackData.artist) ? trackData.artist.join(' & ') : (trackData.artist || 'Unknown');
         const safeFilename = this.#sanitizeFilename(`${artist} - ${title}`);
         const downloadPromises = [];
 
         try {
-            // --- 1. 音频下载 ---
-            let audioUrl = trackData.originalSrc;
-            if (!audioUrl && trackData.id) {
-                // 如果没有提供原始URL（例如直接从搜索结果下载），则重新获取
-                audioUrl = await gdstudio.getMusicUrl(trackData, this.#systemProxy);
-            }
+            // --- 1. 获取音频下载链接 (对VIP歌曲，这将是真实链接) ---
+            // 注意：这里我们总是获取最终链接来下载，而不是试听版
+            const audioUrl = await this.#musicApiService.getVipTrackUrl(trackData);
             if (!audioUrl) {
-                throw new Error('无法获取音频下载链接。');
+                throw new Error('无法获取音频下载链接，可能受版权或地区限制。');
             }
-            // 将音频下载任务添加到 Promise 数组
             downloadPromises.push(downloadFile(audioUrl, this.#config.MUSIC_DIR, `${safeFilename}.mp3`));
 
-            // --- 2. 封面处理 ---
-            let artUrl = trackData.albumArt || trackData.originalAlbumArt;
-            let finalAlbumArtPath = ""; // 这是最终要保存到 playlist.json 的相对路径
-
-            // 步骤 2.1: 如果传入的 artUrl 不是一个可用的URL (http/data)，则尝试从 API 解析
-            if ((!artUrl || (!artUrl.startsWith('http') && !artUrl.startsWith('data:'))) && trackData.pic_id) {
-                artUrl = await gdstudio.resolvePicUrl(trackData.pic_id, trackData.source, this.#systemProxy);
-            }
-
-            // 步骤 2.2: 根据 artUrl 的类型进行处理
-            if (artUrl && artUrl.startsWith('http')) {
-                // 情况 A: 得到一个标准的网络图片链接，下载它
+            // --- 2. 获取并处理封面 ---
+            let finalAlbumArtPath = "";
+            const picUrl = await this.#musicApiService.getPicUrl(trackData);
+            if (picUrl) {
                 finalAlbumArtPath = `albumArt/${safeFilename}.jpg`;
-                downloadPromises.push(downloadFile(artUrl, this.#config.ALBUMART_DIR, `${safeFilename}.jpg`));
-            } else if (artUrl && artUrl.startsWith('data:image/png;base64,')) {
-                // 情况 B: 得到一个 Base64 格式的图片数据 (通常是占位图)，直接写入文件
-                finalAlbumArtPath = `albumArt/${safeFilename}.png`;
-                const base64Data = artUrl.replace(/^data:image\/png;base64,/, "");
-                const coverPath = path.join(this.#config.ALBUMART_DIR, `${safeFilename}.png`);
-                // 使用异步写入，并将其加入 Promise 数组，以便 Promise.all 等待
-                downloadPromises.push(fs.promises.writeFile(coverPath, base64Data, 'base64'));
-            } else if (artUrl && !artUrl.startsWith('http') && !artUrl.startsWith('data:')) {
-                // 情况 C: 传入的可能是一个本地已存在的相对路径，直接采纳
-                finalAlbumArtPath = artUrl;
+                downloadPromises.push(downloadFile(picUrl, this.#config.ALBUMART_DIR, `${safeFilename}.jpg`));
             } else {
-                // 情况 D: 所有尝试都失败了 (无 pic_id, 解析失败等)，生成并保存一个新的占位图
                 finalAlbumArtPath = this.#libraryService.generateAndSavePlaceholderArt(title, safeFilename);
             }
 
-            // --- 3. 歌词处理 ---
+            // --- 3. 获取并处理歌词 ---
             const lyricsPath = path.join(this.#config.MUSIC_DIR, `${safeFilename}.lrc`);
-            if (trackData.lyricId) {
-                const lyricContent = await gdstudio.getLyric(trackData.lyricId, trackData.source, this.#systemProxy);
-                if (lyricContent) {
-                    // 异步写入歌词文件
-                    downloadPromises.push(fs.promises.writeFile(lyricsPath, lyricContent, 'utf-8'));
-                }
+            const lyricContent = await this.#musicApiService.getLyric(trackData);
+            if (lyricContent) {
+                downloadPromises.push(fs.promises.writeFile(lyricsPath, lyricContent, 'utf-8'));
             }
 
             // --- 4. 并发执行所有下载和写入任务 ---
@@ -188,7 +154,7 @@ export class OnlineService {
             const newTrack = {
                 title, artist,
                 src: `music/${safeFilename}.mp3`,
-                albumArt: finalAlbumArtPath, // 使用准备好的最终封面路径
+                albumArt: finalAlbumArtPath,
                 lyrics: fs.existsSync(lyricsPath) ? `music/${safeFilename}.lrc` : "",
                 type: "audio",
                 pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
@@ -196,13 +162,11 @@ export class OnlineService {
                 id: trackData.id,
                 source: trackData.source
             };
-
             await this.#libraryService.updateLocalPlaylist([newTrack]);
 
             // --- 6. 通知前端 ---
             this.#sendMessageCallback('new-track-added', newTrack);
             this.#sendMessageCallback('download-status', { message: `下载完成: ${title}`, type: 'success' });
-
         } catch (error) {
             console.error(`[Online] 缓存 "${title}" 失败:`, error);
             this.#sendMessageCallback('download-status', { message: `下载 "${title}" 失败: ${error.message}`, type: 'error' });
@@ -220,11 +184,12 @@ export class OnlineService {
         }
     }
 
-    async handleGetOnlineLyric({ lyricId, source }) {
-        if (!lyricId || !source) return { success: false, error: '缺少歌词 ID 或来源信息。' };
+    async handleGetOnlineLyric(trackInfo) {
+        if (!trackInfo || !trackInfo.id) {
+            return { success: false, error: '缺少轨道信息或ID。' };
+        }
         try {
-            // 传递代理信息
-            const content = await gdstudio.getLyric(lyricId, source, this.#systemProxy);
+            const content = await this.#musicApiService.getLyric(trackInfo);
             return { success: true, data: content };
         } catch (error) {
             return { success: false, error: error.message };

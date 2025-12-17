@@ -13,94 +13,57 @@ let diContainer; // 用于持有 DI 容器的实例
 let initialFileToOpen = null; // 用于存储应用启动时需要打开的文件路径
 
 // --- 常量配置 ---
-// 伪装的 User-Agent，模拟标准 Chrome 浏览器，防止被服务器识别为 Electron 爬虫而限速
 const SPOOF_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-// 将自定义的 'media' 协议注册为特权协议
 protocol.registerSchemesAsPrivileged([
     { scheme: 'media', privileges: { standard: true, secure: true, supportFetch: true, corsEnabled: true } }
 ]);
 
-// 处理 Windows 上的快捷方式创建/删除
 if (started) {
     app.quit();
 }
 
 // =========================================================================
-// 【核心新增】处理通过文件关联打开应用的核心逻辑
+// 【文件关联】核心逻辑
 // =========================================================================
-
-/**
- * 解析命令行参数，寻找文件路径。
- * @param {string[]} argv - 命令行参数数组 (通常是 process.argv)。
- * @returns {string|null} - 返回找到的第一个有效文件路径，否则返回 null。
- */
 function findFilePathInArgs(argv) {
-    // 在生产环境中，文件路径通常是启动参数的最后一个
-    // 在开发环境中，参数会更多，需要更智能的过滤
     const potentialPath = argv.slice(app.isPackaged ? 1 : 2).find(arg =>
-        !arg.startsWith('-') && // 过滤掉 Electron 或 Chromium 的开关参数
-        fs.existsSync(arg) // 确保路径存在
+        !arg.startsWith('-') && fs.existsSync(arg)
     );
     return potentialPath || null;
 }
 
-/**
- * 将文件路径发送到渲染进程进行处理。
- * @param {string} filePath - 要打开的文件的绝对路径。
- */
 function sendFileToRenderer(filePath) {
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
-        console.log(`[Main API] 发送文件到渲染进程: ${filePath}`);
         mainWindow.webContents.send('open-file', filePath);
     } else {
-        console.log(`[Main API] 窗口尚未准备好，暂存待打开的文件: ${filePath}`);
-        initialFileToOpen = filePath; // 如果窗口还没创建，则暂存路径
+        initialFileToOpen = filePath;
     }
 }
 
-// --- 单一实例锁 ---
-// 确保应用只有一个实例在运行。如果用户尝试打开第二个实例，则将焦点给到现有实例。
 const gotTheLock = app.requestSingleInstanceLock();
-
 if (!gotTheLock) {
-    app.quit(); // 如果获取锁失败，说明已有实例在运行，则退出当前这个新实例
+    app.quit();
 } else {
-    // 当第二个实例被启动时，此事件会在第一个实例中触发
     app.on('second-instance', (event, commandLine, workingDirectory) => {
         if (mainWindow) {
-            // 将现有窗口置于前台
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.focus();
-
-            // 处理新实例带来的文件路径
             const filePath = findFilePathInArgs(commandLine);
-            if (filePath) {
-                sendFileToRenderer(filePath);
-            }
+            if (filePath) sendFileToRenderer(filePath);
         }
     });
-
-    // 处理应用首次通过文件关联启动的情况
     const initialFilePath = findFilePathInArgs(process.argv);
-    if (initialFilePath) {
-        initialFileToOpen = initialFilePath;
-    }
+    if (initialFilePath) initialFileToOpen = initialFilePath;
 }
 // =========================================================================
 
-/**
- * 向渲染进程发送消息。
- */
 function sendMessage(type, data) {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(type, data);
     }
 }
 
-/**
- * 创建主应用窗口。
- */
 const createWindow = () => {
     mainWindow = new BrowserWindow({
         width: 1200, height: 800, minWidth: 940, minHeight: 600,
@@ -118,27 +81,18 @@ const createWindow = () => {
         mainWindow.loadFile(path.join(__dirname, '../renderer/main_window/index.html'));
     }
 
-    // =========================================================================
-    // 【核心新增】窗口内容加载完成后，处理被暂存的待打开文件
-    // =========================================================================
     mainWindow.webContents.on('did-finish-load', () => {
         if (initialFileToOpen) {
             sendFileToRenderer(initialFileToOpen);
-            initialFileToOpen = null; // 处理后清空
+            initialFileToOpen = null;
         }
     });
-    // =========================================================================
 
     mainWindow.on('enter-full-screen', () => sendMessage('fullscreen-change', true));
     mainWindow.on('leave-full-screen', () => sendMessage('fullscreen-change', false));
 };
 
-/**
- * 注册所有 IPC 监听器。
- * @description 此函数现在从 DI 容器中获取服务实例来处理 IPC 事件。
- */
 function registerIpcHandlers() {
-    // --- 从 DI 容器中按需获取已完全配置好的服务实例 ---
     const libraryService = diContainer.get('libraryService');
     const onlineService = diContainer.get('onlineService');
     const downloadService = diContainer.get('downloadService');
@@ -154,9 +108,14 @@ function registerIpcHandlers() {
     // --- 在线服务相关 ---
     ipcMain.handle('search-online', (_, { query, page }) => onlineService.handleSearchRequest({ query, page }));
     ipcMain.handle('get-music-url', (_, trackInfo) => onlineService.handleGetMusicUrl(trackInfo));
+    // =========================================================================
+    // 【核心新增】注册用于获取会员歌曲正式URL的IPC处理器
+    // =========================================================================
+    ipcMain.handle('get-vip-music-url', (_, trackInfo) => onlineService.handleGetVipMusicUrl(trackInfo));
+    // =========================================================================
     ipcMain.handle('get-lrc-content', (_, relativePath) => onlineService.handleGetLrcContent(relativePath));
     ipcMain.on('cache-track', (_, trackData) => onlineService.handleCacheRequest(trackData));
-    ipcMain.handle('get-online-lyric', (_, { lyricId, source }) => onlineService.handleGetOnlineLyric({ lyricId, source }));
+    ipcMain.handle('get-online-lyric', (_, trackInfo) => onlineService.handleGetOnlineLyric(trackInfo));
 
     // --- 下载与工具相关 ---
     ipcMain.on('download-douyin', (_, data) => downloadService.handleDownloadRequest(data));
@@ -167,7 +126,7 @@ function registerIpcHandlers() {
     ipcMain.on('toggle-fullscreen', (_, state) => mainWindow?.setFullScreen(state));
     ipcMain.on('show-user-data', () => shell.openPath(app.getPath('userData')));
 
-    // --- 工具下载 (与 DI 解耦，因为它更像一个独立的工具函数) ---
+    // --- 工具下载 ---
     ipcMain.handle('download-core-tool', async (_, toolName) => {
         try {
             const binDir = config.BIN_DIR;
@@ -179,9 +138,7 @@ function registerIpcHandlers() {
             } else if (toolName === 'yt-dlp') {
                 newPath = await setupService.downloadYtDlp(binDir, sendMessage);
                 downloadService.updateToolPath('yt-dlp', newPath);
-            } else {
-                throw new Error(`未知的工具名称: ${toolName}`);
-            }
+            } else { throw new Error(`未知的工具名称: ${toolName}`); }
             return { success: true, path: newPath };
         } catch (error) {
             return { success: false, error: error.message };
@@ -196,9 +153,6 @@ function registerIpcHandlers() {
     });
 }
 
-/**
- * 设置生产环境下的日志记录。
- */
 function setupLogging() {
     if (!app.isPackaged) return;
     try {
@@ -214,13 +168,8 @@ function setupLogging() {
     }
 }
 
-/**
- * 注册全局快捷键。
- */
 function registerGlobalShortcuts() {
-    globalShortcut.register('CommandOrControl+Shift+I', () => {
-        mainWindow?.webContents.toggleDevTools();
-    });
+    globalShortcut.register('CommandOrControl+Shift+I', () => mainWindow?.webContents.toggleDevTools());
     globalShortcut.register('CommandOrControl+Shift+L', () => {
         const userDataPath = app.getPath('userData');
         shell.openPath(userDataPath);
@@ -230,32 +179,19 @@ function registerGlobalShortcuts() {
     });
 }
 
-/**
- * 应用主入口点。
- */
 app.whenReady().then(async () => {
-    // =========================================================================
-    // 【核心优化】全局请求拦截与 User-Agent 伪装
-    // 在应用启动的最早阶段，拦截所有发出的 HTTP/HTTPS 请求，
-    // 强制将 User-Agent 修改为标准 Chrome 浏览器标识。
-    // 这对于解决 <video> 标签加载流媒体慢、API 403 Forbidden、服务端限速等问题至关重要。
-    // =========================================================================
     session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
         details.requestHeaders['User-Agent'] = SPOOF_USER_AGENT;
-        // 同时移除可能暴露身份的 Electron 默认 Header
         delete details.requestHeaders['X-Electron-Version'];
         delete details.requestHeaders['Electron'];
         callback({ cancel: false, requestHeaders: details.requestHeaders });
     });
     console.log('[Main API] 全局 User-Agent 伪装已激活。');
-    // =========================================================================
 
     setupLogging();
-
     nativeTheme.themeSource = 'dark';
     Menu.setApplicationMenu(null);
 
-    // --- 核心修改：使用 bootstrap 配置 DI 容器 ---
     try {
         diContainer = await configureContainer(app, sendMessage);
     } catch (error) {
@@ -265,7 +201,6 @@ app.whenReady().then(async () => {
         return;
     }
 
-    // 从容器中获取 config 来注册协议
     const config = diContainer.get('config');
     protocol.registerFileProtocol('media', (request, callback) => {
         const url = request.url.substring('media://'.length);
@@ -273,10 +208,7 @@ app.whenReady().then(async () => {
         callback({ path: path.normalize(filePath) });
     });
 
-    // 注册所有 IPC 处理器
     registerIpcHandlers();
-
-    // 创建窗口并注册快捷键
     createWindow();
     registerGlobalShortcuts();
 

@@ -47,9 +47,7 @@
 
 <div class="container">
     <div class="player-container">
-        <!-- ========================================================================= -->
-        <!-- 【核心新增】文件拖拽覆盖层 -->
-        <!-- ========================================================================= -->
+        <!-- 文件拖拽覆盖层 -->
         <div id="drag-overlay" class="drag-overlay">
             <div class="drag-overlay-icon">
                 <span class="icon-placeholder" data-icon="DRAG_ADD"></span>
@@ -57,7 +55,6 @@
             <p class="drag-overlay-text">拖拽到此处添加</p>
             <p class="drag-overlay-subtext">支持音频、视频文件</p>
         </div>
-        <!-- ========================================================================= -->
 
         <!-- 主视图区域：仅包含媒体、封面和歌词 -->
         <main class="main-view">
@@ -138,7 +135,7 @@
                 <p><strong>沉浸模式：</strong>双击播放区域（封面或视频）可进入或退出全屏沉浸式视图。</p>
                 <p><strong>快进/快退：</strong>短按方向键 <kbd>←</kbd> / <kbd>→</kbd> 可进行步进跳转，长按则可以倍速播放。</p>
                 <h3>数据源致谢</h3>
-                <p>本项目部分在线音乐搜索与播放功能基于 <strong>GD音乐台 (music.gdstudio.xyz)</strong> 提供的 API 实现。</p>
+                <p>本项目部分在线音乐搜索与播放功能基于 <strong>Meting</strong> 与 <strong>GD音乐台 (music.gdstudio.xyz)</strong> 提供的 API 实现。</p>
                 <p>请尊重作者劳动成果。使用过程如遇问题，可 B 站私信：<strong>GD-Studio</strong>。</p>
                 <h3>免责声明</h3>
                 <p class="statement-title" style="color: #e91429;">重要提示:</p>
@@ -171,7 +168,10 @@
             <div id="download-panel-content" class="download-panel-content">
                 <div id="downloader-view" class="downloader-view">
                     <div class="downloader-input-area">
-                        <p class="panel-description">输入歌曲名进行在线搜索，或粘贴 抖音/B站 链接进行本地下载。</p>
+                        <!-- ========================================================================= -->
+                        <!-- 【核心修改】移除平台选择器 -->
+                        <!-- ========================================================================= -->
+                        <p class="panel-description">输入歌曲名进行在线搜索，或粘贴 某音/某B 链接进行本地下载。</p>
                         <textarea id="url-or-search-input" placeholder="粘贴链接 或 输入歌曲/歌手名..."></textarea>
                         <div id="download-actions-container" class="download-actions-container">
                             <button id="import-local-btn" class="action-btn">
@@ -182,7 +182,7 @@
                                 <span class="btn-text">开始下载</span>
                                 <span class="btn-loader"></span>
                             </button>
-                            <button id="search-netease-btn" class="action-btn">
+                            <button id="search-online-btn" class="action-btn">
                                 <span class="btn-text">搜索</span>
                                 <span class="btn-loader"></span>
                             </button>
