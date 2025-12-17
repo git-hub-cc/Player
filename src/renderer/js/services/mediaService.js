@@ -241,6 +241,13 @@ export async function deleteTrack(index) {
             return;
         }
 
+        // 如果删除的是当前正在播放的资源，立即清空播放器状态和 UI
+        // 这会触发 playerView 重置，显示默认封面，防止 UI 残留已删除的封面
+        if (isDeletingCurrent) {
+            mutations.setIsPlaying(false);
+            mutations.clearPlayingTrackInfo();
+        }
+
         mutations.removeTrack(index);
         showToast(`"${track.title}" 已删除`);
 
