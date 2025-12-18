@@ -6,52 +6,50 @@
  * 负责渲染和控制可交互的背景封面画廊。
  * 这是一个独立的UI组件，它订阅播放列表状态的变化来更新自身内容，
  * 并通过请求状态变更来与应用的其他部分交互。
- *
- * 工作流程:
- * 1. 初始化时，订阅 `playlistChanged` 事件。
- * 2. 监听用户交互（拖拽、点击），并更新自身的内部状态（位置、速度等）。
- * 3. 当用户点击某个封面时，不直接调用播放器，而是调用 `state.mutations` 来
- *    请求更改当前轨道和播放状态，实现与播放核心的解耦。
  */
 
 import * as dom from '../dom.js';
-// --- 核心修复：正确导入 subscribe 函数 ---
 import { getters, mutations, subscribe } from '../state.js';
 import { DEFAULT_ART } from '../config.js';
 import * as ICONS from '../icons.js';
 import { getTemplate } from '../utils.js';
 
 // --- 配置项 ---
-const ITEM_WIDTH = 280;
-const GAP = 30;
-const RENDER_BUFFER = 1;         // 视口外额外渲染的行列数
-const LONG_PRESS_DURATION = 300; // 长按触发拖拽的阈值
-const FRICTION = 0.92;           // 惯性滚动的摩擦力
-const IDLE_TIMEOUT = 3000;       // 拖拽后播放器自动显示前的延迟
-const DRAG_THRESHOLD = 5;        // 触发拖拽的最小像素移动距离
-const AUTO_SCROLL_SPEED = 0.3;   // 屏保模式下的自动滚动速度
+const ITEM_WIDTH = 280;             // 单个项目的宽度
+const GAP = 30;                     // 项目之间的间隙
+const RENDER_BUFFER = 1;            // 视口外额外渲染的行列数，用于平滑滚动
+const LONG_PRESS_DURATION = 300;    // 长按触发拖拽的阈值 (毫秒)
+const FRICTION = 0.92;              // 惯性滚动的摩擦力 (值越小，停止越快)
+const IDLE_TIMEOUT = 3000;          // 拖拽停止后，播放器自动显示前的延迟
+const DRAG_THRESHOLD = 5;           // 触发拖拽的最小像素移动距离
+const AUTO_SCROLL_SPEED = 0.3;      // 屏保模式下的自动滚动速度
 
 // --- 模块内部状态 ---
 const _state = {
-    isInitialized: false,
-    isPressing: false,
-    isDragging: false,
-    justDragged: false,         // 用于区分拖拽结束和单击
-    longPressTimer: null,
-    startPos: { x: 0, y: 0 },
-    currentPos: { x: 0, y: 0 }, // 平滑动画的当前位置
-    targetPos: { x: 0, y: 0 },  // 拖拽或惯性的目标位置
-    velocity: { x: 0, y: 0 },
-    lastMoveTime: 0,
-    lastMovePos: { x: 0, y: 0 },
-    animationFrame: null,
-    renderedCells: new Map(),   // 虚拟化渲染的单元格缓存
-    idleTimer: null,
-    isAutoScrolling: false,
+    isInitialized: false,           // 是否已初始化
+    isPressing: false,              // 鼠标/手指是否按下
+    isDragging: false,              // 是否正在拖拽
+    justDragged: false,             // 用于区分拖拽结束和单击的标志
+    longPressTimer: null,           // 长按计时器
+    startPos: { x: 0, y: 0 },       // 拖拽起始位置
+    currentPos: { x: 0, y: 0 },     // 平滑动画的当前位置
+    targetPos: { x: 0, y: 0 },      // 拖拽或惯性的目标位置
+    velocity: { x: 0, y: 0 },       // 惯性滚动的速度
+    lastMoveTime: 0,                // 上次移动的时间戳
+    lastMovePos: { x: 0, y: 0 },    // 上次移动的位置
+    animationFrame: null,           // 动画帧ID
+    renderedCells: new Map(),       // 虚拟化渲染的单元格缓存
+    idleTimer: null,                // 闲置计时器
+    isAutoScrolling: false,         // 是否处于自动滚动（屏保）模式
 };
 
 
-/** 节流函数，用于优化resize事件处理 */
+/**
+ * 节流函数，用于优化 resize 事件处理，防止过于频繁地触发。
+ * @param {Function} func - 要节流的函数。
+ * @param {number} delay - 延迟时间 (毫秒)。
+ * @returns {Function} - 节流后的函数。
+ */
 function debounce(func, delay) {
     let timeout;
     return function(...args) {
@@ -74,12 +72,11 @@ function hidePlayer() {
 
 // --- 核心渲染逻辑 ---
 /**
- * 虚拟化渲染，只创建视口内的 DOM 元素。
+ * 虚拟化渲染，只创建视口内及缓冲区内的 DOM 元素以提高性能。
  */
 function updateGallery() {
     const playlistData = getters.playlist();
     if (playlistData.length === 0) {
-        // 如果播放列表为空，则清空画廊
         dom.galleryWrapper.innerHTML = '';
         _state.renderedCells.clear();
         return;
@@ -89,7 +86,7 @@ function updateGallery() {
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
     const fullItemWidth = ITEM_WIDTH + GAP;
-    const fullItemHeight = ITEM_WIDTH + GAP; // 保持正方形
+    const fullItemHeight = ITEM_WIDTH + GAP;
 
     const startCol = Math.floor(-_state.targetPos.x / fullItemWidth) - RENDER_BUFFER;
     const endCol = Math.floor((-_state.targetPos.x + viewportWidth) / fullItemWidth) + RENDER_BUFFER;
@@ -115,6 +112,7 @@ function updateGallery() {
                 const item = itemNode.querySelector('.gallery-item');
                 if (!item) continue;
 
+                // 注入SVG图标
                 const playIconPlaceholder = item.querySelector('.icon-placeholder[data-icon="GALLERY_PLAY"]');
                 if (playIconPlaceholder) {
                     playIconPlaceholder.outerHTML = ICONS.ICON_GALLERY_PLAY;
@@ -128,13 +126,20 @@ function updateGallery() {
                 const hash = Math.abs(row * 31 + col * 37);
                 const trackIndex = hash % playlistData.length;
                 const track = playlistData[trackIndex];
-                item.dataset.index = trackIndex;
+                if (!track) continue; // 健壮性检查
+
+                // =========================================================================
+                // 【核心修改】使用稳定的 `src` 作为唯一标识符，而不是易变的 `index`
+                // =========================================================================
+                item.dataset.src = track.src;
+                // =========================================================================
 
                 const artElement = item.querySelector('.gallery-item-art');
                 artElement.src = track.albumArt || DEFAULT_ART;
                 item.querySelector('.gallery-item-title').textContent = track.title || '未知标题';
                 item.querySelector('.gallery-item-artist').textContent = track.artist || '未知艺术家';
 
+                // 提取封面颜色用于边框
                 artElement.onload = () => {
                     try {
                         const canvas = dom.bgCanvas;
@@ -150,7 +155,7 @@ function updateGallery() {
                 if (artElement.complete) artElement.onload();
 
                 fragment.appendChild(item);
-                requestAnimationFrame(() => item.classList.add('visible'));
+                requestAnimationFrame(() => item.classList.add('visible')); // 延迟添加以触发淡入动画
                 _state.renderedCells.set(cellId, item);
             }
         }
@@ -158,14 +163,18 @@ function updateGallery() {
     dom.galleryWrapper.appendChild(fragment);
 }
 
+/**
+ * 动画循环，负责平滑滚动、惯性效果和自动滚动。
+ */
 function animate() {
+    // 使用插值实现平滑过渡
     _state.currentPos.x += (_state.targetPos.x - _state.currentPos.x) * 0.1;
     _state.currentPos.y += (_state.targetPos.y - _state.currentPos.y) * 0.1;
 
     if (_state.isAutoScrolling) {
-        _state.targetPos.x -= AUTO_SCROLL_SPEED;
+        _state.targetPos.x -= AUTO_SCROLL_SPEED; // 屏保模式下自动滚动
     } else if (!_state.isDragging && (Math.abs(_state.velocity.x) > 0.01 || Math.abs(_state.velocity.y) > 0.01)) {
-        _state.velocity.x *= FRICTION;
+        _state.velocity.x *= FRICTION; // 应用摩擦力，实现惯性滚动
         _state.velocity.y *= FRICTION;
         _state.targetPos.x += _state.velocity.x;
         _state.targetPos.y += _state.velocity.y;
@@ -173,6 +182,7 @@ function animate() {
 
     dom.galleryWrapper.style.transform = `translate(${_state.currentPos.x}px, ${_state.currentPos.y}px)`;
 
+    // 当移动距离足够大时，触发一次虚拟渲染
     const movedDistance = Math.hypot(_state.targetPos.x - (_state.lastUpdatePos?.x || 0), _state.targetPos.y - (_state.lastUpdatePos?.y || 0));
     if (movedDistance > ITEM_WIDTH / 2) {
         updateGallery();
@@ -214,6 +224,7 @@ function onPointerDown(e) {
             _state.targetPos.x = dragStartTarget.x + deltaX;
             _state.targetPos.y = dragStartTarget.y + deltaY;
             if (deltaTime > 0) {
+                // 计算瞬时速度，用于实现惯性滚动
                 _state.velocity.x = (currentMovePos.x - _state.lastMovePos.x) / deltaTime * 16.67;
                 _state.velocity.y = (currentMovePos.y - _state.lastMovePos.y) / deltaTime * 16.67;
             }
@@ -238,16 +249,30 @@ function onPointerDown(e) {
 }
 
 function onGalleryItemClick(e) {
-    if (_state.justDragged) return;
-    const item = e.target.closest('.gallery-item[data-index]');
+    if (_state.justDragged) return; // 如果是拖拽结束，则不触发点击事件
+
+    // =========================================================================
+    // 【核心修改】点击后，通过 `src` 查找最新的 `index` 来播放
+    // =========================================================================
+    const item = e.target.closest('.gallery-item[data-src]');
     if (item) {
-        const trackIndex = parseInt(item.dataset.index, 10);
-        if (!isNaN(trackIndex)) {
+        const trackSrc = item.dataset.src;
+        if (!trackSrc) return;
+
+        // 在当前的播放列表状态中查找该歌曲的最新索引
+        const trackIndex = getters.playlist().findIndex(t => t.src === trackSrc);
+
+        // 只有当歌曲仍然存在于播放列表中时才进行播放
+        if (trackIndex !== -1) {
             mutations.setCurrentTrackIndex(trackIndex);
             mutations.setIsPlaying(true);
             showPlayer();
+        } else {
+            // 可选：提示用户该歌曲已被移除
+            console.warn(`[Gallery] 尝试播放的歌曲 (src: ${trackSrc}) 已不在播放列表中。`);
         }
     }
+    // =========================================================================
 }
 
 const handleResize = debounce(updateGallery, 250);
@@ -271,7 +296,6 @@ export function stopAutoScroll() {
 export function init() {
     if (_state.isInitialized) return;
 
-    // --- 核心修复：直接调用 subscribe 函数 ---
     subscribe('playlistChanged', (playlist) => {
         if (playlist && playlist.length > 0) {
             updateGallery();
@@ -295,6 +319,7 @@ export function init() {
     dom.galleryContainer.addEventListener('click', onGalleryItemClick);
     window.addEventListener('resize', handleResize);
 
+    // 初始化画廊的中心位置
     const centerOffset = { x: (-5 * (ITEM_WIDTH + GAP)) / 2, y: (-5 * (ITEM_WIDTH + GAP)) / 2 };
     _state.currentPos = { ...centerOffset };
     _state.targetPos = { ...centerOffset };
