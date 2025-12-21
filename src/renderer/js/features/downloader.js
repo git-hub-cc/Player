@@ -53,8 +53,25 @@ class DouyinStrategy extends DownloadStrategy {
     getDescription() { return '检测到抖音链接，点击“开始下载”进行处理。'; }
 }
 
+// =========================================================================
+// 【核心新增】IYF 策略类
+// =========================================================================
+class IyfStrategy extends DownloadStrategy {
+    isApplicable(url) { return url.includes('iyf.lv') || url.includes('iyf.tv'); }
+    getDescription() { return '检测到爱壹帆(IYF)链接，点击“开始下载”进行处理。'; }
+}
+
 // 策略注册表
-const downloadStrategies = [new BilibiliStrategy(), new JableStrategy(), new YoutubeStrategy(), new DouyinStrategy()];
+const downloadStrategies = [
+    new BilibiliStrategy(),
+    new JableStrategy(),
+    new YoutubeStrategy(),
+    new DouyinStrategy(),
+    // =========================================================================
+    // 【核心新增】注册 IyfStrategy
+    // =========================================================================
+    new IyfStrategy()
+];
 
 /**
  * 根据URL查找匹配的下载策略。
@@ -111,7 +128,12 @@ function extractUrlFromInput(input) {
         { domain: 'iesdouyin.com', prefix: 'https://www.' },
         { domain: 'jable.tv', prefix: 'https://www.' },
         { domain: 'youtube.com', prefix: 'https://www.' },
-        { domain: 'youtu.be', prefix: 'https://' }
+        { domain: 'youtu.be', prefix: 'https://' },
+        // =========================================================================
+        // 【核心新增】IYF 域名补全规则
+        // =========================================================================
+        { domain: 'iyf.lv', prefix: 'https://www.' },
+        { domain: 'iyf.tv', prefix: 'https://www.' }
     ];
     for (const rule of domainRules) {
         const regex = new RegExp(`.*?(${rule.domain.replace('.', '\\.')}[^\\s]*)`, 'i');
@@ -144,9 +166,6 @@ function updateInputMode() {
     } else if (url) {
         dom.panelDescription.textContent = '检测到未知链接，将尝试作为抖音视频处理...';
     } else {
-        // =========================================================================
-        // 【核心修改】更新默认描述文本，明确指出数据源
-        // =========================================================================
         dom.panelDescription.textContent = '输入歌曲名进行在线搜索，或粘贴视频链接进行本地下载。';
     }
 }

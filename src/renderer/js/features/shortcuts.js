@@ -23,6 +23,8 @@ const LONG_PRESS_RATE = 4.0;
 let longPressTimer = null;
 let isLongPressActive = false;
 let pressedShortcutKeys = new Set();
+// 新增：用于倒带的定时器
+let rewindInterval = null;
 
 
 // =========================================================================
@@ -303,12 +305,26 @@ function handleGlobalKeyDown(e) {
             e.preventDefault();
 
             // 处理长按逻辑
-            if (actionId === 'seek-forward' || actionId === 'seek-backward') {
+            if (actionId === 'seek-forward') {
                 isLongPressActive = false;
                 longPressTimer = setTimeout(() => {
                     isLongPressActive = true;
                     dom.mediaPlayer.playbackRate = LONG_PRESS_RATE;
                     ui.showSeekFeedback('倍速播放');
+                }, LONG_PRESS_THRESHOLD);
+            } else if (actionId === 'seek-backward') {
+                // 【修复】长按左键应触发倒带（负向播放效果）
+                // 由于 playbackRate 不支持负值，通过 setInterval 模拟
+                isLongPressActive = false;
+                longPressTimer = setTimeout(() => {
+                    isLongPressActive = true;
+                    if (rewindInterval) clearInterval(rewindInterval);
+                    rewindInterval = setInterval(() => {
+                        // 每次间隔 50ms，回退步长 = 速率(4.0) * 时间(0.05s) = 0.2s
+                        const step = LONG_PRESS_RATE * 0.05;
+                        dom.mediaPlayer.currentTime = Math.max(0, dom.mediaPlayer.currentTime - step);
+                    }, 50);
+                    ui.showSeekFeedback('<< 倒带');
                 }, LONG_PRESS_THRESHOLD);
             } else {
                 executeShortcut(actionId);
@@ -328,9 +344,6 @@ function handleGlobalKeyUp(e) {
     const seekBackwardKeys = new Set(settings['seek-backward']?.keys || []);
 
     // 【核心修复】在按键松开时，也必须进行严格匹配。
-    // 如果用户松开 Alt+Right 组合键中的 Right 键，此时 pressed 集合中还剩下 Alt。
-    // 而 'seek-forward' 只需要 Right。如果不严格检查，可能会被系统误判。
-    // isExactKeyMatch 确保只有在当前按下的键 *仅仅* 是 'Right' 时（即普通快进操作结束时），才触发 seek-forward 的逻辑。
     if (seekForwardKeys.has(normalizedKey) && isExactKeyMatch(seekForwardKeys)) {
         if (isLongPressActive) {
             dom.mediaPlayer.playbackRate = getters.playbackRate();
@@ -340,7 +353,11 @@ function handleGlobalKeyUp(e) {
         }
     } else if (seekBackwardKeys.has(normalizedKey) && isExactKeyMatch(seekBackwardKeys)) {
         if (isLongPressActive) {
-            dom.mediaPlayer.playbackRate = getters.playbackRate();
+            // 【修复】长按结束，清除倒带定时器
+            if (rewindInterval) {
+                clearInterval(rewindInterval);
+                rewindInterval = null;
+            }
             ui.showSeekFeedback('恢复正常');
         } else {
             executeShortcut('seek-backward');
@@ -370,7 +387,14 @@ export function setupShortcutListeners() {
     window.addEventListener('keydown', handleGlobalKeyDown);
     window.addEventListener('keyup', handleGlobalKeyUp);
     window.addEventListener('blur', () => {
-        pressedShortcutKeys.clear(); isLongPressActive = false; clearTimeout(longPressTimer);
+        pressedShortcutKeys.clear();
+        isLongPressActive = false;
+        clearTimeout(longPressTimer);
+        // 窗口失去焦点时，确保清理倒带状态
+        if (rewindInterval) {
+            clearInterval(rewindInterval);
+            rewindInterval = null;
+        }
         if (dom.mediaPlayer.playbackRate !== getters.playbackRate()) dom.mediaPlayer.playbackRate = getters.playbackRate();
     });
 }
