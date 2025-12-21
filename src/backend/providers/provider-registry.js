@@ -5,6 +5,11 @@ import { BilibiliProvider } from './bilibili.js';
 import { DouyinProvider } from './douyin.js';
 import { JableProvider } from './jable.js';
 import { YoutubeProvider } from './youtube.js';
+// =========================================================================
+// 【核心新增】导入 IyfProvider
+// =========================================================================
+import { IyfProvider } from './iyf.js';
+
 
 /**
  * @class ProviderRegistry
@@ -49,7 +54,10 @@ export class ProviderRegistry {
 
         console.log('[Provider Registry] 正在初始化所有下载服务提供者...');
         const ProviderClasses = [
-            BilibiliProvider, DouyinProvider, JableProvider, YoutubeProvider,
+            // =========================================================================
+            // 【核心修改】将 IyfProvider 添加到注册列表
+            // =========================================================================
+            BilibiliProvider, DouyinProvider, JableProvider, YoutubeProvider, IyfProvider
         ];
 
         ProviderClasses.forEach(ProviderClass => {
