@@ -49,6 +49,10 @@ export let playlistEl = document.getElementById('playlist');
 export let playlistSearchInput = document.getElementById('playlist-search');
 export let playlistNoResultsEl = document.getElementById('playlist-no-results');
 export let openMediaFolderBtn = document.getElementById('open-media-folder-btn');
+// =========================================================================
+// 【核心新增】过滤模式按钮 DOM 引用
+// =========================================================================
+export let filterModeBtns = document.querySelectorAll('.filter-mode-btn');
 
 // --- 信息面板 ---
 export let infoPanel = document.getElementById('info-panel');
@@ -76,16 +80,19 @@ export let searchResultsContainer = document.getElementById('search-results-cont
 export let searchResultsList = document.getElementById('search-results-list');
 export let paginationControls = document.getElementById('pagination-controls');
 export let importLocalBtn = document.getElementById('import-local-btn');
-// =========================================================================
-// 【核心修改】移除对平台选择器的引用
-// 由于平台选择器已从 HTML 中移除，此处引用也需要同步删除。
-// =========================================================================
 
+// --- 系统设置面板 ---
+export let settingsPanel = document.getElementById('settings-panel');
+export let settingsBtn = document.getElementById('settings-btn');
+export let closeSettingsBtn = document.getElementById('close-settings-btn');
+export let openToolsFolderBtn = document.getElementById('open-tools-folder-btn');
+export let ffmpegToolCard = document.getElementById('ffmpeg-tool-card');
+export let ytdlpToolCard = document.getElementById('ytdlp-tool-card');
+export let downloadToolBtns = document.querySelectorAll('.download-tool-btn');
 
 // --- 空状态 ---
 export let emptyStateView = document.getElementById('empty-state-view');
 export let emptyStateSearchBtn = document.getElementById('empty-state-search-btn');
-export let emptyStateImportBtn = document.getElementById('empty-state-import-btn');
 
 // --- 背景画廊 ---
 export let galleryContainer = document.getElementById('gallery-container');
@@ -118,7 +125,7 @@ export let speedFeedbackEl = document.getElementById('speed-feedback');
 export let moreOptionsBtn = document.getElementById('more-options-btn');
 export let moreOptionsMenu = document.getElementById('more-options-menu');
 
-export const allSidePanels = [playlistPanel, infoPanel, shortcutPanel, downloadPanel];
+export const allSidePanels = [playlistPanel, infoPanel, shortcutPanel, downloadPanel, settingsPanel];
 
 // --- DOM 查询/创建辅助函数 ---
 export const getTemplateElementById = (id) => document.getElementById(id);

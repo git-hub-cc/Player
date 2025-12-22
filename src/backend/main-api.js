@@ -108,11 +108,7 @@ function registerIpcHandlers() {
     // --- 在线服务相关 ---
     ipcMain.handle('search-online', (_, { query, page }) => onlineService.handleSearchRequest({ query, page }));
     ipcMain.handle('get-music-url', (_, trackInfo) => onlineService.handleGetMusicUrl(trackInfo));
-    // =========================================================================
-    // 【核心新增】注册用于获取会员歌曲正式URL的IPC处理器
-    // =========================================================================
     ipcMain.handle('get-vip-music-url', (_, trackInfo) => onlineService.handleGetVipMusicUrl(trackInfo));
-    // =========================================================================
     ipcMain.handle('get-lrc-content', (_, relativePath) => onlineService.handleGetLrcContent(relativePath));
     ipcMain.on('cache-track', (_, trackData) => onlineService.handleCacheRequest(trackData));
     ipcMain.handle('get-online-lyric', (_, trackInfo) => onlineService.handleGetOnlineLyric(trackInfo));
@@ -143,6 +139,28 @@ function registerIpcHandlers() {
         } catch (error) {
             return { success: false, error: error.message };
         }
+    });
+
+    // --- 检查核心工具状态 ---
+    // 【核心新增】用于前端设置面板检查工具是否存在
+    ipcMain.handle('check-core-tools', () => {
+        const binDir = config.BIN_DIR;
+        const ffmpegName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+        const ytDlpName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+
+        const ffmpegPath = path.join(binDir, ffmpegName);
+        const ytDlpPath = path.join(binDir, ytDlpName);
+
+        return {
+            ffmpeg: {
+                exists: fs.existsSync(ffmpegPath),
+                path: ffmpegPath
+            },
+            ytDlp: {
+                exists: fs.existsSync(ytDlpPath),
+                path: ytDlpPath
+            }
+        };
     });
 
     // --- 打开工具目录 ---

@@ -6,6 +6,8 @@
  * 渲染进程的“单一数据源”。
  */
 
+import { FILTER_MODES } from './config.js';
+
 // --- 私有状态存储 ---
 const _state = {
     playlist: [],
@@ -29,6 +31,7 @@ const _state = {
     isMuted: false,
     currentTime: 0,
     duration: 0,
+    mediaFilterMode: FILTER_MODES.ALL,
 };
 
 // --- 私有订阅者列表 ---
@@ -67,6 +70,33 @@ export const mutations = {
         _state.playlist = newPlaylist;
         _notify('playlistChanged', _state.playlist);
     },
+    // =========================================================================
+    // 【核心新增】用于更新视频播放进度的 Mutation
+    // =========================================================================
+    /**
+     * 更新指定轨道（特别是视频）的播放进度信息。
+     * @param {{index: number, currentTime: number, duration: number}} payload - 包含轨道索引和时间信息的对象。
+     */
+    updateTrackProgress({ index, currentTime, duration }) {
+        if (index >= 0 && index < _state.playlist.length) {
+            const track = _state.playlist[index];
+            // 只有在数据实际发生变化时才更新，减少不必要的重渲染
+            let updated = false;
+            if (track.lastPosition !== currentTime) {
+                track.lastPosition = currentTime;
+                updated = true;
+            }
+            if (track.totalDuration !== duration) {
+                track.totalDuration = duration;
+                updated = true;
+            }
+            if (updated) {
+                // 发出一个更具体的通知，以便UI可以只更新单个项
+                _notify('trackProgressChanged', { index, track });
+            }
+        }
+    },
+    // =========================================================================
     removeTrack(indexToRemove) {
         if (indexToRemove < 0 || indexToRemove >= _state.playlist.length) return;
         _state.playlist.splice(indexToRemove, 1);
@@ -172,6 +202,12 @@ export const mutations = {
         _state.duration = duration;
         _notify('timeChanged', { currentTime: _state.currentTime, duration: _state.duration });
     },
+    setMediaFilterMode(mode) {
+        if (!Object.values(FILTER_MODES).includes(mode)) return;
+        if (_state.mediaFilterMode === mode) return;
+        _state.mediaFilterMode = mode;
+        _notify('filterModeChanged', _state.mediaFilterMode);
+    },
 };
 
 export const getters = {
@@ -197,4 +233,5 @@ export const getters = {
     isMuted: () => _state.isMuted,
     currentTime: () => _state.currentTime,
     duration: () => _state.duration,
+    mediaFilterMode: () => _state.mediaFilterMode,
 };

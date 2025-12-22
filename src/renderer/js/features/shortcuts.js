@@ -9,7 +9,7 @@
 
 import * as dom from '../dom.js';
 import { getters, mutations } from '../state.js';
-import { defaultShortcuts, PLAY_MODES } from '../config.js';
+import { defaultShortcuts, PLAY_MODES, FILTER_MODES } from '../config.js';
 import { getTemplate, normalizeKey } from '../utils.js';
 import * as ui from '../ui.js';
 
@@ -23,7 +23,7 @@ const LONG_PRESS_RATE = 4.0;
 let longPressTimer = null;
 let isLongPressActive = false;
 let pressedShortcutKeys = new Set();
-// 新增：用于倒带的定时器
+// 用于倒带的定时器
 let rewindInterval = null;
 
 
@@ -39,25 +39,78 @@ class TogglePlayCommand extends Command {
     execute() { mutations.togglePlayState(); }
 }
 
+/**
+ * 辅助函数：根据当前过滤模式检查曲目是否应该播放。
+ * @param {object} track - 轨道对象。
+ * @returns {boolean}
+ */
+function isTrackPlayableInCurrentMode(track) {
+    const mode = getters.mediaFilterMode();
+    if (mode === FILTER_MODES.ALL) return true;
+    if (mode === FILTER_MODES.AUDIO) return track.type !== 'video';
+    if (mode === FILTER_MODES.VIDEO) return track.type === 'video';
+    return true;
+}
+
 export class NextTrackCommand extends Command {
     execute() {
         const playlist = getters.playlist();
         const len = playlist.length;
         if (len === 0 && !getters.temporaryPlayingTrack()) return;
+
         if (getters.temporaryPlayingTrack()) {
             mutations.clearPlayingTrackInfo();
-            if (len > 0) mutations.setCurrentTrackIndex(0);
+            // 如果有临时曲目，且播放列表非空，尝试从列表第一个开始播放（需符合过滤模式）
+            if (len > 0) {
+                // 这里复用下面的查找逻辑，假设当前索引为 -1
+            } else {
+                return;
+            }
+        }
+
+        const currentMode = PLAY_MODES[getters.currentModeIndex()];
+        let currentIndex = getters.currentTrackIndex();
+
+        // 随机模式处理
+        if (currentMode === 'shuffle') {
+            // 先筛选出所有符合当前过滤模式的索引
+            const validIndices = playlist
+                .map((track, idx) => ({ track, idx }))
+                .filter(({ track }) => isTrackPlayableInCurrentMode(track))
+                .map(({ idx }) => idx);
+
+            if (validIndices.length > 0) {
+                let newIndex;
+                do {
+                    const randPos = Math.floor(Math.random() * validIndices.length);
+                    newIndex = validIndices[randPos];
+                } while (validIndices.length > 1 && newIndex === currentIndex);
+                mutations.setCurrentTrackIndex(newIndex);
+            }
             return;
         }
-        const currentMode = PLAY_MODES[getters.currentModeIndex()];
-        let newIndex;
-        if (currentMode === 'shuffle') {
-            do { newIndex = Math.floor(Math.random() * len); }
-            while (len > 1 && newIndex === getters.currentTrackIndex());
-        } else {
-            newIndex = (getters.currentTrackIndex() + 1 + len) % len;
+
+        // 顺序/列表循环/单曲循环模式 (手动切歌时单曲循环也切下一首)
+        let searchIndex = (currentIndex + 1) % len;
+        let foundIndex = -1;
+        let loopCount = 0;
+
+        // 循环查找下一个符合过滤条件的曲目
+        while (loopCount < len) {
+            if (isTrackPlayableInCurrentMode(playlist[searchIndex])) {
+                foundIndex = searchIndex;
+                break;
+            }
+            searchIndex = (searchIndex + 1) % len;
+            loopCount++;
         }
-        mutations.setCurrentTrackIndex(newIndex);
+
+        if (foundIndex !== -1) {
+            mutations.setCurrentTrackIndex(foundIndex);
+        } else {
+            // 如果当前过滤模式下没有可播放的曲目，且当前曲目也不符合（或是临时播放），停止播放
+            ui.showToast('当前过滤模式下无可播放曲目', 'info');
+        }
     }
 }
 
@@ -66,20 +119,42 @@ export class PrevTrackCommand extends Command {
         const playlist = getters.playlist();
         const len = playlist.length;
         if (len === 0 && !getters.temporaryPlayingTrack()) return;
+
         if (getters.temporaryPlayingTrack()) {
             mutations.clearPlayingTrackInfo();
-            if (len > 0) mutations.setCurrentTrackIndex(0);
+            // 逻辑同 NextTrackCommand
+        }
+
+        const currentMode = PLAY_MODES[getters.currentModeIndex()];
+        let currentIndex = getters.currentTrackIndex();
+
+        // 随机模式处理
+        if (currentMode === 'shuffle') {
+            // 随机模式下上一首通常也是随机，这里直接复用下一首的随机逻辑
+            new NextTrackCommand().execute();
             return;
         }
-        const currentMode = PLAY_MODES[getters.currentModeIndex()];
-        let newIndex;
-        if (currentMode === 'shuffle') {
-            do { newIndex = Math.floor(Math.random() * len); }
-            while (len > 1 && newIndex === getters.currentTrackIndex());
-        } else {
-            newIndex = (getters.currentTrackIndex() - 1 + len) % len;
+
+        // 顺序模式
+        let searchIndex = (currentIndex - 1 + len) % len;
+        let foundIndex = -1;
+        let loopCount = 0;
+
+        // 循环查找上一个符合过滤条件的曲目
+        while (loopCount < len) {
+            if (isTrackPlayableInCurrentMode(playlist[searchIndex])) {
+                foundIndex = searchIndex;
+                break;
+            }
+            searchIndex = (searchIndex - 1 + len) % len;
+            loopCount++;
         }
-        mutations.setCurrentTrackIndex(newIndex);
+
+        if (foundIndex !== -1) {
+            mutations.setCurrentTrackIndex(foundIndex);
+        } else {
+            ui.showToast('当前过滤模式下无可播放曲目', 'info');
+        }
     }
 }
 
@@ -140,6 +215,18 @@ class TogglePlaylistCommand extends Command {
     execute() { ui.togglePlaylistPanel(); }
 }
 
+class ToggleFullscreenCommand extends Command {
+    execute() {
+        if (!document.fullscreenElement) {
+            // 尝试请求媒体播放器元素全屏（通常用于视频模式）
+            dom.mediaPlayer?.requestFullscreen().catch(console.error);
+        } else {
+            // 退出全屏
+            document.exitFullscreen();
+        }
+    }
+}
+
 const commandMap = {
     'toggle-play': new TogglePlayCommand(),
     'next-track': new NextTrackCommand(),
@@ -156,6 +243,7 @@ const commandMap = {
     'toggle-mute': new ToggleMuteCommand(),
     'toggle-lyrics': new ToggleLyricsCommand(),
     'toggle-playlist': new TogglePlaylistCommand(),
+    'toggle-fullscreen': new ToggleFullscreenCommand(),
 };
 
 // =========================================================================
@@ -208,17 +296,12 @@ export function loadShortcuts() {
         settings = JSON.parse(JSON.stringify(defaultShortcuts));
     }
 
-    // =========================================================================
-    // 【核心修复】强制合并/更新旋转快捷键配置
-    // 防止 LocalStorage 中缓存了旧的或错误的按键配置，导致代码更新不生效。
-    // =========================================================================
+    // 强制合并/更新旋转快捷键配置
     for (const [key, value] of Object.entries(defaultShortcuts)) {
-        // 如果缓存中没有这个键，或者键名以 'rotate-' 开头（强制更新旋转逻辑），则覆盖
-        if (!settings[key] || key.startsWith('rotate-')) {
+        if (!settings[key] || key.startsWith('rotate-') || key === 'toggle-fullscreen') {
             settings[key] = value;
         }
     }
-    // =========================================================================
 
     mutations.setShortcutSettings(settings);
     // 可选：如果修改了配置，最好保存回去，保持同步
@@ -299,8 +382,6 @@ function handleGlobalKeyDown(e) {
     for (const actionId in settings) {
         const requiredKeys = new Set(settings[actionId].keys);
 
-        // 【核心逻辑】使用 isExactKeyMatch 进行严格匹配
-        // 如果定义了 Alt+Right，而只按了 Right，这里 requiredKeys.size(2) !== pressed.size(1)，不会误触
         if (requiredKeys.size > 0 && isExactKeyMatch(requiredKeys)) {
             e.preventDefault();
 
@@ -313,14 +394,11 @@ function handleGlobalKeyDown(e) {
                     ui.showSeekFeedback('倍速播放');
                 }, LONG_PRESS_THRESHOLD);
             } else if (actionId === 'seek-backward') {
-                // 【修复】长按左键应触发倒带（负向播放效果）
-                // 由于 playbackRate 不支持负值，通过 setInterval 模拟
                 isLongPressActive = false;
                 longPressTimer = setTimeout(() => {
                     isLongPressActive = true;
                     if (rewindInterval) clearInterval(rewindInterval);
                     rewindInterval = setInterval(() => {
-                        // 每次间隔 50ms，回退步长 = 速率(4.0) * 时间(0.05s) = 0.2s
                         const step = LONG_PRESS_RATE * 0.05;
                         dom.mediaPlayer.currentTime = Math.max(0, dom.mediaPlayer.currentTime - step);
                     }, 50);
@@ -343,7 +421,6 @@ function handleGlobalKeyUp(e) {
     const seekForwardKeys = new Set(settings['seek-forward']?.keys || []);
     const seekBackwardKeys = new Set(settings['seek-backward']?.keys || []);
 
-    // 【核心修复】在按键松开时，也必须进行严格匹配。
     if (seekForwardKeys.has(normalizedKey) && isExactKeyMatch(seekForwardKeys)) {
         if (isLongPressActive) {
             dom.mediaPlayer.playbackRate = getters.playbackRate();
@@ -353,7 +430,6 @@ function handleGlobalKeyUp(e) {
         }
     } else if (seekBackwardKeys.has(normalizedKey) && isExactKeyMatch(seekBackwardKeys)) {
         if (isLongPressActive) {
-            // 【修复】长按结束，清除倒带定时器
             if (rewindInterval) {
                 clearInterval(rewindInterval);
                 rewindInterval = null;
@@ -390,7 +466,6 @@ export function setupShortcutListeners() {
         pressedShortcutKeys.clear();
         isLongPressActive = false;
         clearTimeout(longPressTimer);
-        // 窗口失去焦点时，确保清理倒带状态
         if (rewindInterval) {
             clearInterval(rewindInterval);
             rewindInterval = null;

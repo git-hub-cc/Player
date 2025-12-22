@@ -8,11 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     searchOnline: (query, page) => ipcRenderer.invoke('search-online', { query, page }),
     deleteTrack: (trackData) => ipcRenderer.invoke('delete-track', trackData),
     getMusicUrl: (trackInfo) => ipcRenderer.invoke('get-music-url', trackInfo),
-    // =========================================================================
-    // 【核心新增】暴露获取会员歌曲URL的API
-    // =========================================================================
     getVipMusicUrl: (trackInfo) => ipcRenderer.invoke('get-vip-music-url', trackInfo),
-    // =========================================================================
     getLrcContent: (relativePath) => ipcRenderer.invoke('get-lrc-content', relativePath),
     selectImportDirectory: () => ipcRenderer.invoke('select-import-directory'),
     startLocalImport: (dirPath) => ipcRenderer.invoke('start-local-import', dirPath),
@@ -22,6 +18,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // --- 核心工具 ---
     downloadCoreTool: (toolName) => ipcRenderer.invoke('download-core-tool', toolName),
     openToolsFolder: () => ipcRenderer.invoke('open-tools-folder'),
+    // 【核心新增】检查核心工具状态
+    checkCoreTools: () => ipcRenderer.invoke('check-core-tools'),
 
     // --- 文件拖拽接口 ---
     handleFileDrop: (files) => {
