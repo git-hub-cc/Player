@@ -23,9 +23,18 @@
     /* 确保视频元素不会超出其容器 */
     max-width: 100%;
     max-height: 100%;
+    /* 新增：让 video 元素本身填满父容器 */
+    width: 100%;
+    height: 100%;
+    /* 新增：让视频内容保持比例缩放以适应元素框 */
+    object-fit: contain;
+
     background-color: #000; /* 视频未加载或有黑边时的背景色 */
     border-radius: 12px; /* 与播放器容器保持一致的圆角 */
     box-shadow: 0 4px 16px rgba(0,0,0,0.2); /* 添加轻微阴影以增强立体感 */
+
+    /* 【优化】添加过渡效果，使进入全屏时的圆角变化更平滑 */
+    transition: border-radius 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 /* --- 音频可视化 Canvas --- */
@@ -58,6 +67,9 @@
     /* 【核心修复】使用 CSS 属性禁止元素的拖拽行为 */
     -webkit-user-drag: none;
     user-drag: none;
+
+    /* 【优化】添加过渡效果，使进入全屏时的圆角变化更平滑 */
+    transition: border-radius 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 #album-art {
@@ -254,26 +266,26 @@
     z-index: 3000;
     width: 100vw;
     height: 100vh;
-    border-radius: 0; /* 移除圆角 */
+    border-radius: 0; /* 移除容器圆角 */
 }
+
+/* ========================================================================= */
+/* 【核心修复】沉浸模式下彻底隐藏播放控制栏 */
+/* 利用兄弟选择器 (~)，当 .main-view 有全屏类时，强制隐藏其后的 .player-controls */
+/* 解决拖拽窗口边框时底部栏短暂闪烁的问题 */
+/* ========================================================================= */
+.main-view.main-view-fullscreen ~ .player-controls {
+    display: none !important;
+}
+/* ========================================================================= */
 
 .main-view.main-view-fullscreen .media-visualizer {
     padding: 0; /* 移除内边距，使内容填满屏幕 */
 }
 
-#media-player {
-    /* 新增：让 video 元素本身填满父容器 */
-    width: 100%;
-    height: 100%;
-    /* 新增：让视频内容保持比例缩放以适应元素框 */
-    object-fit: contain;
-
-    /* 保留原有样式 */
-    max-width: 100%;
-    max-height: 100%;
-    background-color: #000;
-    border-radius: 12px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+/* 核心修改：在全屏模式下，移除视频播放器的圆角 */
+.main-view.main-view-fullscreen #media-player {
+    border-radius: 0;
 }
 
 /* 音频全屏样式 - 专辑封面 */
@@ -283,7 +295,8 @@
     /* 核心修复：限制最大尺寸为视口较小边的85%，使其成为一个居中的大方块 */
     max-width: 85vh;
     max-height: 85vw;
-    border-radius: 12px; /* 全屏时也保留一些圆角，更美观 */
+    /* 核心修改：在全屏模式下，移除封面容器的圆角，使其更具沉浸感 */
+    border-radius: 0;
 }
 
 /* 音频全屏样式 - 音频可视化 */
