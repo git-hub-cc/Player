@@ -206,19 +206,25 @@ export class LibraryService {
                 const safeFilename = this.#sanitizeFilename(title); const isVideo = videoExt.includes(ext);
                 const targetDir = isVideo ? this.#config.VIDEOS_DIR : this.#config.MUSIC_DIR; const relativeDirName = isVideo ? 'videos' : 'music';
                 const newMediaPath = path.join(targetDir, `${safeFilename}${ext}`); await fs.promises.copyFile(originalPath, newMediaPath);
-                const newTrack = { title, artist: '拖拽导入', src: `${relativeDirName}/${path.basename(newMediaPath)}`, albumArt: '', lyrics: '', type: isVideo ? 'video' : 'audio', pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''), initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '') };
+                const newTrack = {
+                    title, artist: '拖拽导入', src: `${relativeDirName}/${path.basename(newMediaPath)}`, albumArt: '', lyrics: '',
+                    type: isVideo ? 'video' : 'audio',
+                    pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
+                    initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '')
+                };
 
-                // =========================================================================
-                // 【核心修改】为拖拽导入的音频文件生成占位图。
-                // =========================================================================
                 if (isVideo) {
                     const generatedImageName = await this.#generateVideoThumbnail(newMediaPath, this.#config.ALBUMART_DIR, safeFilename);
                     if (generatedImageName) newTrack.albumArt = `albumArt/${generatedImageName}`;
+                    // =========================================================================
+                    // 【核心新增】为视频文件初始化进度属性
+                    // =========================================================================
+                    newTrack.lastPosition = 0;
+                    newTrack.totalDuration = 0;
+                    // =========================================================================
                 } else {
-                    // 如果是音频文件，则为其生成一个占位封面图
                     newTrack.albumArt = this.generateAndSavePlaceholderArt(title, safeFilename);
                 }
-                // =========================================================================
 
                 newPlaylistTracks.push(newTrack); importedCount++; sendMessage('new-track-added', newTrack);
             } catch (error) { console.error(`❌ [Library Service] 导入文件 ${file.name} 失败:`, error); }
@@ -265,9 +271,6 @@ export class LibraryService {
                         newTrack.lyrics = path.relative(this.#config.MEDIA_ROOT, newLrcPath).replace(/\\/g, '/');
                     } else { newTrack.lyrics = ''; }
 
-                    // =========================================================================
-                    // 【核心修改】为从目录导入的、没有自带封面的音频文件生成占位图。
-                    // =========================================================================
                     if (art) {
                         const newArtPath = path.join(this.#config.ALBUMART_DIR, `${safeFilename}${path.extname(art)}`);
                         await fs.promises.copyFile(art, newArtPath);
@@ -276,8 +279,15 @@ export class LibraryService {
                         const thumbName = await this.#generateVideoThumbnail(newMediaPath, this.#config.ALBUMART_DIR, safeFilename);
                         newTrack.albumArt = thumbName ? `albumArt/${thumbName}` : '';
                     } else {
-                        // 如果是音频文件且没有找到关联的封面图，则为其生成一个占位图
                         newTrack.albumArt = this.generateAndSavePlaceholderArt(title, safeFilename);
+                    }
+
+                    // =========================================================================
+                    // 【核心新增】如果导入的是视频，初始化其进度属性
+                    // =========================================================================
+                    if (isVideo) {
+                        newTrack.lastPosition = 0;
+                        newTrack.totalDuration = 0;
                     }
                     // =========================================================================
 

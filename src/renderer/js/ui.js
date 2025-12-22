@@ -34,6 +34,8 @@ export {
     toggleInfoPanel,
     toggleShortcutPanel,
     toggleDownloadPanel,
+    // 【核心新增】导出设置面板切换函数
+    toggleSettingsPanel,
     filterPlaylist
 } from './ui/panelManager.js';
 

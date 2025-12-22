@@ -26,15 +26,15 @@
   },
   "license": "MIT",
   "dependencies": {
-    "adm-zip": "^0.5.14",
-    "axios": "^1.7.2",
+    "adm-zip": "^0.5.16",
+    "axios": "^1.13.2",
     "canvas": "^3.2.0",
     "electron-squirrel-startup": "^1.0.1",
-    "m3u8-parser": "^7.1.0",
-    "p-limit": "^6.1.0",
+    "m3u8-parser": "^7.2.0",
+    "p-limit": "^7.2.0",
     "path-browserify": "^1.0.1",
-    "pinyin-pro": "^3.19.6",
-    "winreg": "^1.2.4",
+    "pinyin-pro": "^3.27.0",
+    "winreg": "^1.2.5",
     "yt-dlp-wrap-plus": "^2.4.3"
   },
   "devDependencies": {
@@ -49,7 +49,7 @@
     "@electron-forge/plugin-vite": "^7.10.2",
     "@electron/fuses": "^1.8.0",
     "cross-env": "^10.1.0",
-    "electron": "39.0.0",
-    "vite": "^5.4.21"
+    "electron": "39.2.7",
+    "vite": "^7.3.0"
   }
 }

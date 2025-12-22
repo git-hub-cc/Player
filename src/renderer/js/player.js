@@ -13,6 +13,7 @@ import { parseLRC } from './utils.js';
 
 // --- 模块私有变量 ---
 let audioContextInitialized = false;
+let progressUpdateThrottleTimer = null; // 用于节流进度更新
 
 // --- 辅助函数 ---
 function _setupAudioContext() {
@@ -33,7 +34,7 @@ function _setupAudioContext() {
 
 /**
  * 加载一个已经完全准备好的轨道对象到媒体播放器。
- * 包含VIP歌曲处理逻辑。
+ * 包含VIP歌曲处理逻辑和视频进度恢复逻辑。
  */
 async function _loadTrack(track) {
     // 1. 重置播放器和相关状态
@@ -47,10 +48,29 @@ async function _loadTrack(track) {
         return;
     }
 
-    // 2. 立即设置媒体参数（适用于试听和正式播放）
+    // 2. 立即设置媒体参数
     dom.mediaPlayer.playbackRate = getters.playbackRate();
-    dom.mediaPlayer.currentTime = 0;
     dom.mediaPlayer.src = track.src;
+
+    // =========================================================================
+    // 【核心修改】恢复视频播放进度
+    // =========================================================================
+    // 如果是视频，并且有有效的播放记录，则准备跳转
+    if (track.type === 'video' && track.lastPosition > 0) {
+        // 定义一个一次性事件监听器，在媒体元数据加载完毕后执行跳转
+        const onMetadataLoaded = () => {
+            // 安全检查：确保跳转位置在视频总时长内
+            if (track.lastPosition < dom.mediaPlayer.duration) {
+                dom.mediaPlayer.currentTime = track.lastPosition;
+            }
+            dom.mediaPlayer.removeEventListener('loadedmetadata', onMetadataLoaded);
+        };
+        dom.mediaPlayer.addEventListener('loadedmetadata', onMetadataLoaded);
+    } else {
+        // 如果不是视频或没有进度，确保从头开始
+        dom.mediaPlayer.currentTime = 0;
+    }
+    // =========================================================================
 
     // 3. 异步加载歌词 (非阻塞)
     (async () => {
@@ -77,33 +97,24 @@ async function _loadTrack(track) {
     // 4. 开始加载媒体
     dom.mediaPlayer.load();
 
-    // =========================================================================
-    // 【核心新增】VIP歌曲无缝切换逻辑
-    // =========================================================================
+    // 5. VIP歌曲无缝切换逻辑
     if (track.isVip && track.originalTrackInfo) {
         console.log(`[Player] 检测到VIP歌曲 "${track.title}"，正在播放试听并后台获取正式URL...`);
         try {
-            // 在后台请求正式的URL
             const result = await window.electronAPI.getVipMusicUrl(track.originalTrackInfo);
             if (result.success && result.url) {
                 console.log(`[Player] 成功获取VIP歌曲 "${track.title}" 的正式URL。`);
                 const fullUrl = result.url;
-
-                // 确保试听仍在播放，且轨道未被切换
                 if (getters.isPlaying() && getters.currentTrack()?.src === track.src) {
                     const currentTime = dom.mediaPlayer.currentTime;
-                    console.log(`[Player] 准备无缝切换，当前试听时间: ${currentTime.toFixed(2)}s`);
-
                     const onCanPlayThrough = () => {
                         dom.mediaPlayer.currentTime = currentTime;
                         dom.mediaPlayer.play().catch(console.error);
-                        console.log(`[Player] 无缝切换成功，已跳转到 ${currentTime.toFixed(2)}s`);
                         dom.mediaPlayer.removeEventListener('canplaythrough', onCanPlayThrough);
                     };
-
                     dom.mediaPlayer.addEventListener('canplaythrough', onCanPlayThrough);
                     dom.mediaPlayer.src = fullUrl;
-                    dom.mediaPlayer.load(); // 重新加载新源
+                    dom.mediaPlayer.load();
                 }
             } else {
                 console.warn(`[Player] 获取 "${track.title}" 的正式URL失败: ${result.error}`);
@@ -112,7 +123,6 @@ async function _loadTrack(track) {
             console.error(`[Player] 请求VIP歌曲URL时发生异常:`, error);
         }
     }
-    // =========================================================================
 }
 
 // --- 状态订阅处理函数 ---
@@ -138,9 +148,49 @@ function onVideoRotationChanged(deg) { dom.mediaPlayer.style.transform = `rotate
 function onVolumeChanged({ volume, isMuted }) { dom.mediaPlayer.volume = volume; dom.mediaPlayer.muted = isMuted; }
 
 // --- 媒体元素事件处理 ---
-function onMediaTimeUpdate() { if (!getters.isScrubbing()) mutations.setCurrentTime(dom.mediaPlayer.currentTime); }
+function onMediaTimeUpdate() {
+    if (getters.isScrubbing()) return;
+    const currentTime = dom.mediaPlayer.currentTime;
+    mutations.setCurrentTime(currentTime);
+
+    // =========================================================================
+    // 【核心修改】节流更新视频播放进度
+    // =========================================================================
+    // 使用节流防止过于频繁地调用 mutation
+    if (!progressUpdateThrottleTimer) {
+        progressUpdateThrottleTimer = setTimeout(() => {
+            const track = getters.currentTrack();
+            const trackIndex = getters.currentTrackIndex();
+            // 仅当播放的是列表中的视频时才更新
+            if (track && track.type === 'video' && trackIndex !== -1) {
+                mutations.updateTrackProgress({
+                    index: trackIndex,
+                    currentTime: dom.mediaPlayer.currentTime,
+                    duration: dom.mediaPlayer.duration
+                });
+            }
+            progressUpdateThrottleTimer = null;
+        }, 1000); // 每秒更新一次进度
+    }
+    // =========================================================================
+}
+
 function onMediaCanPlay() { if (getters.isPlaying()) onIsPlayingChanged(true); }
 async function onMediaEnded() {
+    // =========================================================================
+    // 【核心修改】视频播放结束后，将进度重置为0
+    // =========================================================================
+    const track = getters.currentTrack();
+    const trackIndex = getters.currentTrackIndex();
+    if (track && track.type === 'video' && trackIndex !== -1) {
+        mutations.updateTrackProgress({
+            index: trackIndex,
+            currentTime: 0, // 播放结束，重置位置
+            duration: dom.mediaPlayer.duration
+        });
+    }
+    // =========================================================================
+
     if (PLAY_MODES[getters.currentModeIndex()] === 'single') {
         dom.mediaPlayer.currentTime = 0;
         mutations.setIsPlaying(true);
@@ -149,6 +199,7 @@ async function onMediaEnded() {
         new shortcutsModule.NextTrackCommand().execute();
     }
 }
+
 function onMediaError() {
     if (!dom.mediaPlayer.getAttribute('src')) return;
     const track = getters.currentTrack();

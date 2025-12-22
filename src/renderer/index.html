@@ -38,7 +38,7 @@
 </head>
 <body>
 
-<!-- 背景画廊容器，现在是body的直接子元素 -->
+<!-- 背景画廊容器 -->
 <div id="gallery-container">
     <div id="gallery-wrapper">
         <!-- 图片由 gallery.js 动态生成 -->
@@ -110,6 +110,19 @@
                     </button>
                 </div>
             </div>
+
+            <div class="filter-mode-container">
+                <button class="filter-mode-btn active" data-mode="all" title="混合模式：显示全部">
+                    <span class="icon-placeholder" data-icon="FILTER_ALL"></span>
+                </button>
+                <button class="filter-mode-btn" data-mode="audio" title="音乐模式：仅显示音频">
+                    <span class="icon-placeholder" data-icon="FILTER_AUDIO"></span>
+                </button>
+                <button class="filter-mode-btn" data-mode="video" title="视频模式：仅显示视频">
+                    <span class="icon-placeholder" data-icon="FILTER_VIDEO"></span>
+                </button>
+            </div>
+
             <div class="panel-search-container">
                 <input type="search" id="playlist-search" class="panel-search" placeholder="搜索 (歌名/歌手/拼音/首字母)">
             </div>
@@ -168,9 +181,6 @@
             <div id="download-panel-content" class="download-panel-content">
                 <div id="downloader-view" class="downloader-view">
                     <div class="downloader-input-area">
-                        <!-- ========================================================================= -->
-                        <!-- 【核心修改】移除平台选择器 -->
-                        <!-- ========================================================================= -->
                         <p class="panel-description">输入歌曲名进行在线搜索，或粘贴 某音/某B 链接进行本地下载。</p>
                         <textarea id="url-or-search-input" placeholder="粘贴链接 或 输入歌曲/歌手名..."></textarea>
                         <div id="download-actions-container" class="download-actions-container">
@@ -195,6 +205,71 @@
                     <div id="search-results-container" class="search-results-container">
                         <ul id="search-results-list" class="playlist"></ul>
                         <div id="pagination-controls" class="pagination-controls"></div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 系统设置面板 -->
+        <aside id="settings-panel" class="settings-panel">
+            <div class="panel-header">
+                <h2>系统设置</h2>
+                <div class="panel-header-actions">
+                    <button id="open-tools-folder-btn" class="control-btn" title="打开组件安装目录">
+                        <span class="icon-placeholder" data-icon="FOLDER"></span>
+                    </button>
+                    <button id="close-settings-btn" class="control-btn" title="关闭">
+                        <span class="icon-placeholder" data-icon="CLOSE"></span>
+                    </button>
+                </div>
+            </div>
+            <div class="settings-content">
+                <div class="settings-section">
+                    <h3 class="section-title">核心组件状态</h3>
+                    <p class="section-desc">部分下载和处理功能依赖以下工具。如果功能异常，请检查状态或尝试重新下载。</p>
+
+                    <!-- FFmpeg 卡片 -->
+                    <div class="tool-card" id="ffmpeg-tool-card">
+                        <div class="tool-header">
+                            <div class="tool-info">
+                                <span class="tool-name">FFmpeg</span>
+                                <span class="tool-status-badge pending">检查中...</span>
+                            </div>
+                            <div class="tool-icon">
+                                <!-- 图标由 JS 动态注入 -->
+                            </div>
+                        </div>
+                        <div class="tool-path-container">
+                            <span class="tool-path">路径: --</span>
+                        </div>
+                        <div class="tool-actions">
+                            <button class="action-btn secondary-btn small-btn download-tool-btn" data-tool="ffmpeg">
+                                <span class="btn-text">下载 / 修复</span>
+                                <span class="btn-loader"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- yt-dlp 卡片 -->
+                    <div class="tool-card" id="ytdlp-tool-card">
+                        <div class="tool-header">
+                            <div class="tool-info">
+                                <span class="tool-name">yt-dlp</span>
+                                <span class="tool-status-badge pending">检查中...</span>
+                            </div>
+                            <div class="tool-icon">
+                                <!-- 图标由 JS 动态注入 -->
+                            </div>
+                        </div>
+                        <div class="tool-path-container">
+                            <span class="tool-path">路径: --</span>
+                        </div>
+                        <div class="tool-actions">
+                            <button class="action-btn secondary-btn small-btn download-tool-btn" data-tool="yt-dlp">
+                                <span class="btn-text">下载 / 修复</span>
+                                <span class="btn-loader"></span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -244,6 +319,10 @@
                             <li id="shortcut-btn">
                                 <span class="icon-placeholder" data-icon="KEYBOARD"></span>
                                 <span>快捷键设置</span>
+                            </li>
+                            <li id="settings-btn">
+                                <span class="icon-placeholder" data-icon="SETTINGS" style="width: 18px; height: 18px;"></span>
+                                <span>系统设置</span>
                             </li>
                             <li id="info-btn">
                                 <span class="icon-placeholder" data-icon="INFO"></span>
@@ -325,7 +404,25 @@
     <div id="templates" style="display: none;">
         <template id="template-lyric-line"><p></p></template>
         <template id="template-no-lyrics"><p class="no-lyrics">暂无歌词</p></template>
-        <template id="template-playlist-item"><li class="playlist-item"><div class="playlist-item-main-content"><div class="playlist-icon"></div><div class="playlist-details"><div class="playlist-title"></div><div class="playlist-artist"></div></div></div></li></template>
+        <!-- ========================================================================= -->
+        <!-- 【核心修改】为播放列表项模板添加视频进度条结构 -->
+        <!-- ========================================================================= -->
+        <template id="template-playlist-item">
+            <li class="playlist-item">
+                <div class="playlist-item-main-content">
+                    <div class="playlist-icon"></div>
+                    <div class="playlist-details">
+                        <div class="playlist-title"></div>
+                        <div class="playlist-artist"></div>
+                    </div>
+                </div>
+                <!-- 新增：视频进度条容器 -->
+                <div class="video-progress-bar">
+                    <div class="video-progress-bar-inner"></div>
+                </div>
+            </li>
+        </template>
+        <!-- ========================================================================= -->
         <template id="template-search-result-item"><li class="playlist-item"><div class="playlist-item-main-content"><div class="playlist-icon"></div><div class="playlist-details"><div class="playlist-title"></div><div class="playlist-artist"></div></div></div><button class="playlist-download-btn" title="下载到本地"><span class="icon-placeholder" data-icon="DOWNLOAD"></span><span class="icon-placeholder" data-icon="SPINNER"></span><span class="icon-placeholder" data-icon="CACHED"></span></button></li></template>
         <template id="template-playlist-no-results"><li id="playlist-no-results" class="no-results-message">未找到结果</li></template>
         <template id="template-shortcut-item"><li class="shortcut-item"><span class="action-label"></span><div class="shortcut-display"></div><div class="actions"><button class="set-btn">设置</button><button class="clear-btn">清除</button></div></li></template>
