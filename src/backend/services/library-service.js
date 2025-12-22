@@ -151,16 +151,61 @@ export class LibraryService {
         try { if (fs.existsSync(this.#config.PLAYLIST_PATH)) { const data = JSON.parse(fs.readFileSync(this.#config.PLAYLIST_PATH, 'utf-8')); return { success: true, data }; } else { return { success: true, data: [] }; } } catch (e) { return { success: false, error: e.message }; }
     }
 
+    // =========================================================================
+    // 【核心修复】删除逻辑使用 Promise 确保异步文件删除完成
+    // =========================================================================
     async handleDeleteTrack({ src: relativeSrc }) {
         if (!relativeSrc) return { success: false, error: '删除失败: 未提供曲目路径。' };
+
         try {
-            let playlist = []; if (fs.existsSync(this.#config.PLAYLIST_PATH)) { playlist = JSON.parse(fs.readFileSync(this.#config.PLAYLIST_PATH, 'utf-8')); }
-            const trackToDelete = playlist.find(t => t.src === relativeSrc); if (!trackToDelete) return { success: false, error: '删除失败: 曲目未在播放列表中找到。' };
-            const newPlaylist = playlist.filter(t => t.src !== relativeSrc); fs.writeFileSync(this.#config.PLAYLIST_PATH, JSON.stringify(newPlaylist, null, 2), 'utf-8');
-            ['src', 'albumArt', 'lyrics'].forEach(key => { if (trackToDelete[key] && !trackToDelete[key].startsWith('data:')) { const filePath = path.join(this.#config.MEDIA_ROOT, trackToDelete[key]); if (fs.existsSync(filePath)) { fs.unlink(filePath, () => {}); } } });
+            // 1. 读取并更新播放列表 JSON
+            let playlist = [];
+            if (fs.existsSync(this.#config.PLAYLIST_PATH)) {
+                playlist = JSON.parse(fs.readFileSync(this.#config.PLAYLIST_PATH, 'utf-8'));
+            }
+
+            const trackToDelete = playlist.find(t => t.src === relativeSrc);
+            if (!trackToDelete) return { success: false, error: '删除失败: 曲目未在播放列表中找到。' };
+
+            const newPlaylist = playlist.filter(t => t.src !== relativeSrc);
+            fs.writeFileSync(this.#config.PLAYLIST_PATH, JSON.stringify(newPlaylist, null, 2), 'utf-8');
+
+            // 2. 依次删除关联的物理文件（音频/视频、封面、歌词）
+            // 使用 for...of 循环配合 await，确保删除操作不被吞没或过早返回
+            const keysToDelete = ['src', 'albumArt', 'lyrics'];
+
+            for (const key of keysToDelete) {
+                const fileRelativePath = trackToDelete[key];
+
+                // 检查路径是否有效，且不是 base64 数据或网络地址
+                if (fileRelativePath && typeof fileRelativePath === 'string' &&
+                    !fileRelativePath.startsWith('data:') &&
+                    !fileRelativePath.startsWith('http')) {
+
+                    try {
+                        const filePath = path.join(this.#config.MEDIA_ROOT, fileRelativePath);
+
+                        // 使用 fs.promises.unlink 进行异步删除，并捕获错误
+                        await fs.promises.unlink(filePath).catch(err => {
+                            // 忽略文件不存在的错误 (ENOENT)，记录其他错误
+                            if (err.code !== 'ENOENT') {
+                                console.warn(`[Library] 删除物理文件失败 (${key}): ${filePath}`, err.message);
+                            }
+                        });
+                        console.log(`[Library] 成功删除文件: ${filePath}`);
+                    } catch (pathError) {
+                        console.warn(`[Library] 解析文件路径出错:`, pathError);
+                    }
+                }
+            }
+
             return { success: true, message: `成功删除 "${trackToDelete.title}"` };
-        } catch (error) { return { success: false, error: error.message }; }
+        } catch (error) {
+            console.error('[Library] handleDeleteTrack 发生未捕获异常:', error);
+            return { success: false, error: error.message };
+        }
     }
+    // =========================================================================
 
     async updateLocalPlaylist(newTracks) {
         if (!newTracks || newTracks.length === 0) return; let playlist = [];
@@ -216,12 +261,8 @@ export class LibraryService {
                 if (isVideo) {
                     const generatedImageName = await this.#generateVideoThumbnail(newMediaPath, this.#config.ALBUMART_DIR, safeFilename);
                     if (generatedImageName) newTrack.albumArt = `albumArt/${generatedImageName}`;
-                    // =========================================================================
-                    // 【核心新增】为视频文件初始化进度属性
-                    // =========================================================================
                     newTrack.lastPosition = 0;
                     newTrack.totalDuration = 0;
-                    // =========================================================================
                 } else {
                     newTrack.albumArt = this.generateAndSavePlaceholderArt(title, safeFilename);
                 }
@@ -282,14 +323,10 @@ export class LibraryService {
                         newTrack.albumArt = this.generateAndSavePlaceholderArt(title, safeFilename);
                     }
 
-                    // =========================================================================
-                    // 【核心新增】如果导入的是视频，初始化其进度属性
-                    // =========================================================================
                     if (isVideo) {
                         newTrack.lastPosition = 0;
                         newTrack.totalDuration = 0;
                     }
-                    // =========================================================================
 
                     newPlaylistTracks.push(newTrack);
                     importedCount++;

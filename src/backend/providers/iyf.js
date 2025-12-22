@@ -3,25 +3,36 @@
 import path from 'path';
 import fs from 'fs';
 import axios from 'axios';
+import https from 'https';
 import { spawn } from 'child_process';
 import pLimit from 'p-limit';
 import crypto from 'crypto';
-import * as m3u8Parser from 'm3u8-parser'; // 需要引入 m3u8-parser
+import * as m3u8Parser from 'm3u8-parser';
+import { BrowserWindow, session } from 'electron';
 import { BaseProvider } from './base-provider.js';
 import { downloadFile } from '../services/download-service.js';
 
 // --- 常量配置 ---
 const IYF_REFERER = 'https://www.iyf.lv/';
-const IYF_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-const CONCURRENT_LIMIT = 16; // 稍微降低并发数以保证稳定性
+const IYF_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+const CONCURRENT_LIMIT = 32; // 并发下载限制
+
+// --- 网络配置修正 ---
+// 创建一个宽松的 Agent，解决 SSL 握手失败和 socket hang up 问题
+const insecureAgent = new https.Agent({
+    rejectUnauthorized: false, // 忽略自签名或过期证书错误
+    keepAlive: true,           // 保持连接
+    ciphers: 'DEFAULT@SECLEVEL=0', // 允许旧版加密算法 (关键修复 SSL error code 1)
+    minVersion: 'TLSv1'        // 允许旧版 TLS
+});
 
 /**
  * @class IyfProvider
  * @description 爱壹帆 (iyf.lv / iyf.tv) 视频下载服务提供者。
- *              v2.2: 修复合并后时长不足问题。
- *              1. 递归解析 M3U8，支持 Master/Media 多级列表。
- *              2. 支持 AES-128 分片解密。
- *              3. 使用 FFmpeg concat demuxer 替代二进制拼接，修复时间戳问题。
+ *              v3.0 重构修复:
+ *              针对 "画面一顿一顿" 的问题，放弃 FFmpeg concat demuxer (文本列表合并)，
+ *              改用 **二进制合并 + FFmpeg Remux (genpts)** 方案。
+ *              该方案能重构视频时间戳 (PTS)，彻底解决分片间隙导致的卡顿。
  * @extends BaseProvider
  */
 export class IyfProvider extends BaseProvider {
@@ -44,25 +55,34 @@ export class IyfProvider extends BaseProvider {
         let tempDir = null;
 
         try {
-            this.sendMessage('download-status', { message: '正在解析 IYF 页面信息...', type: 'default' });
+            this.sendMessage('download-status', { message: '正在启动隐身窗口解析 IYF 页面...', type: 'default' });
 
-            // 2. 获取视频元信息
+            // 2. 获取视频元信息 (使用 BrowserWindow)
             const info = await this._getVideoInfo(videoUrl);
+
+            if (!info.m3u8Url) {
+                throw new Error('未能在页面中提取到有效的 M3U8 地址');
+            }
+
             const safeFilename = this._sanitizeFilename(info.title);
+            // 构造请求头，带上 Cookie 和 Referer
+            const headers = {
+                'User-Agent': IYF_USER_AGENT,
+                'Referer': IYF_REFERER,
+                'Cookie': info.cookieString || ''
+            };
 
             this.sendMessage('download-status', { message: `解析成功: ${info.title}`, type: 'default' });
 
-            // 3. 下载封面 (非阻塞)
+            // 3. 下载封面
             if (info.coverUrl) {
-                downloadFile(info.coverUrl, this.config.ALBUMART_DIR, `${safeFilename}.jpg`, {
-                    'Referer': IYF_REFERER,
-                    'User-Agent': IYF_USER_AGENT
-                }).catch(e => console.warn('[Iyf Provider] 封面下载失败，跳过:', e.message));
+                downloadFile(info.coverUrl, this.config.ALBUMART_DIR, `${safeFilename}.jpg`, headers)
+                    .catch(e => console.warn('[Iyf Provider] 封面下载失败，跳过:', e.message));
             }
 
-            // 4. 深度解析 M3U8，处理多级列表，获取分片和解密信息
+            // 4. 深度解析 M3U8
             this.sendMessage('download-status', { message: '分析播放列表结构...', type: 'default' });
-            const { segments, keyInfo } = await this._parseM3u8Recursive(info.m3u8Url);
+            const { segments, keyInfo } = await this._parseM3u8Recursive(info.m3u8Url, headers);
 
             if (!segments || segments.length === 0) {
                 throw new Error('未找到有效的视频分片');
@@ -78,24 +98,28 @@ export class IyfProvider extends BaseProvider {
             let decryptionKey = null;
             if (keyInfo && keyInfo.method === 'AES-128' && keyInfo.uri) {
                 this.sendMessage('download-status', { message: '检测到加密内容，获取解密密钥...', type: 'default' });
-                decryptionKey = await this._downloadKey(keyInfo.uri, info.m3u8Url);
+                // 使用宽松的网络配置获取 Key
+                decryptionKey = await this._downloadKey(keyInfo.uri, info.m3u8Url, headers);
             }
 
             this.sendMessage('download-status', { message: `开始多线程下载 (${CONCURRENT_LIMIT}线程)...`, type: 'default' });
 
             // 7. 多线程并发下载 (并解密) TS 分片
-            const downloadedFiles = await this._downloadSegmentsParallel(segments, tempDir, info.m3u8Url, decryptionKey, keyInfo?.iv);
+            // 返回按顺序排列的文件名列表
+            const downloadedFiles = await this._downloadSegmentsParallel(segments, tempDir, info.m3u8Url, decryptionKey, keyInfo?.iv, headers);
 
-            this.sendMessage('download-status', { message: '分片下载完成，正在合并...', type: 'default' });
+            // 8. 二进制合并文件
+            // 【核心修复】不再使用 ffmpeg concat 协议，而是直接将 TS 文件的二进制数据首尾相连
+            // 这样可以避免 FFmpeg 在处理不规范 HLS 分片时产生的时间戳跳变（导致卡顿）
+            this.sendMessage('download-status', { message: '正在进行二进制流合并...', type: 'default' });
+            const combinedTsPath = path.join(tempDir, 'combined.ts');
+            await this._mergeFiles(tempDir, downloadedFiles, combinedTsPath);
 
-            // 8. 生成 FFmpeg Concat 列表文件
-            const fileListPath = path.join(tempDir, 'files.txt');
-            const fileListContent = downloadedFiles.map(f => `file '${f}'`).join('\n');
-            fs.writeFileSync(fileListPath, fileListContent);
-
-            // 9. 使用 FFmpeg Concat 模式合并
+            // 9. 使用 FFmpeg 转封装并重建时间戳
+            // 【核心修复】添加 -fflags +genpts 参数，强制 FFmpeg 重新计算 Presentation Time Stamps
+            this.sendMessage('download-status', { message: '正在修复时间戳并封装为 MP4...', type: 'default' });
             const finalPath = path.join(this.config.VIDEOS_DIR, `${safeFilename}.mp4`);
-            await this._concatAndRemux(fileListPath, finalPath);
+            await this._remuxToMp4(combinedTsPath, finalPath);
 
             // 10. 添加到媒体库
             await this._addTrackToPlaylist({
@@ -114,77 +138,191 @@ export class IyfProvider extends BaseProvider {
         } finally {
             // 清理临时目录
             if (tempDir && fs.existsSync(tempDir)) {
+                // 稍微延迟删除，确保文件句柄已释放
                 setTimeout(() => {
                     try {
                         fs.rmSync(tempDir, { recursive: true, force: true });
                     } catch (e) {
                         console.warn('[Iyf Provider] 清理临时文件失败 (非致命):', e.message);
                     }
-                }, 1000);
+                }, 2000);
             }
         }
     }
 
     /**
      * @private
-     * 递归解析 M3U8，处理 Master Playlist -> Media Playlist 的跳转。
+     * 使用 BrowserWindow 获取视频信息。
      */
-    async _parseM3u8Recursive(url) {
-        const response = await axios.get(url, {
-            headers: { 'User-Agent': IYF_USER_AGENT, 'Referer': IYF_REFERER }
+    async _getVideoInfo(videoUrl) {
+        console.log(`[Iyf Provider] 正在启动浏览器获取信息: ${videoUrl}`);
+
+        const partition = `persist:iyf_session_${Date.now()}`;
+        const win = new BrowserWindow({
+            show: false,
+            width: 1024,
+            height: 768,
+            webPreferences: {
+                offscreen: true,
+                partition: partition,
+                sandbox: true,
+                contextIsolation: true,
+                webSecurity: false
+            }
         });
+
+        try {
+            const iyfSession = session.fromPartition(partition);
+
+            // 拦截请求头，注入 Referer
+            iyfSession.webRequest.onBeforeSendHeaders((details, callback) => {
+                details.requestHeaders['User-Agent'] = IYF_USER_AGENT;
+                if (details.url.includes('iyf')) {
+                    details.requestHeaders['Referer'] = IYF_REFERER;
+                }
+                callback({ cancel: false, requestHeaders: details.requestHeaders });
+            });
+
+            // 加载页面
+            await win.loadURL(videoUrl);
+
+            // 等待页面关键数据加载
+            const script = `
+                new Promise((resolve, reject) => {
+                    let attempts = 0;
+                    const interval = setInterval(() => {
+                        attempts++;
+                        // 检查 player_aaaa 配置是否存在，这通常意味着页面主体已加载
+                        if (window.player_aaaa) {
+                            clearInterval(interval);
+                            const title = document.title || document.querySelector('meta[property="og:title"]')?.content || 'Unknown';
+                            const cover = document.querySelector('meta[property="og:image"]')?.content;
+                            // 【核心新增】获取集数信息，用于防止文件名冲突
+                            const episode = window.vod_part || '';
+                            
+                            resolve({
+                                title: title,
+                                coverUrl: cover,
+                                playerConfig: window.player_aaaa,
+                                episode: episode
+                            });
+                        }
+                        if (attempts > 150) { // 30s timeout
+                            clearInterval(interval);
+                            reject('Timeout waiting for player_aaaa');
+                        }
+                    }, 200);
+                });
+            `;
+
+            const result = await win.webContents.executeJavaScript(script);
+
+            // 获取 Cookie
+            const cookies = await iyfSession.cookies.get({ url: videoUrl });
+            const cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+
+            // 解析 M3U8
+            const playerBlock = result.playerConfig;
+            let m3u8Url = playerBlock.url;
+            const encryptType = playerBlock.encrypt || 0;
+
+            if (m3u8Url) {
+                if (encryptType === 1) {
+                    m3u8Url = unescape(m3u8Url);
+                } else if (encryptType === 2) {
+                    try {
+                        const decodedBase64 = Buffer.from(m3u8Url, 'base64').toString('binary');
+                        m3u8Url = unescape(decodedBase64);
+                    } catch (e) {
+                        console.warn('[Iyf Provider] Base64 解码异常:', e);
+                    }
+                }
+                m3u8Url = m3u8Url.replace(/\\\//g, '/');
+            }
+
+            let coverUrl = result.coverUrl;
+            if (coverUrl && coverUrl.startsWith('//')) {
+                coverUrl = 'https:' + coverUrl;
+            }
+
+            let title = result.title;
+            // 清理标题中的后缀
+            title = title.replace(/- 爱壹帆.*/, '').trim();
+
+            // 【核心新增】如果获取到了集数，将其拼接到标题中，避免多集文件名重复
+            if (result.episode) {
+                title = `${title} - ${result.episode}`;
+            }
+
+            console.log(`[Iyf Provider] 解析完成: ${title}`);
+            return {
+                title,
+                coverUrl,
+                m3u8Url,
+                cookieString
+            };
+
+        } catch (error) {
+            console.error('[Iyf Provider] BrowserWindow 解析失败:', error);
+            throw new Error('页面加载超时，请检查网络连接');
+        } finally {
+            if (win && !win.isDestroyed()) {
+                win.destroy();
+            }
+        }
+    }
+
+    /**
+     * @private
+     * 递归解析 M3U8，使用宽松的 Axios 配置。
+     */
+    async _parseM3u8Recursive(url, headers) {
+        const response = await axios.get(url, {
+            headers: headers,
+            ...this._getAxiosConfig() // 使用宽松配置
+        });
+
         const parser = new m3u8Parser.Parser();
         parser.push(response.data);
         parser.end();
 
         const manifest = parser.manifest;
 
-        // 情况1: Master Playlist (包含子流)
         if (manifest.playlists && manifest.playlists.length > 0) {
-            console.log('[Iyf Provider] 检测到多级列表，选择最佳画质...');
-            // 简单策略：选择带宽最大的流，或者第一个
             const bestPlaylist = manifest.playlists.sort((a, b) => (b.attributes.BANDWIDTH || 0) - (a.attributes.BANDWIDTH || 0))[0];
             const nextUrl = new URL(bestPlaylist.uri, url).toString();
-            return this._parseM3u8Recursive(nextUrl);
+            return this._parseM3u8Recursive(nextUrl, headers);
         }
 
-        // 情况2: Media Playlist (包含实际分片)
         if (manifest.segments && manifest.segments.length > 0) {
             const segments = manifest.segments.map(seg => {
                 return {
                     uri: new URL(seg.uri, url).toString(),
-                    key: seg.key // 每个分片可能有独立的 Key 定义，或者继承全局
+                    key: seg.key
                 };
             });
-
-            // 提取全局 Key 信息 (通常在第一个分片或头部定义)
-            // m3u8-parser 会将 key 信息附加在 segment 对象上
-            // 我们假设整个列表使用同一个 Key，或者取第一个分片的 Key 作为参考
             const firstKey = segments[0].key;
-
-            return {
-                segments: segments,
-                keyInfo: firstKey
-            };
+            return { segments: segments, keyInfo: firstKey };
         }
 
-        throw new Error('无法解析 M3U8 内容：既不是 Master 也不是 Media 列表');
+        throw new Error('无法解析 M3U8 内容：格式不正确');
     }
 
     /**
      * @private
-     * 下载 AES-128 解密密钥。
+     * 下载解密密钥
      */
-    async _downloadKey(keyUri, m3u8Url) {
+    async _downloadKey(keyUri, m3u8Url, headers) {
         try {
             const absoluteKeyUrl = new URL(keyUri, m3u8Url).toString();
             const response = await axios.get(absoluteKeyUrl, {
                 responseType: 'arraybuffer',
-                headers: { 'User-Agent': IYF_USER_AGENT, 'Referer': IYF_REFERER }
+                headers: headers,
+                ...this._getAxiosConfig()
             });
             return Buffer.from(response.data);
         } catch (e) {
-            console.error('[Iyf Provider] 获取解密 Key 失败:', e);
+            console.error('[Iyf Provider] 获取解密 Key 失败:', e.message);
             throw new Error('无法下载解密密钥');
         }
     }
@@ -193,7 +331,7 @@ export class IyfProvider extends BaseProvider {
      * @private
      * 并发下载并解密分片。
      */
-    async _downloadSegmentsParallel(segments, tempDir, refererUrl, globalKey, globalIv) {
+    async _downloadSegmentsParallel(segments, tempDir, refererUrl, globalKey, globalIv, headers) {
         const limit = pLimit(CONCURRENT_LIMIT);
         const total = segments.length;
         let completed = 0;
@@ -203,23 +341,20 @@ export class IyfProvider extends BaseProvider {
                 const filename = `${String(index).padStart(5, '0')}.ts`;
                 const filePath = path.join(tempDir, filename);
 
-                // 优先使用分片自带的 Key，否则使用全局 Key
                 const key = (seg.key && seg.key.method === 'AES-128') ?
-                    (seg.key.uri ? await this._downloadKey(seg.key.uri, refererUrl) : globalKey)
+                    (seg.key.uri ? await this._downloadKey(seg.key.uri, refererUrl, headers) : globalKey)
                     : globalKey;
 
-                // IV 处理：如果有显示 IV 则使用，否则使用序列号
                 let iv = globalIv;
                 if (seg.key && seg.key.iv) {
                     iv = Buffer.from(seg.key.iv.buffer);
                 } else if (key && !iv) {
-                    // 默认 IV 为序列号 (Sequence Number)，填充至 16 字节
                     const ivBuffer = Buffer.alloc(16);
-                    ivBuffer.writeUInt32BE(index, 12); // 假设 index 就是 sequence number
+                    ivBuffer.writeUInt32BE(index, 12);
                     iv = ivBuffer;
                 }
 
-                await this._downloadAndDecryptSegment(seg.uri, filePath, refererUrl, key, iv);
+                await this._downloadAndDecryptSegment(seg.uri, filePath, refererUrl, key, iv, headers);
 
                 completed++;
                 if (completed % 10 === 0 || completed === total) {
@@ -229,35 +364,36 @@ export class IyfProvider extends BaseProvider {
                         type: 'progress'
                     });
                 }
-                return filename;
+                return filename; // 返回文件名，用于后续按顺序合并
             });
         });
 
+        // Promise.all 返回的数组顺序与 tasks 顺序一致，即按 segments 顺序一致
         return await Promise.all(tasks);
     }
 
     /**
      * @private
-     * 下载单个分片，如果提供了 Key 则进行解密。
+     * 下载单个分片
      */
-    async _downloadAndDecryptSegment(url, destPath, referer, key, iv) {
+    async _downloadAndDecryptSegment(url, destPath, referer, key, iv, headers) {
         for (let i = 0; i < 3; i++) {
             try {
                 const response = await axios({
                     url,
                     method: 'GET',
-                    responseType: 'arraybuffer', // 获取原始二进制数据
-                    headers: { 'User-Agent': IYF_USER_AGENT, 'Referer': referer },
-                    timeout: 20000
+                    responseType: 'arraybuffer',
+                    headers: { ...headers, 'Referer': referer },
+                    timeout: 20000,
+                    ...this._getAxiosConfig()
                 });
 
                 let data = Buffer.from(response.data);
 
-                // 解密逻辑
                 if (key && iv) {
                     try {
                         const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
-                        decipher.setAutoPadding(true); // PKCS7 padding
+                        decipher.setAutoPadding(true);
                         data = Buffer.concat([decipher.update(data), decipher.final()]);
                     } catch (decryptErr) {
                         console.warn(`[Iyf Provider] 解密分片失败 ${url}:`, decryptErr.message);
@@ -266,7 +402,6 @@ export class IyfProvider extends BaseProvider {
                 }
 
                 fs.writeFileSync(destPath, data);
-
                 if (data.length === 0) throw new Error('分片数据为空');
                 return;
             } catch (error) {
@@ -278,80 +413,81 @@ export class IyfProvider extends BaseProvider {
 
     /**
      * @private
-     * 使用 FFmpeg Concat Demuxer 合并文件。
-     * 这种方式对时间戳的处理比二进制拼接更安全。
+     * 获取宽松的 Axios 配置
      */
-    async _concatAndRemux(fileListPath, outputMp4) {
+    _getAxiosConfig() {
+        return {
+            httpsAgent: insecureAgent,
+            proxy: undefined // 允许 Axios 自动读取环境变量中的代理设置
+        };
+    }
+
+    /**
+     * @private
+     * 【核心方法】二进制合并文件
+     * 相比于 FFmpeg 的 concat demuxer，直接的二进制合并能消除分片间的 metadata 差异，
+     * 为后续的 genpts 重建时间戳提供更纯净的输入流。
+     */
+    async _mergeFiles(tempDir, fileNames, outputPath) {
+        const writeStream = fs.createWriteStream(outputPath);
+
+        // 必须严格按顺序写入
+        for (const fileName of fileNames) {
+            const filePath = path.join(tempDir, fileName);
+            if (!fs.existsSync(filePath)) continue;
+
+            await new Promise((resolve, reject) => {
+                const readStream = fs.createReadStream(filePath);
+                readStream.pipe(writeStream, { end: false }); // 写入后不关闭写入流
+                readStream.on('end', resolve);
+                readStream.on('error', reject);
+            });
+        }
+
+        return new Promise((resolve, reject) => {
+            writeStream.end();
+            writeStream.on('finish', resolve);
+            writeStream.on('error', reject);
+        });
+    }
+
+    /**
+     * @private
+     * 【核心方法】使用 FFmpeg 转封装并重建时间戳
+     * 1. -fflags +genpts: 强制重新生成 Presentation Timestamp，这是解决卡顿的关键。
+     * 2. -c:v copy: 复制视频流，不重编码，保证速度和原画质。
+     * 3. -c:a aac: 重新编码音频。IYF 的源音频流有时会有 glitch，重新编码能平滑处理，确保同步。
+     */
+    async _remuxToMp4(inputTs, outputMp4) {
         const args = [
             '-y',
-            '-f', 'concat',
-            '-safe', '0', // 允许读取任意路径的文件
-            '-i', fileListPath,
-            '-c', 'copy',
-            '-bsf:a', 'aac_adtstoasc', // 修复 AAC 音频流
+            '-fflags', '+genpts', // 关键参数：重建时间戳
+            '-i', inputTs,
+            '-c:v', 'copy',       // 视频流直接复制，解决卡顿依靠 genpts
+            '-c:a', 'aac',        // 音频重编码，确保音频容器完整性
             '-movflags', '+faststart',
             outputMp4
         ];
 
+        console.log(`[Iyf Provider] 执行 FFmpeg 重建时间戳与转封装:`, args);
+
         return new Promise((resolve, reject) => {
             const proc = spawn(this.ffmpegPath, args);
+            let stderrData = '';
+
+            proc.stderr.on('data', (data) => stderrData += data.toString());
 
             proc.on('close', (code) => {
-                if (code === 0) resolve();
-                else reject(new Error(`FFmpeg 合并失败，退出码: ${code}`));
+                if (code === 0) {
+                    console.log('[Iyf Provider] 封装成功。');
+                    resolve();
+                } else {
+                    console.error('[Iyf Provider] FFmpeg 错误输出:', stderrData);
+                    reject(new Error(`FFmpeg 封装失败，退出码: ${code}`));
+                }
             });
 
             proc.on('error', (err) => reject(err));
         });
-    }
-
-    // --- 复用之前的辅助方法 ---
-    async _getVideoInfo(pageUrl) {
-        try {
-            const response = await axios.get(pageUrl, {
-                headers: { 'User-Agent': IYF_USER_AGENT, 'Referer': IYF_REFERER },
-                timeout: 15000
-            });
-            const html = response.data;
-
-            let title = '未知视频';
-            const ogTitleMatch = html.match(/<meta property="og:title" content="([^"]+)"/i);
-            const titleTagMatch = html.match(/<title>([^<]+)<\/title>/i);
-            if (ogTitleMatch && ogTitleMatch[1]) title = ogTitleMatch[1];
-            else if (titleTagMatch && titleTagMatch[1]) title = titleTagMatch[1].split('-')[0].trim();
-
-            let coverUrl = null;
-            const ogImageMatch = html.match(/<meta property="og:image" content="([^"]+)"/i);
-            if (ogImageMatch && ogImageMatch[1]) {
-                coverUrl = ogImageMatch[1];
-                if (coverUrl.startsWith('//')) coverUrl = 'https:' + coverUrl;
-            }
-
-            const playerBlockMatch = html.match(/var\s+player_aaaa\s*=\s*({[\s\S]*?});/);
-            if (!playerBlockMatch || !playerBlockMatch[1]) throw new Error('无法找到视频配置');
-            const playerBlock = playerBlockMatch[1];
-
-            const urlMatch = playerBlock.match(/['"]url['"]\s*:\s*['"]([^'"]+)['"]/);
-            if (!urlMatch || !urlMatch[1]) throw new Error('无法提取视频 URL');
-            let m3u8Url = urlMatch[1];
-
-            const encryptMatch = playerBlock.match(/['"]encrypt['"]\s*:\s*(\d+)/);
-            const encryptType = encryptMatch ? parseInt(encryptMatch[1], 10) : 0;
-
-            if (encryptType === 1) m3u8Url = unescape(m3u8Url);
-            else if (encryptType === 2) {
-                try {
-                    const decodedBase64 = Buffer.from(m3u8Url, 'base64').toString('binary');
-                    m3u8Url = unescape(decodedBase64);
-                } catch (e) {}
-            }
-
-            m3u8Url = m3u8Url.replace(/\\\//g, '/');
-
-            return { title: title.trim(), coverUrl, m3u8Url };
-        } catch (error) {
-            if (error.response) throw new Error(`页面请求失败: ${error.response.status}`);
-            throw error;
-        }
     }
 }

@@ -2,14 +2,15 @@
 
 import path from 'path';
 import fs from 'fs';
-import axios from 'axios';
-import { exec } from 'child_process';
+import YTDlpWrap from 'yt-dlp-wrap-plus';
 import { BaseProvider } from './base-provider.js';
 import { downloadFile } from '../services/download-service.js';
 
 /**
  * @class BilibiliProvider
- * @description Bilibili 视频下载服务提供者。
+ * @description Bilibili 视频下载服务提供者 (基于 yt-dlp 重构版)。
+ *              利用 yt-dlp 强大的解析能力，支持下载更高分辨率(1080P+/4K)的视频，
+ *              并自动处理音视频轨道的合并。
  * @extends BaseProvider
  */
 export class BilibiliProvider extends BaseProvider {
@@ -19,7 +20,7 @@ export class BilibiliProvider extends BaseProvider {
      * @returns {boolean} - 如果是 Bilibili 视频链接则返回 true。
      */
     isApplicable(url) {
-        return url.includes('bilibili.com/video/');
+        return url.includes('bilibili.com/video/') || url.includes('b23.tv');
     }
 
     /**
@@ -28,88 +29,170 @@ export class BilibiliProvider extends BaseProvider {
      * @returns {Promise<void>}
      */
     async execute(videoUrl) {
-        // 1. 前置检查：确保必需的 FFmpeg 工具存在
-        if (!this._checkTools(['ffmpeg'])) {
-            return; // _checkTools 方法内部已发送错误消息
+        // 1. 前置检查：B站高清视频通常音视频分离，必须同时存在 yt-dlp 和 FFmpeg 才能合并
+        if (!this._checkTools(['yt-dlp', 'ffmpeg'])) {
+            return;
         }
 
         try {
-            this.sendMessage('download-status', { message: '开始解析B站链接...', type: 'default' });
+            this.sendMessage('download-status', { message: '正在获取 B站 视频信息...', type: 'default' });
 
-            // 2. 从 URL 中提取 BV 号
-            const bvidMatch = videoUrl.match(/(BV[a-zA-Z0-9]+)/);
-            if (!bvidMatch) {
-                throw new Error('无法从URL中提取有效的BV号。');
-            }
-            const bvid = bvidMatch[0];
+            // 2. 使用 yt-dlp 获取视频元信息 (标题, UP主, 封面等)
+            const info = await this._getVideoInfo(videoUrl);
+            const safeFilename = this._sanitizeFilename(info.title);
 
-            // 3. 获取视频详细信息 (标题, UP主, 封面等)
-            const viewResponse = await axios.get(`https://api.bilibili.com/x/web-interface/view?bvid=${bvid}`, {
-                headers: { 'User-Agent': 'Mozilla/5.0' }
-            });
-            const viewData = viewResponse.data?.data;
-            if (!viewData || !viewData.cid) {
-                throw new Error('无法获取视频信息，请检查链接是否有效或视频是否存在。');
-            }
-            const { cid, title, owner, pic: coverUrl } = viewData;
-            const author = owner?.name || '未知UP主';
-            const safeFilename = this._sanitizeFilename(`${author} - ${title}`);
-
-            // 4. 获取音视频流的 DASH 地址
-            const playResponse = await axios.get(`https://api.bilibili.com/x/player/playurl?bvid=${bvid}&cid=${cid}&fnval=4048`, {
-                headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': videoUrl }
-            });
-            const dashData = playResponse.data.data?.dash;
-            if (!dashData?.video?.[0] || !dashData?.audio?.[0]) {
-                throw new Error('无法获取DASH格式的音视频流。');
+            // 3. 下载封面 (非阻塞，即使失败也不影响视频下载)
+            if (info.thumbnail) {
+                downloadFile(info.thumbnail, this.config.ALBUMART_DIR, `${safeFilename}.jpg`)
+                    .catch(e => console.warn('[Bilibili Provider] 封面下载轻微错误:', e.message));
             }
 
-            this.sendMessage('download-status', { message: '正在下载视频和音频文件...', type: 'default' });
+            this.sendMessage('download-status', { message: '正在调用 yt-dlp 下载并合并...', type: 'default' });
 
-            // 5. 定义临时文件和最终文件的路径
-            const videoTempPath = path.join(this.config.MEDIA_ROOT, `${safeFilename}_video_temp.m4s`);
-            const audioTempPath = path.join(this.config.MEDIA_ROOT, `${safeFilename}_audio_temp.m4s`);
-            const coverPath = path.join(this.config.ALBUMART_DIR, `${safeFilename}.jpg`);
-            const finalPath = path.join(this.config.VIDEOS_DIR, `${safeFilename}.mp4`);
+            // 4. 执行核心下载流程
+            // yt-dlp 会自动处理分段下载和 FFmpeg 合并
+            const finalFilePath = await this._downloadVideoWithYtDlp(
+                videoUrl,
+                this.config.VIDEOS_DIR,
+                safeFilename,
+                (progress) => this.sendMessage('download-status', {
+                    message: `下载进度: ${(progress * 100).toFixed(1)}%`,
+                    progress: progress,
+                    type: 'progress'
+                })
+            );
 
-            // 6. 并行下载视频、音频和封面文件
-            await Promise.all([
-                downloadFile(dashData.video[0].baseUrl, path.dirname(videoTempPath), path.basename(videoTempPath), { 'Referer': videoUrl }),
-                downloadFile(dashData.audio[0].baseUrl, path.dirname(audioTempPath), path.basename(audioTempPath), { 'Referer': videoUrl }),
-                downloadFile(coverUrl, this.config.ALBUMART_DIR, path.basename(coverPath), { 'Referer': videoUrl }),
-            ]);
-
-            this.sendMessage('download-status', { message: '下载完成，开始使用FFmpeg合并...', type: 'default' });
-
-            // 7. 使用 FFmpeg 合并音视频文件
-            const ffmpegCommand = `"${this.ffmpegPath}" -y -i "${videoTempPath}" -i "${audioTempPath}" -c copy "${finalPath}"`;
-            await new Promise((resolve, reject) => {
-                exec(ffmpegCommand, (error, stdout, stderr) => {
-                    // 清理临时文件
-                    fs.unlink(videoTempPath, () => {});
-                    fs.unlink(audioTempPath, () => {});
-                    if (error) {
-                        return reject(new Error('FFmpeg合并失败: ' + stderr));
-                    }
-                    resolve(stdout);
-                });
-            });
-
-            // 8. 将新下载的视频添加到媒体库
+            // 5. 添加到媒体库
             await this._addTrackToPlaylist({
-                title,
-                artist: author,
-                src: `videos/${path.basename(finalPath)}`,
-                albumArt: `albumArt/${path.basename(coverPath)}`,
+                title: info.title,
+                artist: info.uploader || 'Bilibili',
+                src: `videos/${path.basename(finalFilePath)}`,
+                albumArt: `albumArt/${safeFilename}.jpg`,
                 type: "video"
             });
 
-            this.sendMessage('download-status', { message: `"${title}" 下载完成！`, type: 'success' });
+            this.sendMessage('download-status', { message: `"${info.title}" 下载成功！`, type: 'success' });
 
         } catch (error) {
-            console.error('[Bilibili Provider] 错误:', error);
-            // 抛出错误，由 download-service 的统一 catch 块处理
+            console.error('[Bilibili Provider] Error:', error);
             throw new Error(`B站下载失败: ${error.message}`);
         }
+    }
+
+    /**
+     * @private
+     * 调用 yt-dlp 获取视频 JSON 元数据。
+     * @param {string} videoUrl
+     * @returns {Promise<Object>}
+     */
+    async _getVideoInfo(videoUrl) {
+        try {
+            const YTDlpClass = YTDlpWrap.default || YTDlpWrap;
+            const ytDlpWrap = new YTDlpClass(this.ytDlpPath);
+
+            const args = [
+                '--dump-json',
+                '--no-playlist', // 仅获取单集信息，防止解析整个列表
+                '--force-ipv4',  // 强制 IPv4，减少国内网络环境下的解析超时
+                '--socket-timeout', '60'
+            ];
+
+            if (this.systemProxy) args.push('--proxy', this.systemProxy);
+            args.push(videoUrl);
+
+            console.log(`[Bilibili Provider] 获取信息命令:`, args);
+            const stdout = await ytDlpWrap.execPromise(args);
+            const info = JSON.parse(stdout);
+
+            return {
+                title: info.title,
+                uploader: info.uploader,
+                thumbnail: info.thumbnail, // B站通常提供高质量封面
+                duration: info.duration,
+            };
+        } catch (error) {
+            console.error('[Bilibili Provider] 获取信息失败:', error);
+            throw new Error(`解析视频信息失败: ${error.message}`);
+        }
+    }
+
+    /**
+     * @private
+     * 调用 yt-dlp 下载视频。
+     * @param {string} videoUrl
+     * @param {string} outputDir
+     * @param {string} filename
+     * @param {function} onProgress
+     * @returns {Promise<string>} 最终文件路径
+     */
+    _downloadVideoWithYtDlp(videoUrl, outputDir, filename, onProgress) {
+        return new Promise((resolve, reject) => {
+            // 使用模板以支持自动扩展名 (通常合并后是 mp4 或 mkv)
+            const outputPath = path.join(outputDir, `${filename}.%(ext)s`);
+            const ffmpegDir = path.dirname(this.ffmpegPath);
+
+            const YTDlpClass = YTDlpWrap.default || YTDlpWrap;
+            const ytDlpWrap = new YTDlpClass(this.ytDlpPath);
+
+            const args = [
+                '--force-ipv4',
+                '--socket-timeout', '60',
+                '--no-playlist',
+                // 下载最佳视频流和最佳音频流并合并，如果失败则回退到最佳单一文件
+                '-f', 'bestvideo+bestaudio/best',
+                // 指定 FFmpeg 路径，这是合并音视频的关键
+                '--ffmpeg-location', ffmpegDir,
+                // 如果需要合并，优先合并为 mp4 容器
+                '--merge-output-format', 'mp4',
+                '--output', outputPath,
+            ];
+
+            if (this.systemProxy) args.push('--proxy', this.systemProxy);
+            args.push(videoUrl);
+
+            console.log(`[Bilibili Provider] 下载命令:`, args);
+
+            const ytDlpEventEmitter = ytDlpWrap.exec(args);
+
+            ytDlpEventEmitter.on('progress', (progress) => {
+                if (onProgress && progress.percent) {
+                    onProgress(progress.percent / 100);
+                }
+            });
+
+            ytDlpEventEmitter.on('error', (error) => {
+                console.error('[Bilibili Provider] 下载流错误:', error);
+                reject(error);
+            });
+
+            ytDlpEventEmitter.on('close', () => {
+                console.log('[Bilibili Provider] 下载进程结束。');
+                // 检查最终生成的文件
+                // yt-dlp 可能会根据配置生成 .mp4 或 .mkv
+                const possibleExts = ['.mp4', '.mkv', '.webm'];
+                let foundPath = null;
+
+                // 优先检查 mp4
+                const mp4Path = path.join(outputDir, `${filename}.mp4`);
+                if (fs.existsSync(mp4Path)) {
+                    foundPath = mp4Path;
+                } else {
+                    // 扫描目录下匹配的文件
+                    const files = fs.readdirSync(outputDir);
+                    const match = files.find(f => f.startsWith(filename) && possibleExts.some(ext => f.endsWith(ext)));
+                    if (match) {
+                        foundPath = path.join(outputDir, match);
+                    }
+                }
+
+                if (foundPath) {
+                    resolve(foundPath);
+                } else {
+                    // 虽然进程正常退出，但没找到文件，通常是不可能的，除非磁盘写入失败
+                    // 尝试 resolve 预期的 mp4 路径，让后续逻辑处理错误
+                    resolve(mp4Path);
+                }
+            });
+        });
     }
 }
