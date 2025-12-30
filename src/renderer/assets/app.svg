@@ -1,41 +1,22 @@
-
-    <!--
-      系列图标：音乐
-      - 严格遵循原始聊天图标的样式和深色模式逻辑。
-      - 你可以选择其中一个作为你的 favicon.svg。
-    -->
-    <svg width="64" height="64" viewBox="0 0 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <!-- 统一的样式定义，与你的聊天/流程图标完全一致 -->
-        <style>
-            /* --- LIGHT THEME STYLES (DEFAULT) --- */
-            .bg { fill: url(#logo-gradient); }
-            .grad-stop-1 { stop-color: #007ACC; }
-            .grad-stop-2 { stop-color: #009688; }
-            .main-element { fill: white; fill-opacity: 0.9; }
-            .accent-1 { fill: #007ACC; }
-            .accent-2 { fill: #009688; }
-
-            /* --- DARK THEME STYLES --- */
-            @media (prefers-color-scheme: dark) {
-            .bg { fill: transparent; }
-            .grad-stop-1, .grad-stop-2 { stop-color: transparent; }
-            .main-element { fill: #D1D5DB; fill-opacity: 1; }
-            .accent-1, .accent-2 { fill: #4B5563; }
-            }
-        </style>
-
-        <defs>
-            <linearGradient id="logo-gradient" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-                <stop class="grad-stop-1"/>
-                <stop offset="1" class="grad-stop-2"/>
-            </linearGradient>
-        </defs>
-
-        <g id="icon-music-notes-beamed-bold">
-            <rect width="64" height="64" rx="12" class="bg"/>
-            <!-- 音乐符号（双八分音符）-->
-            <circle cx="24" cy="45" r="5" class="main-element"/>
-            <circle cx="42" cy="39" r="5" class="main-element"/>
-            <path d="M 24 45 V 18 H 47 V 23 H 29 V 45 H 24 Z M 42 39 V 23 H 47 V 39 H 42 Z" class="main-element"/>
-        </g>
-    </svg>
+<svg width='64' height='64' viewBox='0 0 64 64' fill='none' xmlns='http://www.w3.org/2000/svg'>
+    <style>
+        .bg { fill: url(#logo-gradient-1); }
+        .grad-stop-1 { stop-color: #007ACC; }
+        .grad-stop-2 { stop-color: #009688; }
+        .bubble { fill: white; fill-opacity: 0.9; }
+        @media (prefers-color-scheme: dark) {
+        .bg { fill: transparent; }
+        .grad-stop-1, .grad-stop-2 { stop-color: transparent; }
+        .bubble { fill: #D1D5DB; fill-opacity: 1; }
+        }
+    </style>
+    <defs>
+        <linearGradient id='logo-gradient-1' x1='0' y1='0' x2='64' y2='64' gradientUnits='userSpaceOnUse'>
+            <stop class='grad-stop-1'/>
+            <stop offset='1' class='grad-stop-2'/>
+        </linearGradient>
+    </defs>
+    <rect width='64' height='64' rx='12' class='bg'/>
+    <!-- 图标形状: 播放 -->
+    <path d='M23 17L49 32L23 47V17Z' class='bubble'/>
+</svg>
