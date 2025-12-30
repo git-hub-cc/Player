@@ -1,14 +1,14 @@
 // src/backend/providers/provider-registry.js
 
-// --- 导入所有具体的下载策略 (Provider) ---
-import { BilibiliProvider } from './bilibili.js';
+// --- 导入专用下载策略 (Specialized Providers) ---
+// 这些 Provider 针对特定网站进行了优化，拥有更高的优先级。
 import { DouyinProvider } from './douyin.js';
 import { JableProvider } from './jable.js';
-import { YoutubeProvider } from './youtube.js';
-// =========================================================================
-// 【核心新增】导入 IyfProvider
-// =========================================================================
 import { IyfProvider } from './iyf.js';
+
+// --- 导入通用下载策略 (Generic Provider) ---
+// 该 Provider 基于 yt-dlp，支持成千上万个网站，作为最后的兜底策略。
+import { GenericYtDlpProvider } from './generic-ytdlp.js';
 
 
 /**
@@ -53,11 +53,18 @@ export class ProviderRegistry {
         }
 
         console.log('[Provider Registry] 正在初始化所有下载服务提供者...');
+
+        // =========================================================================
+        // 【核心修改】调整注册顺序
+        // 1. 专用 Provider 优先 (如抖音、Jable、IYF)
+        // 2. 通用 GenericYtDlpProvider 最后 (兜底)
+        // =========================================================================
         const ProviderClasses = [
-            // =========================================================================
-            // 【核心修改】将 IyfProvider 添加到注册列表
-            // =========================================================================
-            BilibiliProvider, DouyinProvider, JableProvider, YoutubeProvider, IyfProvider
+            DouyinProvider,
+            JableProvider,
+            IyfProvider,
+            // 原 Bilibili 和 Youtube Provider 已被 GenericYtDlpProvider 替代
+            GenericYtDlpProvider
         ];
 
         ProviderClasses.forEach(ProviderClass => {
@@ -75,6 +82,7 @@ export class ProviderRegistry {
 
     /**
      * 根据给定的 URL 查找能够处理它的第一个 Provider。
+     * 按照注册顺序依次检查 isApplicable()。
      * @param {string} url - 用户输入的 URL。
      * @returns {import('./base-provider.js').BaseProvider | null} - 返回匹配的 Provider 实例，如果未找到则返回 null。
      */
