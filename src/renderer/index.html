@@ -404,9 +404,7 @@
     <div id="templates" style="display: none;">
         <template id="template-lyric-line"><p></p></template>
         <template id="template-no-lyrics"><p class="no-lyrics">暂无歌词</p></template>
-        <!-- ========================================================================= -->
-        <!-- 【核心修改】为播放列表项模板添加视频进度条结构 -->
-        <!-- ========================================================================= -->
+
         <template id="template-playlist-item">
             <li class="playlist-item">
                 <div class="playlist-item-main-content">
@@ -416,14 +414,42 @@
                         <div class="playlist-artist"></div>
                     </div>
                 </div>
-                <!-- 新增：视频进度条容器 -->
+                <!-- 视频进度条容器 -->
                 <div class="video-progress-bar">
                     <div class="video-progress-bar-inner"></div>
                 </div>
             </li>
         </template>
+
         <!-- ========================================================================= -->
-        <template id="template-search-result-item"><li class="playlist-item"><div class="playlist-item-main-content"><div class="playlist-icon"></div><div class="playlist-details"><div class="playlist-title"></div><div class="playlist-artist"></div></div></div><button class="playlist-download-btn" title="下载到本地"><span class="icon-placeholder" data-icon="DOWNLOAD"></span><span class="icon-placeholder" data-icon="SPINNER"></span><span class="icon-placeholder" data-icon="CACHED"></span></button></li></template>
+        <!-- 【核心修改】搜索结果模板：增加取消按钮结构 -->
+        <!-- ========================================================================= -->
+        <template id="template-search-result-item">
+            <li class="playlist-item">
+                <div class="playlist-item-main-content">
+                    <div class="playlist-icon"></div>
+                    <div class="playlist-details">
+                        <div class="playlist-title"></div>
+                        <div class="playlist-artist"></div>
+                    </div>
+                </div>
+                <button class="playlist-download-btn" title="下载到本地">
+                    <!-- 默认下载图标 -->
+                    <span class="icon-placeholder download-icon" data-icon="DOWNLOAD"></span>
+
+                    <!-- 加载动画容器，内部包含一个停止图标，实现Hover时停止的效果 -->
+                    <div class="spinner-icon-container">
+                        <span class="icon-placeholder spinner-icon" data-icon="SPINNER"></span>
+                        <span class="icon-placeholder stop-icon" data-icon="STOP"></span>
+                    </div>
+
+                    <!-- 已缓存图标 -->
+                    <span class="icon-placeholder cached-icon" data-icon="CACHED"></span>
+                </button>
+            </li>
+        </template>
+        <!-- ========================================================================= -->
+
         <template id="template-playlist-no-results"><li id="playlist-no-results" class="no-results-message">未找到结果</li></template>
         <template id="template-shortcut-item"><li class="shortcut-item"><span class="action-label"></span><div class="shortcut-display"></div><div class="actions"><button class="set-btn">设置</button><button class="clear-btn">清除</button></div></li></template>
         <template id="template-key-kbd"><kbd></kbd></template>

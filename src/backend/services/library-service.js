@@ -7,7 +7,6 @@ import { pinyin } from 'pinyin-pro';
 import { createRequire } from 'node:module';
 import { exec } from 'child_process';
 
-// --- 动态加载 Canvas ---
 const require = createRequire(import.meta.url);
 let createCanvas;
 try {
@@ -17,30 +16,16 @@ try {
     console.warn('[Library] Canvas 模块未安装或加载失败，将跳过自动封面生成功能:', e.message);
 }
 
-/**
- * @class LibraryService
- * @description 负责管理本地媒体库，包括播放列表的读写、文件导入、删除和视频处理。
- */
 export class LibraryService {
-    // #config 存储应用的路径配置
     #config;
-    // #ffmpegPath 存储 FFmpeg 的可执行文件路径
     #ffmpegPath;
 
-    /**
-     * @param {object} config - 应用的全局配置对象。
-     * @param {string} ffmpegPath - FFmpeg 可执行文件路径。
-     */
     constructor(config, ffmpegPath) {
         this.#config = config;
         this.#ffmpegPath = ffmpegPath;
         console.log(`[Library Service] 服务已实例化。FFmpeg 路径: ${this.#ffmpegPath || '未安装'}`);
     }
 
-    /**
-     * 在按需下载 FFmpeg 成功后，更新其路径。
-     * @param {string} newPath - 新的路径。
-     */
     setFfmpegPath(newPath) {
         this.#ffmpegPath = newPath;
         console.log(`[Library Service] FFmpeg 路径已更新: ${newPath}`);
@@ -151,14 +136,10 @@ export class LibraryService {
         try { if (fs.existsSync(this.#config.PLAYLIST_PATH)) { const data = JSON.parse(fs.readFileSync(this.#config.PLAYLIST_PATH, 'utf-8')); return { success: true, data }; } else { return { success: true, data: [] }; } } catch (e) { return { success: false, error: e.message }; }
     }
 
-    // =========================================================================
-    // 【核心修复】删除逻辑使用 Promise 确保异步文件删除完成
-    // =========================================================================
     async handleDeleteTrack({ src: relativeSrc }) {
         if (!relativeSrc) return { success: false, error: '删除失败: 未提供曲目路径。' };
 
         try {
-            // 1. 读取并更新播放列表 JSON
             let playlist = [];
             if (fs.existsSync(this.#config.PLAYLIST_PATH)) {
                 playlist = JSON.parse(fs.readFileSync(this.#config.PLAYLIST_PATH, 'utf-8'));
@@ -170,29 +151,25 @@ export class LibraryService {
             const newPlaylist = playlist.filter(t => t.src !== relativeSrc);
             fs.writeFileSync(this.#config.PLAYLIST_PATH, JSON.stringify(newPlaylist, null, 2), 'utf-8');
 
-            // 2. 依次删除关联的物理文件（音频/视频、封面、歌词）
-            // 使用 for...of 循环配合 await，确保删除操作不被吞没或过早返回
             const keysToDelete = ['src', 'albumArt', 'lyrics'];
 
             for (const key of keysToDelete) {
                 const fileRelativePath = trackToDelete[key];
 
-                // 检查路径是否有效，且不是 base64 数据或网络地址
                 if (fileRelativePath && typeof fileRelativePath === 'string' &&
                     !fileRelativePath.startsWith('data:') &&
                     !fileRelativePath.startsWith('http')) {
 
                     try {
                         const filePath = path.join(this.#config.MEDIA_ROOT, fileRelativePath);
-
-                        // 使用 fs.promises.unlink 进行异步删除，并捕获错误
-                        await fs.promises.unlink(filePath).catch(err => {
-                            // 忽略文件不存在的错误 (ENOENT)，记录其他错误
+                        try {
+                            await fs.promises.unlink(filePath);
+                            console.log(`[Library] 成功删除文件: ${filePath}`);
+                        } catch (err) {
                             if (err.code !== 'ENOENT') {
                                 console.warn(`[Library] 删除物理文件失败 (${key}): ${filePath}`, err.message);
                             }
-                        });
-                        console.log(`[Library] 成功删除文件: ${filePath}`);
+                        }
                     } catch (pathError) {
                         console.warn(`[Library] 解析文件路径出错:`, pathError);
                     }
@@ -205,7 +182,6 @@ export class LibraryService {
             return { success: false, error: error.message };
         }
     }
-    // =========================================================================
 
     async updateLocalPlaylist(newTracks) {
         if (!newTracks || newTracks.length === 0) return; let playlist = [];
@@ -344,8 +320,6 @@ export class LibraryService {
             return { success: true, importedCount };
         } catch (error) { return { success: false, error: error.message }; }
     }
-
-    // --- 静态 IPC 处理器 (不需要 this) ---
 
     async handleSelectDirectory() {
         const mainWindow = BrowserWindow.getAllWindows()[0];

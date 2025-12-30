@@ -2,6 +2,7 @@
 
 import path from 'path';
 import fs from 'fs';
+import { spawn } from 'child_process'; // 【核心新增】
 import YTDlpWrap from 'yt-dlp-wrap-plus';
 import { BaseProvider } from './base-provider.js';
 import { downloadFile } from '../services/download-service.js';
@@ -9,44 +10,32 @@ import { downloadFile } from '../services/download-service.js';
 /**
  * @class YoutubeProvider
  * @description YouTube 视频下载服务提供者。
+ *              【修复】使用 taskkill 彻底杀死 Windows 下的 yt-dlp 进程树。
  * @extends BaseProvider
  */
 export class YoutubeProvider extends BaseProvider {
-    /**
-     * 判断此 Provider 是否能处理给定的 URL。
-     * @param {string} url - 用户输入的 URL。
-     * @returns {boolean} - 如果是 YouTube 视频链接则返回 true。
-     */
     isApplicable(url) {
         return url.includes('youtube.com/') || url.includes('youtu.be/');
     }
 
-    /**
-     * 执行 YouTube 视频的下载和处理流程。
-     * @param {string} videoUrl - YouTube 视频链接。
-     * @returns {Promise<void>}
-     */
-    async execute(videoUrl) {
-        // 1. 前置检查：确保 yt-dlp 和 FFmpeg 都存在
-        if (!this._checkTools(['yt-dlp', 'ffmpeg'])) {
-            return;
-        }
+    async execute(videoUrl, signal) {
+        if (!this._checkTools(['yt-dlp', 'ffmpeg'])) return;
 
         try {
+            this._checkCancelled(signal);
             this.sendMessage('download-status', { message: '正在获取 YouTube 视频信息...', type: 'default' });
 
-            // 2. 获取视频元信息
-            const info = await this._getVideoInfo(videoUrl);
+            const info = await this._getVideoInfo(videoUrl, signal);
+            this._checkCancelled(signal);
             const safeFilename = this._sanitizeFilename(info.title);
 
-            // 3. 下载封面
             if (info.thumbnail) {
-                await downloadFile(info.thumbnail, this.config.ALBUMART_DIR, `${safeFilename}.jpg`);
+                await downloadFile(info.thumbnail, this.config.ALBUMART_DIR, `${safeFilename}.jpg`, {}, () => {}, 3, signal)
+                    .catch(() => {});
             }
 
             this.sendMessage('download-status', { message: '开始调用 yt-dlp 下载...', type: 'default' });
 
-            // 4. 执行核心下载流程
             const finalFilePath = await this._downloadVideoWithYtDlp(
                 videoUrl,
                 this.config.VIDEOS_DIR,
@@ -55,10 +44,12 @@ export class YoutubeProvider extends BaseProvider {
                     message: `下载进度: ${(progress * 100).toFixed(1)}%`,
                     progress: progress,
                     type: 'progress'
-                })
+                }),
+                signal
             );
 
-            // 5. 添加到媒体库
+            this._checkCancelled(signal);
+
             await this._addTrackToPlaylist({
                 title: info.title,
                 artist: info.uploader || 'YouTube',
@@ -70,45 +61,102 @@ export class YoutubeProvider extends BaseProvider {
             this.sendMessage('download-status', { message: `"${info.title}" 下载成功！`, type: 'success' });
 
         } catch (error) {
+            if (signal && signal.aborted) throw error;
             console.error('[YouTube Provider] Error:', error);
             throw new Error(`YouTube 下载失败: ${error.message}`);
         }
     }
 
     /**
-     * @private
-     * 获取 YouTube 视频信息 (标题, 封面等)。
+     * 强力终止进程的辅助方法
      */
-    async _getVideoInfo(videoUrl) {
+    _killProcess(processInstance) {
+        if (!processInstance) return;
+
         try {
-            const YTDlpClass = YTDlpWrap.default || YTDlpWrap;
-            const ytDlpWrap = new YTDlpClass(this.ytDlpPath);
-            const args = ['--dump-json', '--force-ipv4', '--socket-timeout', '60'];
-            if (this.systemProxy) args.push('--proxy', this.systemProxy);
-            args.push(videoUrl);
-
-            console.log(`[YouTube Provider] 准备执行 yt-dlp (获取信息)，参数:`, args);
-            const stdout = await ytDlpWrap.execPromise(args);
-            const info = JSON.parse(stdout);
-
-            console.log(`[YouTube Provider] 成功解析视频信息:`, { title: info.title, uploader: info.uploader });
-            return {
-                title: info.title,
-                uploader: info.uploader,
-                thumbnail: info.thumbnail,
-                duration: info.duration,
-            };
-        } catch (error) {
-            console.error('[YouTube Provider] 执行 yt-dlp (获取信息) 失败:', error);
-            throw new Error(`获取视频信息失败: ${error.message}`);
+            const pid = processInstance.pid;
+            if (process.platform === 'win32') {
+                spawn('taskkill', ['/pid', pid, '/f', '/t']);
+            } else {
+                processInstance.kill('SIGKILL');
+            }
+            console.log(`[YouTube] 已强力终止进程 PID: ${pid}`);
+        } catch (e) {
+            console.error('[YouTube] 终止进程失败:', e);
         }
     }
 
-    /**
-     * @private
-     * 使用 yt-dlp 下载 YouTube 视频。
-     */
-    _downloadVideoWithYtDlp(videoUrl, outputDir, filename, onProgress) {
+    async _getVideoInfo(videoUrl, signal) {
+        return new Promise((resolve, reject) => {
+            const YTDlpClass = YTDlpWrap.default || YTDlpWrap;
+            const ytDlpWrap = new YTDlpClass(this.ytDlpPath);
+            const args = [
+                '--dump-json',
+                '--force-ipv4',
+                '--socket-timeout', '60',
+                '--no-warnings'
+            ];
+            if (this.systemProxy) args.push('--proxy', this.systemProxy);
+            args.push(videoUrl);
+
+            const emitter = ytDlpWrap.exec(args);
+            let stdout = '';
+            let stderr = '';
+
+            if (emitter.ytDlpProcess) {
+                if (emitter.ytDlpProcess.stdout) {
+                    emitter.ytDlpProcess.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+                }
+                if (emitter.ytDlpProcess.stderr) {
+                    emitter.ytDlpProcess.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+                }
+            }
+
+            emitter.on('close', (code) => {
+                if (signal && signal.aborted) return reject(new Error('Download aborted by user'));
+
+                if (code === 0) {
+                    try {
+                        let info;
+                        const trimmedOutput = stdout.trim();
+                        if (!trimmedOutput) throw new Error('Empty output');
+
+                        try {
+                            info = JSON.parse(trimmedOutput);
+                        } catch (e) {
+                            const lines = trimmedOutput.split(/\r?\n/);
+                            const jsonLine = lines.find(line => line.trim().startsWith('{') && line.trim().endsWith('}'));
+                            if (jsonLine) info = JSON.parse(jsonLine);
+                            else throw e;
+                        }
+
+                        resolve({
+                            title: info.title || '未知标题',
+                            uploader: info.uploader || '未知频道',
+                            thumbnail: info.thumbnail,
+                            duration: info.duration,
+                        });
+                    } catch (e) {
+                        console.error('[YouTube Provider] JSON 解析失败。Stderr:', stderr);
+                        reject(new Error(`解析视频元数据失败: ${e.message}`));
+                    }
+                } else {
+                    reject(new Error(`yt-dlp 退出码 ${code}: ${stderr}`));
+                }
+            });
+
+            emitter.on('error', (err) => reject(err));
+
+            if (signal) {
+                signal.addEventListener('abort', () => {
+                    this._killProcess(emitter.ytDlpProcess);
+                    reject(new Error('Download aborted by user'));
+                });
+            }
+        });
+    }
+
+    _downloadVideoWithYtDlp(videoUrl, outputDir, filename, onProgress, signal) {
         return new Promise((resolve, reject) => {
             const outputPath = path.join(outputDir, `${filename}.%(ext)s`);
             const ffmpegDir = path.dirname(this.ffmpegPath);
@@ -121,37 +169,37 @@ export class YoutubeProvider extends BaseProvider {
                 '--ffmpeg-location', ffmpegDir,
                 '--output', outputPath,
                 '--no-playlist',
+                '--no-warnings'
             ];
             if (this.systemProxy) args.push('--proxy', this.systemProxy);
             args.push(videoUrl);
 
-            console.log(`[YouTube Provider] 准备执行 yt-dlp (下载)，参数:`, args);
+            const emitter = ytDlpWrap.exec(args);
 
-            const ytDlpEventEmitter = ytDlpWrap.exec(args);
-
-            ytDlpEventEmitter.on('progress', (progress) => {
+            emitter.on('progress', (progress) => {
                 if (onProgress && progress.percent) onProgress(progress.percent / 100);
             });
-            ytDlpEventEmitter.on('error', (error) => {
-                console.error('[YouTube Provider] 执行 yt-dlp (下载) 失败:', error);
-                reject(error);
-            });
-            ytDlpEventEmitter.on('close', () => {
-                console.log('[YouTube Provider] yt-dlp 进程成功关闭。');
+            emitter.on('error', (error) => reject(error));
+            emitter.on('close', () => {
+                if (signal && signal.aborted) return reject(new Error('Download aborted by user'));
+
                 const finalMp4Path = path.join(outputDir, `${filename}.mp4`);
                 if (fs.existsSync(finalMp4Path)) {
                     resolve(finalMp4Path);
                 } else {
                     const files = fs.readdirSync(outputDir);
                     const match = files.find(f => f.startsWith(filename) && ['.mp4', '.mkv', '.webm'].some(ext => f.endsWith(ext)));
-                    if (match) {
-                        resolve(path.join(outputDir, match));
-                    } else {
-                        // 即使找不到，也 resolve 预期的路径，让后续逻辑处理
-                        resolve(finalMp4Path);
-                    }
+                    if (match) resolve(path.join(outputDir, match));
+                    else resolve(finalMp4Path);
                 }
             });
+
+            if (signal) {
+                signal.addEventListener('abort', () => {
+                    this._killProcess(emitter.ytDlpProcess);
+                    reject(new Error('Download aborted by user'));
+                });
+            }
         });
     }
 }

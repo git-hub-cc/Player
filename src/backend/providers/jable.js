@@ -12,7 +12,6 @@ import pLimit from 'p-limit';
 import { BaseProvider } from './base-provider.js';
 import { downloadFile } from '../services/download-service.js';
 
-// --- 配置 ---
 const CONCURRENT_LIMIT = 64;
 const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 100 });
 const BASE_HEADERS = {
@@ -22,49 +21,29 @@ const BASE_HEADERS = {
     'Connection': 'keep-alive'
 };
 
-/**
- * @class JableProvider
- * @description Jable.tv 视频下载服务提供者。
- * @extends BaseProvider
- */
 export class JableProvider extends BaseProvider {
-    /**
-     * 判断此 Provider 是否能处理给定的 URL。
-     * @param {string} url - 用户输入的 URL。
-     * @returns {boolean} - 如果是 Jable 视频链接则返回 true。
-     */
     isApplicable(url) {
         return url.includes('jable.tv/videos/');
     }
 
-    /**
-     * 执行 Jable 视频的下载和处理流程。
-     * @param {string} videoUrl - Jable 视频链接。
-     * @returns {Promise<void>}
-     */
-    async execute(videoUrl) {
-        if (!this._checkTools(['ffmpeg'])) {
-            return;
-        }
+    async execute(videoUrl, signal) {
+        if (!this._checkTools(['ffmpeg'])) return;
         try {
+            this._checkCancelled(signal);
             this.sendMessage('download-status', { message: '正在解析 Jable 视频信息...', type: 'default' });
 
-            // 1. 获取视频元信息（m3u8, 标题, 封面等）
-            const info = await this._getVideoInfo(videoUrl);
-            if (!info.m3u8Url) {
-                throw new Error('未找到 m3u8 播放地址');
-            }
+            const info = await this._getVideoInfo(videoUrl, signal);
+            this._checkCancelled(signal);
+            if (!info.m3u8Url) throw new Error('未找到 m3u8 播放地址');
 
             const safeFilename = this._sanitizeFilename(info.title);
 
-            // 2. 下载封面
             if (info.coverUrl) {
-                await downloadFile(info.coverUrl, this.config.ALBUMART_DIR, `${safeFilename}.jpg`);
+                await downloadFile(info.coverUrl, this.config.ALBUMART_DIR, `${safeFilename}.jpg`, {}, () => {}, 3, signal);
             }
 
             this.sendMessage('download-status', { message: '开始下载并解密视频分片...', type: 'default' });
 
-            // 3. 执行核心下载流程
             await this._downloadAndProcessM3u8(
                 info.m3u8Url,
                 this.config.VIDEOS_DIR,
@@ -74,10 +53,12 @@ export class JableProvider extends BaseProvider {
                     progress: progress,
                     type: 'progress'
                 }),
-                info.cookieString
+                info.cookieString,
+                signal // 传递 signal
             );
 
-            // 4. 添加到媒体库
+            this._checkCancelled(signal);
+
             await this._addTrackToPlaylist({
                 title: info.title,
                 artist: 'Jable TV',
@@ -89,16 +70,13 @@ export class JableProvider extends BaseProvider {
             this.sendMessage('download-status', { message: `"${info.title}" 下载成功！`, type: 'success' });
 
         } catch (error) {
+            if (signal && signal.aborted) throw error;
             console.error('[Jable Provider] Error:', error);
             throw new Error(`Jable 下载失败: ${error.message}`);
         }
     }
 
-    /**
-     * @private
-     * 从 Jable 视频页面获取 m3u8 URL 和元数据。
-     */
-    async _getVideoInfo(videoUrl) {
+    async _getVideoInfo(videoUrl, signal) {
         console.log(`[Jable Provider] 正在获取视频信息: ${videoUrl}`);
         const partition = `persist:jable_session_${Date.now()}`;
         const win = new BrowserWindow({
@@ -110,6 +88,10 @@ export class JableProvider extends BaseProvider {
                 partition: partition,
             }
         });
+
+        if (signal) {
+            signal.addEventListener('abort', () => { if (!win.isDestroyed()) win.close(); });
+        }
 
         try {
             const jableSession = session.fromPartition(partition);
@@ -147,7 +129,6 @@ export class JableProvider extends BaseProvider {
             const cookies = await jableSession.cookies.get({ url: videoUrl });
             const cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
 
-            console.log(`[Jable Provider] 获取成功: ${metaData.title}`);
             return {
                 m3u8Url,
                 title: metaData.title.replace(' - Jable.TV', '').trim(),
@@ -155,23 +136,22 @@ export class JableProvider extends BaseProvider {
                 cookieString
             };
 
+        } catch (error) {
+            if (signal && signal.aborted) throw new Error('Download aborted by user');
+            throw error;
         } finally {
             if (win && !win.isDestroyed()) win.close();
         }
     }
 
-    /**
-     * @private
-     * 负责整个 m3u8 下载、解密、合并和转封装流程。
-     */
-    async _downloadAndProcessM3u8(m3u8Url, outputDir, filename, onProgress, cookieString) {
+    async _downloadAndProcessM3u8(m3u8Url, outputDir, filename, onProgress, cookieString, signal) {
         const tempDir = path.join(outputDir, 'temp_' + Date.now());
         if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
         const requestHeaders = { ...BASE_HEADERS, 'Cookie': cookieString || '' };
 
         try {
-            console.log(`[Jable Provider] 下载 m3u8 列表...`);
-            const m3u8Response = await axios.get(m3u8Url, { headers: requestHeaders, httpsAgent });
+            this._checkCancelled(signal);
+            const m3u8Response = await axios.get(m3u8Url, { headers: requestHeaders, httpsAgent, signal });
             const parser = new m3u8Parser.Parser();
             parser.push(m3u8Response.data);
             parser.end();
@@ -179,13 +159,12 @@ export class JableProvider extends BaseProvider {
             const segments = parser.manifest.segments;
             if (!segments || segments.length === 0) throw new Error('m3u8 解析失败: 未找到视频分片');
 
-            const { key, iv } = await this._getDecryptionKey(segments[0], m3u8Url, requestHeaders);
+            const { key, iv } = await this._getDecryptionKey(segments[0], m3u8Url, requestHeaders, signal);
 
             const baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
             const totalSegments = segments.length;
             let downloadedCount = 0;
             const limit = pLimit(CONCURRENT_LIMIT);
-            console.log(`[Jable Provider] 开始下载，并发数: ${CONCURRENT_LIMIT} ...`);
 
             const segmentFileNames = [];
             const tasks = segments.map((seg, index) => {
@@ -194,13 +173,15 @@ export class JableProvider extends BaseProvider {
                 const segPath = path.join(tempDir, segFilename);
                 const segUrl = seg.uri.startsWith('http') ? seg.uri : new URL(seg.uri, baseUrl).toString();
                 return limit(async () => {
-                    await this._downloadSegmentWithRetry(segUrl, segPath, key, iv, requestHeaders);
+                    this._checkCancelled(signal);
+                    await this._downloadSegmentWithRetry(segUrl, segPath, key, iv, requestHeaders, 1, signal);
                     downloadedCount++;
                     if (onProgress) onProgress(downloadedCount / totalSegments);
                 });
             });
             await Promise.all(tasks);
 
+            this._checkCancelled(signal);
             console.log(`[Jable Provider] 下载完成，正在进行二进制合并...`);
             const combinedTsPath = path.join(outputDir, `combined_${Date.now()}.ts`);
             await this._mergeFiles(tempDir, segmentFileNames.sort(), combinedTsPath);
@@ -217,17 +198,11 @@ export class JableProvider extends BaseProvider {
         }
     }
 
-    /**
-     * @private
-     * 获取 m3u8 加密所需的密钥和 IV。
-     */
-    async _getDecryptionKey(segment, m3u8Url, headers) {
+    async _getDecryptionKey(segment, m3u8Url, headers, signal) {
         if (!segment.key || segment.key.method !== 'AES-128') return { key: null, iv: null };
-
-        console.log(`[Jable Provider] 检测到加密，正在获取密钥...`);
         const keyObj = segment.key;
         const keyUrl = new URL(keyObj.uri, m3u8Url).toString();
-        const keyResponse = await axios.get(keyUrl, { responseType: 'arraybuffer', headers, httpsAgent });
+        const keyResponse = await axios.get(keyUrl, { responseType: 'arraybuffer', headers, httpsAgent, signal });
         const key = Buffer.from(keyResponse.data);
         let iv = Buffer.alloc(16, 0);
 
@@ -236,24 +211,18 @@ export class JableProvider extends BaseProvider {
                 iv = Buffer.from(keyObj.iv.replace(/^0x/i, '').padStart(32, '0'), 'hex');
             } else {
                 const tempIv = Buffer.from(keyObj.iv);
-                if (tempIv.length !== 16) {
-                    tempIv.copy(iv);
-                } else {
-                    iv = tempIv;
-                }
+                if (tempIv.length !== 16) tempIv.copy(iv);
+                else iv = tempIv;
             }
         }
         return { key, iv };
     }
 
-    /**
-     * @private
-     * 下载并解密单个 TS 分片 (带重试)。
-     */
-    async _downloadSegmentWithRetry(url, destPath, key, iv, headers, attempt = 1) {
+    async _downloadSegmentWithRetry(url, destPath, key, iv, headers, attempt = 1, signal) {
+        if (signal && signal.aborted) throw new Error('Download aborted by user');
         if (fs.existsSync(destPath) && (await fs.promises.stat(destPath)).size > 0) return;
         try {
-            const response = await axios({ url, method: 'GET', responseType: 'arraybuffer', headers, httpsAgent, timeout: 20000 });
+            const response = await axios({ url, method: 'GET', responseType: 'arraybuffer', headers, httpsAgent, timeout: 20000, signal });
             let data = Buffer.from(response.data);
             if (key && iv) {
                 const decipher = createDecipheriv('aes-128-cbc', key, iv);
@@ -261,20 +230,17 @@ export class JableProvider extends BaseProvider {
             }
             await fs.promises.writeFile(destPath, data);
         } catch (error) {
+            if (signal && signal.aborted) throw error;
             const maxRetries = 5;
             if (attempt <= maxRetries) {
                 const delay = (error.response?.status === 429) ? 2000 * attempt : 1000;
                 await new Promise(r => setTimeout(r, delay));
-                return this._downloadSegmentWithRetry(url, destPath, key, iv, headers, attempt + 1);
+                return this._downloadSegmentWithRetry(url, destPath, key, iv, headers, attempt + 1, signal);
             }
             throw error;
         }
     }
 
-    /**
-     * @private
-     * 使用 Node.js 流式合并 TS 文件。
-     */
     async _mergeFiles(tempDir, fileNames, outputPath) {
         const writeStream = fs.createWriteStream(outputPath);
         for (const fileName of fileNames) {
@@ -294,21 +260,12 @@ export class JableProvider extends BaseProvider {
         });
     }
 
-    /**
-     * @private
-     * 使用 FFmpeg 快速转封装 (TS -> MP4)。
-     */
     async _remuxToMp4(inputTs, outputMp4) {
         const command = `"${this.ffmpegPath}" -y -i "${inputTs}" -c copy -bsf:a aac_adtstoasc -movflags +faststart "${outputMp4}"`;
         return new Promise((resolve, reject) => {
             exec(command, (error, stdout, stderr) => {
-                if (error) {
-                    console.error('[Jable Provider] FFmpeg Remux Error:', stderr);
-                    reject(new Error(`转封装失败: ${error.message}`));
-                } else {
-                    console.log('[Jable Provider] FFmpeg 转封装成功。');
-                    resolve();
-                }
+                if (error) reject(new Error(`转封装失败: ${error.message}`));
+                else resolve();
             });
         });
     }

@@ -18,7 +18,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // --- 核心工具 ---
     downloadCoreTool: (toolName) => ipcRenderer.invoke('download-core-tool', toolName),
     openToolsFolder: () => ipcRenderer.invoke('open-tools-folder'),
-    // 【核心新增】检查核心工具状态
     checkCoreTools: () => ipcRenderer.invoke('check-core-tools'),
 
     // --- 文件拖拽接口 ---
@@ -43,6 +42,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     cacheTrack: (trackData) => ipcRenderer.send('cache-track', trackData),
     toggleFullscreen: (state) => ipcRenderer.send('toggle-fullscreen', state),
     openMediaFolder: () => ipcRenderer.send('open-media-folder'),
+
+    // =========================================================================
+    // 【核心新增】发送取消下载指令
+    // id: 可选的任务ID（对于在线缓存需要，对于URL下载可能为空）
+    // type: 'url-download' | 'cache-download'
+    // =========================================================================
+    cancelDownload: (id, type) => ipcRenderer.send('cancel-download', { id, type }),
+    // =========================================================================
 
     // --- 监听事件 ---
     onDownloadStatus: (callback) => {

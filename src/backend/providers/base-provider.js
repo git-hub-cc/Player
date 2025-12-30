@@ -26,12 +26,9 @@ export class BaseProvider {
         this.ffmpegPath = dependencies.ffmpegPath;
         this.ytDlpPath = dependencies.ytDlpPath;
         this.systemProxy = dependencies.systemProxy;
-        this.libraryService = dependencies.libraryService; // 保存 libraryService 实例
+        this.libraryService = dependencies.libraryService;
 
-        // =========================================================================
-        // 【核心优化】通用 User-Agent
-        // 在基类中定义，供所有子类使用，确保下载、爬虫逻辑也能享受到伪装的好处。
-        // =========================================================================
+        // 通用 User-Agent
         this.spoofedUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
     }
 
@@ -46,11 +43,26 @@ export class BaseProvider {
 
     /**
      * (抽象方法) 执行下载和处理流程。
+     * 【核心修改】增加了 signal 参数用于支持取消操作。
      * @param {string} url - 经过验证的、此 Provider 可以处理的 URL。
+     * @param {AbortSignal} [signal] - 可选的中止信号。
      * @returns {Promise<void>}
      */
-    async execute(url) {
+    async execute(url, signal) {
         throw new Error(`Provider '${this.constructor.name}' 必须实现 'execute' 方法。`);
+    }
+
+    /**
+     * (辅助方法) 检查是否已被取消，如果是则抛出特定错误。
+     * 方便子类在关键步骤进行检查。
+     * @param {AbortSignal} signal
+     */
+    _checkCancelled(signal) {
+        if (signal && signal.aborted) {
+            const error = new Error('Download aborted by user');
+            error.code = 'ERR_CANCELED';
+            throw error;
+        }
     }
 
     /**

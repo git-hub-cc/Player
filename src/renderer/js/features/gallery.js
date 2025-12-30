@@ -75,7 +75,12 @@ function hidePlayer() {
  * 虚拟化渲染，只创建视口内及缓冲区内的 DOM 元素以提高性能。
  */
 function updateGallery() {
-    const playlistData = getters.playlist();
+    // =========================================================================
+    // 【核心修改】数据源从 getters.playlist() 更改为 getters.filteredPlaylist()
+    // 这使得画廊显示的内容能自动响应媒体库的筛选模式（全部/音频/视频）。
+    // =========================================================================
+    const playlistData = getters.filteredPlaylist();
+
     if (playlistData.length === 0) {
         dom.galleryWrapper.innerHTML = '';
         _state.renderedCells.clear();
@@ -128,11 +133,8 @@ function updateGallery() {
                 const track = playlistData[trackIndex];
                 if (!track) continue; // 健壮性检查
 
-                // =========================================================================
-                // 【核心修改】使用稳定的 `src` 作为唯一标识符，而不是易变的 `index`
-                // =========================================================================
+                // 使用稳定的 `src` 作为唯一标识符，而不是易变的 `index`
                 item.dataset.src = track.src;
-                // =========================================================================
 
                 const artElement = item.querySelector('.gallery-item-art');
                 artElement.src = track.albumArt || DEFAULT_ART;
@@ -251,9 +253,6 @@ function onPointerDown(e) {
 function onGalleryItemClick(e) {
     if (_state.justDragged) return; // 如果是拖拽结束，则不触发点击事件
 
-    // =========================================================================
-    // 【核心修改】点击后，通过 `src` 查找最新的 `index` 来播放
-    // =========================================================================
     const item = e.target.closest('.gallery-item[data-src]');
     if (item) {
         const trackSrc = item.dataset.src;
@@ -272,7 +271,6 @@ function onGalleryItemClick(e) {
             console.warn(`[Gallery] 尝试播放的歌曲 (src: ${trackSrc}) 已不在播放列表中。`);
         }
     }
-    // =========================================================================
 }
 
 const handleResize = debounce(updateGallery, 250);
@@ -296,14 +294,15 @@ export function stopAutoScroll() {
 export function init() {
     if (_state.isInitialized) return;
 
-    subscribe('playlistChanged', (playlist) => {
-        if (playlist && playlist.length > 0) {
-            updateGallery();
-        } else {
-            dom.galleryWrapper.innerHTML = '';
-            _state.renderedCells.clear();
-        }
-    });
+    // 当整个播放列表数据发生变化时（如增删），更新画廊
+    subscribe('playlistChanged', updateGallery);
+
+    // =========================================================================
+    // 【核心新增】订阅媒体库过滤模式的变化。
+    // 当用户在媒体库面板切换“全部/音频/视频”时，此订阅会被触发，
+    // 从而调用 updateGallery 函数，使用新的过滤后列表重新渲染画廊。
+    // =========================================================================
+    subscribe('filterModeChanged', updateGallery);
 
     subscribe('screensaverModeChanged', (isActive) => {
         if (isActive) {

@@ -9,11 +9,8 @@ import { BrowserWindow, session } from 'electron';
 import { BaseProvider } from './base-provider.js';
 import { downloadFile } from '../services/download-service.js';
 
-// --- 配置 ---
 const CONCURRENT_LIMIT = 16;
 const CHUNK_SIZE = 5 * 1024 * 1024;
-
-// 创建一个显式的直连 Agent，防止 Node.js 环境变量干扰
 const directAgent = new https.Agent({ keepAlive: true });
 
 export class DouyinProvider extends BaseProvider {
@@ -21,16 +18,14 @@ export class DouyinProvider extends BaseProvider {
         return url.includes('douyin.com') || url.includes('iesdouyin.com');
     }
 
-    async execute(videoUrl) {
+    async execute(videoUrl, signal) {
+        this._checkCancelled(signal);
         this.sendMessage('download-status', { message: '正在初始化环境 (强制直连模式)...' });
 
         const partitionName = `persist:douyin_session_${Date.now()}`;
         const douyinSession = session.fromPartition(partitionName);
-
-        // 1. 基础网络配置：强制直连，绕过可能的代理问题
         await douyinSession.setProxy({ proxyRules: 'direct://' });
 
-        // 创建隐形窗口用于加载页面
         const win = new BrowserWindow({
             show: false,
             webPreferences: {
@@ -42,47 +37,28 @@ export class DouyinProvider extends BaseProvider {
         });
         win.webContents.setAudioMuted(true);
 
-        // =========================================================================
-        // 【核心修改】方案二：使用导航锁 (Navigation Locking)
-        // 相比于 webRequest，直接在导航层面拦截更有效，能阻止 JS 触发的协议跳转
-        // =========================================================================
+        // 如果在启动浏览器期间取消，销毁窗口
+        if (signal) {
+            signal.addEventListener('abort', () => {
+                if (!win.isDestroyed()) win.close();
+            });
+        }
 
-        // 定义导航过滤规则：仅允许 http/https 协议
         const preventExternalProtocols = (event, url) => {
-            // 如果 url 只是改变了 hash (例如 #锚点)，通常不需要拦截
             if (url === win.webContents.getURL()) return;
-
             const lowerUrl = url.toLowerCase();
-            const isSafeProtocol = lowerUrl.startsWith('http://') ||
-                lowerUrl.startsWith('https://') ||
-                lowerUrl.startsWith('devtools://');
-
-            if (!isSafeProtocol) {
-                // 拦截 bitbrowser:// 等自定义协议，防止弹出系统提示框
-                event.preventDefault();
-                // console.log(`[Douyin Provider] 已阻止非标准导航: ${url}`);
-            }
+            const isSafeProtocol = lowerUrl.startsWith('http://') || lowerUrl.startsWith('https://') || lowerUrl.startsWith('devtools://');
+            if (!isSafeProtocol) event.preventDefault();
         };
-
-        // 1. 拦截主框架的导航 (如 window.location = '...')
         win.webContents.on('will-navigate', preventExternalProtocols);
-
-        // 2. 拦截服务器端重定向
         win.webContents.on('will-redirect', preventExternalProtocols);
-
-        // 3. 拦截 iframe 内部的导航 (部分广告或统计脚本可能会在 iframe 里搞事)
         win.webContents.on('will-frame-navigate', preventExternalProtocols);
 
-        // 4. 禁止页面打开任何新窗口 (window.open)
-        // win.webContents.setWindowOpenHandler(() => {
-        //     return { action: 'deny' };
-        // });
-        // =========================================================================
-
         try {
-            const apiResponsePromise = this._interceptApiResponse(win);
+            const apiResponsePromise = this._interceptApiResponse(win, signal);
             let urlToLoad = this._normalizeUrl(videoUrl);
 
+            this._checkCancelled(signal);
             await win.loadURL(urlToLoad, {
                 userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
             });
@@ -90,14 +66,17 @@ export class DouyinProvider extends BaseProvider {
             this.sendMessage('download-status', { message: '正在导航页面，等待解析 API...' });
 
             const apiResponseJson = await apiResponsePromise;
+            this._checkCancelled(signal);
+
             if (!apiResponseJson?.aweme_detail) {
                 throw new Error('拦截到的 API 响应格式不正确');
             }
 
-            await this._processAndDownloadItem(apiResponseJson.aweme_detail);
+            await this._processAndDownloadItem(apiResponseJson.aweme_detail, signal);
             this.sendMessage('download-status', { message: '视频下载完成！', type: 'success' });
 
         } catch (error) {
+            if (signal && signal.aborted) throw error;
             throw new Error(`抖音解析失败: ${error.message}`);
         } finally {
             if (win && !win.isDestroyed()) {
@@ -109,9 +88,21 @@ export class DouyinProvider extends BaseProvider {
         }
     }
 
-    _interceptApiResponse(win) {
+    _interceptApiResponse(win, signal) {
         return new Promise(async (resolve, reject) => {
+            // 如果已经被取消
+            if (signal && signal.aborted) return reject(new Error('Download aborted by user'));
+
             const timeout = setTimeout(() => reject(new Error('解析超时，请检查网络连接')), 60000);
+
+            // 监听取消信号
+            if (signal) {
+                signal.addEventListener('abort', () => {
+                    clearTimeout(timeout);
+                    reject(new Error('Download aborted by user'));
+                });
+            }
+
             let debuggerAttached = false;
 
             win.webContents.on('did-finish-load', async () => {
@@ -144,34 +135,37 @@ export class DouyinProvider extends BaseProvider {
     _normalizeUrl(originalUrl) {
         let urlToLoad = originalUrl;
         if (urlToLoad.includes('v.douyin.com')) return urlToLoad;
-
+        let numericId = null;
         try {
-            const url = new URL(urlToLoad);
-            let numericId = url.searchParams.get('modal_id');
-            if (!numericId) {
-                const pathMatch = url.pathname.match(/\/(?:video|note)\/(\d+)/);
-                if (pathMatch) numericId = pathMatch[1];
-            }
-            if (numericId) urlToLoad = `https://www.douyin.com/video/${numericId}/`;
+            const urlObj = new URL(urlToLoad);
+            numericId = urlObj.searchParams.get('modal_id');
         } catch (e) {}
+        if (!numericId) {
+            const pathMatch = urlToLoad.match(/\/(?:video|note)\/(\d+)/);
+            if (pathMatch) numericId = pathMatch[1];
+        }
+        if (numericId) {
+            urlToLoad = `https://www.douyin.com/video/${numericId}/`;
+        } else {
+            throw new Error('无效的抖音链接。无法提取视频ID，请使用包含数字ID的链接或分享短链。');
+        }
         return urlToLoad;
     }
 
-    async _processAndDownloadItem(awemeDetail) {
+    async _processAndDownloadItem(awemeDetail, signal) {
         const awemeId = awemeDetail?.aweme_id;
         const videoUrl = awemeDetail?.video?.play_addr?.url_list?.[0]?.replace(/^http:\/\//, 'https://');
-
         if (!videoUrl) throw new Error("无法从 API 获取视频下载地址");
 
         try {
             this.sendMessage('download-status', { message: '正在探测资源 (Axios 直连模式)...' });
 
-            // 2. 核心修复：Axios 请求必须显式禁用代理并使用直连 Agent
             const headResponse = await axios.head(videoUrl, {
                 headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.douyin.com/' },
                 proxy: false,
                 httpsAgent: directAgent,
-                timeout: 10000
+                timeout: 10000,
+                signal: signal // 传递 signal
             });
 
             const totalSize = parseInt(headResponse.headers['content-length'], 10);
@@ -197,7 +191,9 @@ export class DouyinProvider extends BaseProvider {
                 chunkPaths.push(chunkPath);
 
                 tasks.push(limit(async () => {
-                    const chunkSize = await this._downloadChunk(videoUrl, { start, end }, chunkPath);
+                    this._checkCancelled(signal);
+                    // 传递 signal 给分片下载
+                    const chunkSize = await this._downloadChunk(videoUrl, { start, end }, chunkPath, signal);
                     downloadedBytes += chunkSize;
                     this.sendMessage('download-status', {
                         message: `下载中: ${((downloadedBytes / totalSize) * 100).toFixed(1)}%`,
@@ -209,11 +205,13 @@ export class DouyinProvider extends BaseProvider {
 
             const coverUrl = awemeDetail?.video?.cover?.url_list?.[0];
             if (coverUrl) {
-                tasks.push(limit(() => downloadFile(coverUrl, this.config.ALBUMART_DIR, `${safeFilename}.jpg`)));
+                tasks.push(limit(() => downloadFile(coverUrl, this.config.ALBUMART_DIR, `${safeFilename}.jpg`, {}, () => {}, 3, signal)));
             }
 
+            // 等待所有任务完成，如果有任一任务因 signal 失败，这里会 reject
             await Promise.all(tasks);
 
+            this._checkCancelled(signal);
             this.sendMessage('download-status', { message: '合并数据分片...', type: 'default' });
             await this._mergeChunks(chunkPaths, finalFilePath);
             fs.rmSync(tempDir, { recursive: true, force: true });
@@ -227,12 +225,12 @@ export class DouyinProvider extends BaseProvider {
             });
 
         } catch (e) {
+            if (signal && signal.aborted) throw e;
             throw new Error(`资源获取失败: ${e.message}`);
         }
     }
 
-    async _downloadChunk(url, range, tempPath) {
-        // 3. 核心修复：数据分块下载同样必须强制禁用代理
+    async _downloadChunk(url, range, tempPath, signal) {
         const response = await axios({
             url,
             method: 'GET',
@@ -243,15 +241,26 @@ export class DouyinProvider extends BaseProvider {
                 'Range': `bytes=${range.start}-${range.end}`,
                 'User-Agent': 'Mozilla/5.0',
                 'Referer': 'https://www.douyin.com/'
-            }
+            },
+            signal: signal // 传递 signal
         });
 
-        response.data.pipe(fs.createWriteStream(tempPath));
+        const writer = fs.createWriteStream(tempPath);
+        response.data.pipe(writer);
+
         return new Promise((resolve, reject) => {
             let size = 0;
             response.data.on('data', chunk => size += chunk.length);
             response.data.on('end', () => resolve(size));
             response.data.on('error', reject);
+            writer.on('error', reject);
+            // 监听 signal，销毁流
+            if (signal) {
+                signal.addEventListener('abort', () => {
+                    writer.destroy();
+                    reject(new Error('Download aborted by user'));
+                });
+            }
         });
     }
 
