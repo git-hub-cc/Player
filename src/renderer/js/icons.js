@@ -47,9 +47,13 @@ export const ICON_SETTINGS = '<svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.0
 export const ICON_CHECK_CIRCLE = '<svg class="status-icon success" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
 export const ICON_ALERT_CIRCLE = '<svg class="status-icon error" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
 
+// --- 媒体库过滤模式图标 ---
+export const ICON_FILTER_ALL = '<svg viewBox="0 0 24 24"><path d="M 4 8 h 4 V 4 H 4 v 4 z m 6 12 h 4 v -4 h -4 v 4 z m -6 0 h 4 v -4 H 4 v 4 z m 0 -6 h 4 v -4 H 4 v 4 z m 6 0 h 4 v -4 h -4 v 4 z m 6 -10 v 4 h 4 V 4 h -4 z m 0 4 h 4 v 0 h 0 v 0 z m 0 6 h 4 v -4 h -4 v 4 z"></path></svg>';
+export const ICON_FILTER_AUDIO = '<svg viewBox="0 0 24 24"><path d="M12 3v9.28c-.47-.17-.97-.28-1.5-.28C8.01 12 6 14.01 6 16.5S8.01 21 10.5 21c2.31 0 4.2-1.75 4.45-4H15V6h4V3h-7z"></path></svg>';
+export const ICON_FILTER_VIDEO = '<svg viewBox="0 0 24 24"><path d="M18 3v2h-2V3H8v2H6V3H4v18h2v-2h2v2h8v-2h2v2h2V3h-2zM8 17H6v-2h2v2zm0-4H6v-2h2v2zm0-4H6V7h2v2zm10 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V7h2v2z"></path></svg>';
+
 // =========================================================================
-// 【核心新增】媒体库过滤模式图标
+// 【核心新增】停止/取消图标
 // =========================================================================
-export const ICON_FILTER_ALL = '<svg viewBox="0 0 24 24"><path d="M 4 8 h 4 V 4 H 4 v 4 z m 6 12 h 4 v -4 h -4 v 4 z m -6 0 h 4 v -4 H 4 v 4 z m 0 -6 h 4 v -4 H 4 v 4 z m 6 0 h 4 v -4 h -4 v 4 z m 6 -10 v 4 h 4 V 4 h -4 z m 0 4 h 4 v 0 h 0 v 0 z m 0 6 h 4 v -4 h -4 v 4 z"></path></svg>'; // 类似暂停符号，表示混合/全部
-export const ICON_FILTER_AUDIO = '<svg viewBox="0 0 24 24"><path d="M12 3v9.28c-.47-.17-.97-.28-1.5-.28C8.01 12 6 14.01 6 16.5S8.01 21 10.5 21c2.31 0 4.2-1.75 4.45-4H15V6h4V3h-7z"></path></svg>'; // 音乐符号
-export const ICON_FILTER_VIDEO = '<svg viewBox="0 0 24 24"><path d="M18 3v2h-2V3H8v2H6V3H4v18h2v-2h2v2h8v-2h2v2h2V3h-2zM8 17H6v-2h2v2zm0-4H6v-2h2v2zm0-4H6V7h2v2zm10 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V7h2v2z"></path></svg>'; // 电影胶卷符号
+export const ICON_STOP = '<svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"></path></svg>';
+// =========================================================================

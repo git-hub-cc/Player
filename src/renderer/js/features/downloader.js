@@ -1,13 +1,5 @@
 // src/renderer/js/features/downloader.js
 
-/**
- * @file 资源处理器UI层 (Resource Handler UI Layer)
- * @description
- * 负责处理“添加资源”面板的所有UI交互。
- * 它将用户的操作（如搜索、点击下载）转换为对 `mediaService` 的调用，
- * 并通过订阅 `state` 或监听 `electronAPI` 事件来更新UI。
- */
-
 import * as dom from '../dom.js';
 import * as ui from '../ui.js';
 import * as mediaService from '../services/mediaService.js';
@@ -22,19 +14,19 @@ let currentPage = 1;
 let totalPages = 1;
 const ITEMS_PER_PAGE = 20;
 
-// =========================================================================
-// --- 策略模式实现 (UI部分，用于视频链接下载) ---
-// =========================================================================
+// 【核心新增】记录当前正在缓存（下载）的曲目ID集合
+// Set<trackId>
+const activeCacheDownloads = new Set();
 
-/** 策略基类 */
+// --- 策略模式 ---
 class DownloadStrategy {
     isApplicable(url) { throw new Error("策略必须实现 isApplicable 方法。"); }
     getDescription() { throw new Error("策略必须实现 getDescription 方法。"); }
-    execute(url) { window.electronAPI.startDownload(url); } // 所有策略最终都委托给主进程
+    execute(url) { window.electronAPI.startDownload(url); }
 }
 
 class BilibiliStrategy extends DownloadStrategy {
-    isApplicable(url) { return url.includes('bilibili.com/video/'); }
+    isApplicable(url) { return url.includes('bilibili.com/video/') || url.includes('b23.tv'); }
     getDescription() { return '检测到B站链接，点击“开始下载”进行处理。'; }
 }
 
@@ -51,50 +43,41 @@ class YoutubeStrategy extends DownloadStrategy {
 class DouyinStrategy extends DownloadStrategy {
     isApplicable(url) { return url.includes('douyin.com') || url.includes('iesdouyin.com'); }
     getDescription() { return '检测到抖音链接，点击“开始下载”进行处理。'; }
+    execute(url) {
+        const isShortLink = url.includes('v.douyin.com');
+        const hasVideoId = /\/(?:video|note)\/\d+/.test(url);
+        const hasModalId = /modal_id=\d+/.test(url);
+        if (!isShortLink && !hasVideoId && !hasModalId) {
+            const errorMsg = '无法识别的抖音链接格式。\n请进入视频详情页复制链接，或使用分享短链。';
+            ui.showToast(errorMsg, 'error');
+            throw new Error('Invalid Douyin URL');
+        }
+        window.electronAPI.startDownload(url);
+    }
 }
 
-// =========================================================================
-// 【核心新增】IYF 策略类
-// =========================================================================
 class IyfStrategy extends DownloadStrategy {
     isApplicable(url) { return url.includes('iyf.lv') || url.includes('iyf.tv'); }
     getDescription() { return '检测到爱壹帆(IYF)链接，点击“开始下载”进行处理。'; }
 }
 
-// 策略注册表
 const downloadStrategies = [
     new BilibiliStrategy(),
     new JableStrategy(),
     new YoutubeStrategy(),
     new DouyinStrategy(),
-    // =========================================================================
-    // 【核心新增】注册 IyfStrategy
-    // =========================================================================
     new IyfStrategy()
 ];
 
-/**
- * 根据URL查找匹配的下载策略。
- * @param {string} url - 用户输入的URL。
- * @returns {DownloadStrategy|null} - 匹配的策略实例或 null。
- */
 function findStrategyFor(url) {
     if (!url) return null;
     return downloadStrategies.find(s => s.isApplicable(url)) || null;
 }
 
-// =========================================================================
 // --- 核心逻辑 ---
-// =========================================================================
 
-/**
- * 将从 Meting API 获取的原始轨道数据转换为应用内部使用的标准格式。
- * @param {object} apiTrack - API返回的轨道数据。
- * @returns {object} - 转换后的轨道对象。
- */
 function transformApiData(apiTrack) {
     return {
-        // Meting 标准化格式的字段
         id: apiTrack.id,
         title: apiTrack.name,
         artist: Array.isArray(apiTrack.artist) ? apiTrack.artist.join(' / ') : apiTrack.artist,
@@ -103,20 +86,12 @@ function transformApiData(apiTrack) {
         lyric_id: apiTrack.lyric_id,
         url_id: apiTrack.url_id,
         source: apiTrack.source,
-
-        // 应用内部需要的附加字段
         type: 'audio',
-        albumArt: '', // 封面图将在获取URL时解析
-        originalSrc: `meting://${apiTrack.source}/${apiTrack.id}` // 创建一个唯一的内部标识
+        albumArt: '',
+        originalSrc: `meting://${apiTrack.source}/${apiTrack.id}`
     };
 }
 
-
-/**
- * 智能 URL 提取与补全工具
- * @param {string} input - 用户输入的原始文本
- * @returns {string} - 标准化后的 URL 或空字符串
- */
 function extractUrlFromInput(input) {
     const text = input.trim();
     if (!text) return '';
@@ -129,9 +104,6 @@ function extractUrlFromInput(input) {
         { domain: 'jable.tv', prefix: 'https://www.' },
         { domain: 'youtube.com', prefix: 'https://www.' },
         { domain: 'youtu.be', prefix: 'https://' },
-        // =========================================================================
-        // 【核心新增】IYF 域名补全规则
-        // =========================================================================
         { domain: 'iyf.lv', prefix: 'https://www.' },
         { domain: 'iyf.tv', prefix: 'https://www.' }
     ];
@@ -149,10 +121,10 @@ function extractUrlFromInput(input) {
     return '';
 }
 
-/**
- * 根据输入框内容更新UI模式（搜索模式 vs 下载模式）。
- */
 function updateInputMode() {
+    // 只有在非下载状态下才更新UI，避免覆盖“取消下载”按钮
+    if (dom.startDownloadBtn.classList.contains('downloading')) return;
+
     const text = dom.urlOrSearchInput.value;
     const url = extractUrlFromInput(text);
     const strategy = findStrategyFor(url);
@@ -170,10 +142,6 @@ function updateInputMode() {
     }
 }
 
-
-/**
- * 更新下载面板底部的状态信息。
- */
 function updateStatus(message, type = 'default', progress) {
     const statusEl = dom.downloadStatusEl;
     const progressContainer = document.querySelector('.download-progress-container');
@@ -192,9 +160,6 @@ function updateStatus(message, type = 'default', progress) {
     }
 }
 
-/**
- * 创建单个搜索结果项的 DOM 元素。
- */
 function createResultItem(track, index, isCached = false) {
     const itemNode = getTemplate('template-search-result-item');
     const itemEl = itemNode.querySelector('.playlist-item');
@@ -204,8 +169,15 @@ function createResultItem(track, index, isCached = false) {
     itemEl.querySelector('.playlist-title').textContent = track.title || '未知标题';
     itemEl.querySelector('.playlist-artist').textContent = track.artist || '未知艺术家';
 
+    // 注入图标
     const placeholders = itemEl.querySelectorAll('.icon-placeholder');
-    const iconMap = { DOWNLOAD: ICONS.ICON_DOWNLOAD, SPINNER: ICONS.ICON_SPINNER, CACHED: ICONS.ICON_CACHED };
+    const iconMap = {
+        DOWNLOAD: ICONS.ICON_DOWNLOAD,
+        SPINNER: ICONS.ICON_SPINNER,
+        CACHED: ICONS.ICON_CACHED,
+        // 【核心新增】停止/取消图标
+        STOP: ICONS.ICON_STOP
+    };
     placeholders.forEach(ph => {
         const iconName = ph.dataset.icon;
         if (iconMap[iconName]) ph.outerHTML = iconMap[iconName];
@@ -213,12 +185,16 @@ function createResultItem(track, index, isCached = false) {
 
     const downloadBtn = itemEl.querySelector('.playlist-download-btn');
     downloadBtn.classList.toggle('cached', isCached);
+
+    // 如果该曲目正在下载中，设置下载状态
+    if (activeCacheDownloads.has(track.id)) {
+        downloadBtn.classList.add('downloading');
+        downloadBtn.title = "取消下载";
+    }
+
     return itemNode;
 }
 
-/**
- * 执行在线搜索并渲染结果。
- */
 async function performSearch(query, page = 1) {
     if (!query) {
         ui.showToast('请输入歌曲名或歌手名！', 'error');
@@ -251,10 +227,6 @@ async function performSearch(query, page = 1) {
     searchBtn.classList.remove('loading');
 }
 
-
-/**
- * 处理“导入本地资源”按钮的点击事件。
- */
 async function handleLocalImportClick() {
     const importBtn = dom.importLocalBtn;
     [importBtn, dom.searchOnlineBtn, dom.startDownloadBtn].forEach(btn => btn.disabled = true);
@@ -276,9 +248,6 @@ async function handleLocalImportClick() {
     }
 }
 
-/**
- * 处理下载功能缺少核心工具（如FFmpeg）的情况。
- */
 async function handleMissingTool(toolName, featureName) {
     const toolDisplayName = toolName === 'ffmpeg' ? 'FFmpeg' : 'yt-dlp';
     try {
@@ -297,37 +266,80 @@ async function handleMissingTool(toolName, featureName) {
     }
 }
 
-/**
- * 初始化所有下载器相关的事件监听器。
- */
+// =========================================================================
+// 【核心修改】事件监听器绑定逻辑
+// =========================================================================
 export function setupDownloaderListeners() {
     dom.urlOrSearchInput.addEventListener('input', updateInputMode);
+
+    // 搜索按钮
     dom.searchOnlineBtn.addEventListener('click', () => performSearch(dom.urlOrSearchInput.value.trim(), 1));
 
+    // 下载/取消按钮
     dom.startDownloadBtn.addEventListener('click', () => {
+        const btn = dom.startDownloadBtn;
+
+        // 如果正在下载，点击则为取消
+        if (btn.classList.contains('downloading')) {
+            window.electronAPI.cancelDownload(null, 'url-download');
+            // UI更新会由 download-status 事件触发（类型为 error）
+            return;
+        }
+
         const url = extractUrlFromInput(dom.urlOrSearchInput.value);
         if (!url) {
             updateStatus('请输入有效的URL。', 'error');
             return;
         }
+
         const strategy = findStrategyFor(url) || new DouyinStrategy();
-        strategy.execute(url);
-        dom.startDownloadBtn.disabled = true;
-        dom.startDownloadBtn.classList.add('loading');
+
+        try {
+            strategy.execute(url);
+
+            // 切换按钮状态为“取消下载”
+            btn.classList.add('downloading');
+            const btnText = btn.querySelector('.btn-text');
+            const btnLoader = btn.querySelector('.btn-loader');
+            if (btnText) btnText.textContent = '取消下载';
+            // 添加一个醒目的样式类，比如变红
+            btn.classList.add('danger-mode');
+
+        } catch (e) {
+            // execute 内部的校验错误，无需处理
+        }
     });
 
     dom.importLocalBtn.addEventListener('click', handleLocalImportClick);
 
+    // 搜索结果列表点击（下载/取消缓存）
     dom.searchResultsList.addEventListener('click', (e) => {
         const item = e.target.closest('.playlist-item');
         if (!item) return;
         const track = currentSearchResults[parseInt(item.dataset.index, 10)];
         if (!track) return;
-        if (e.target.closest('.playlist-download-btn:not(.cached)')) {
+
+        const downloadBtn = e.target.closest('.playlist-download-btn');
+
+        if (downloadBtn && !downloadBtn.classList.contains('cached')) {
             e.stopPropagation();
-            ui.updateSearchResultItemStatus(item, 'downloading');
-            mediaService.cacheTrack(track);
-        } else {
+
+            // 如果正在下载，则取消
+            if (downloadBtn.classList.contains('downloading')) {
+                window.electronAPI.cancelDownload(track.id, 'cache-download');
+                // 乐观更新UI：立即移除下载状态
+                downloadBtn.classList.remove('downloading');
+                downloadBtn.title = "下载到本地";
+                activeCacheDownloads.delete(track.id);
+            } else {
+                // 开始下载
+                activeCacheDownloads.add(track.id);
+                ui.updateSearchResultItemStatus(item, 'downloading');
+                downloadBtn.title = "取消下载";
+                mediaService.cacheTrack(track);
+            }
+        } else if (!downloadBtn) {
+            // 点击条目本身播放
             mediaService.playTemporaryTrack(track);
         }
     });
@@ -344,11 +356,30 @@ export function setupDownloaderListeners() {
             handleMissingTool(status.missing, "该下载");
         }
         updateStatus(status.message, status.type, status.progress);
+
+        // 只有当任务结束（成功或失败/取消）时，才重置按钮状态
         if (status.type === 'success' || status.type === 'error') {
-            [dom.startDownloadBtn, dom.importLocalBtn].forEach(btn => {
-                btn.disabled = false;
-                btn.classList.remove('loading');
-            });
+            // 重置“开始下载”按钮
+            const dlBtn = dom.startDownloadBtn;
+            dlBtn.disabled = false;
+            dlBtn.classList.remove('loading', 'downloading', 'danger-mode');
+            const btnText = dlBtn.querySelector('.btn-text');
+            if (btnText) btnText.textContent = '开始下载';
+
+            // 导入按钮也重置
+            dom.importLocalBtn.disabled = false;
+            dom.importLocalBtn.classList.remove('loading');
+
+            // 如果是在线缓存的任务结束
+            // 注意：这里无法直接得知是哪个具体的 trackID 结束了，
+            // 实际上应该在 status 消息中带回 id。
+            // 但目前的架构是靠 message 文本匹配。为了简化，这里仅重置全局下载按钮。
+            // 列表项的状态重置目前依赖乐观UI更新或播放列表变更事件。
+
+            // 如果是取消操作，强制刷新输入框状态
+            if (status.type === 'error' && status.message.includes('取消')) {
+                updateInputMode();
+            }
         }
     });
 
@@ -366,11 +397,14 @@ export function setupDownloaderListeners() {
             const index = parseInt(item.dataset.index, 10);
             if (isNaN(index) || !currentSearchResults[index]) return;
             const searchResultTrack = currentSearchResults[index];
+
             const isNowCached = newPlaylist.some(pTrack =>
                 pTrack.id === searchResultTrack.id && pTrack.source === searchResultTrack.source
             );
+
             if (isNowCached) {
                 ui.updateSearchResultItemStatus(item, 'cached');
+                activeCacheDownloads.delete(searchResultTrack.id);
             }
         });
     });

@@ -4,13 +4,13 @@ import { app, BrowserWindow, ipcMain, protocol, Menu, nativeTheme, globalShortcu
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import fs from 'fs';
-import { configureContainer } from './bootstrap.js'; // 导入 DI 容器配置函数
-import * as setupService from './services/setup-service.js'; // 仅用于下载工具
+import { configureContainer } from './bootstrap.js';
+import * as setupService from './services/setup-service.js';
 
 // --- 全局变量 ---
 let mainWindow;
-let diContainer; // 用于持有 DI 容器的实例
-let initialFileToOpen = null; // 用于存储应用启动时需要打开的文件路径
+let diContainer;
+let initialFileToOpen = null;
 
 // --- 常量配置 ---
 const SPOOF_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -110,11 +110,28 @@ function registerIpcHandlers() {
     ipcMain.handle('get-music-url', (_, trackInfo) => onlineService.handleGetMusicUrl(trackInfo));
     ipcMain.handle('get-vip-music-url', (_, trackInfo) => onlineService.handleGetVipMusicUrl(trackInfo));
     ipcMain.handle('get-lrc-content', (_, relativePath) => onlineService.handleGetLrcContent(relativePath));
+    // 缓存下载（在线歌曲）
     ipcMain.on('cache-track', (_, trackData) => onlineService.handleCacheRequest(trackData));
     ipcMain.handle('get-online-lyric', (_, trackInfo) => onlineService.handleGetOnlineLyric(trackInfo));
 
     // --- 下载与工具相关 ---
+    // URL 下载
     ipcMain.on('download-douyin', (_, data) => downloadService.handleDownloadRequest(data));
+
+    // =========================================================================
+    // 【核心新增】取消下载的 IPC 处理器
+    // =========================================================================
+    ipcMain.on('cancel-download', (_, { id, type }) => {
+        if (type === 'url-download') {
+            // 取消主下载器的任务 (URL 下载)
+            downloadService.cancelCurrentTask();
+        } else if (type === 'cache-download') {
+            // 取消在线歌曲缓存任务
+            onlineService.cancelTask(id);
+        }
+    });
+    // =========================================================================
+
     ipcMain.handle('separate-video', (_, trackData) => libraryService.handleSeparateVideo(trackData));
     ipcMain.handle('handle-file-drop', (_, files) => libraryService.handleDroppedFiles(files, sendMessage));
 
@@ -142,7 +159,6 @@ function registerIpcHandlers() {
     });
 
     // --- 检查核心工具状态 ---
-    // 【核心新增】用于前端设置面板检查工具是否存在
     ipcMain.handle('check-core-tools', () => {
         const binDir = config.BIN_DIR;
         const ffmpegName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';

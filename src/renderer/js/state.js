@@ -70,9 +70,6 @@ export const mutations = {
         _state.playlist = newPlaylist;
         _notify('playlistChanged', _state.playlist);
     },
-    // =========================================================================
-    // 【核心新增】用于更新视频播放进度的 Mutation
-    // =========================================================================
     /**
      * 更新指定轨道（特别是视频）的播放进度信息。
      * @param {{index: number, currentTime: number, duration: number}} payload - 包含轨道索引和时间信息的对象。
@@ -96,7 +93,6 @@ export const mutations = {
             }
         }
     },
-    // =========================================================================
     removeTrack(indexToRemove) {
         if (indexToRemove < 0 || indexToRemove >= _state.playlist.length) return;
         _state.playlist.splice(indexToRemove, 1);
@@ -212,6 +208,27 @@ export const mutations = {
 
 export const getters = {
     playlist: () => _state.playlist,
+    // =========================================================================
+    // 【核心新增】新增一个 getter，用于返回根据当前过滤模式筛选后的播放列表。
+    // 这是实现画廊与媒体库筛选同步的关键，确保画廊能获取到正确的数据子集。
+    // =========================================================================
+    filteredPlaylist: () => {
+        const mode = _state.mediaFilterMode;
+        const playlist = _state.playlist;
+        switch (mode) {
+            case FILTER_MODES.AUDIO:
+                // 筛选出所有非视频类型的轨道（通常即为音频）
+                return playlist.filter(track => track.type !== 'video');
+            case FILTER_MODES.VIDEO:
+                // 仅筛选出视频类型的轨道
+                return playlist.filter(track => track.type === 'video');
+            case FILTER_MODES.ALL:
+            default:
+                // 默认或“全部”模式下，返回完整的播放列表
+                return playlist;
+        }
+    },
+    // =========================================================================
     currentTrackIndex: () => _state.currentTrackIndex,
     isPlaying: () => _state.isPlaying,
     temporaryPlayingTrack: () => _state.temporaryPlayingTrack,

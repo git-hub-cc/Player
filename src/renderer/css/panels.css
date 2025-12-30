@@ -108,11 +108,8 @@
     cursor: pointer;
     transition: background-color 0.2s;
     margin-bottom: 8px;
-    /* ========================================================================= */
-    /* 【核心新增】为视频进度条的绝对定位提供容器 */
-    /* ========================================================================= */
     position: relative;
-    overflow: hidden; /* 确保进度条的圆角生效 */
+    overflow: hidden;
 }
 .playlist-item-main-content { display: flex; align-items: center; overflow: hidden; flex-grow: 1; }
 .playlist-item:hover, .playlist-item.active { background-color: var(--highlight-bg); }
@@ -131,34 +128,31 @@
     display: none;
 }
 
-/* ========================================================================= */
-/* 【核心新增】视频播放进度条样式 */
-/* ========================================================================= */
+/* 视频播放进度条样式 */
 .video-progress-bar {
-    display: none; /* 默认隐藏，仅在视频项上显示 */
+    display: none;
     position: absolute;
     bottom: 0;
-    left: 4px; /* 与列表项内边距对齐，看起来更和谐 */
+    left: 4px;
     right: 4px;
     height: 4px;
-    background-color: rgba(255, 255, 255, 0.2); /* 进度条背景色 */
-    border-radius: 2px; /* 进度条本身的圆角 */
-    pointer-events: none; /* 确保不影响点击 */
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    pointer-events: none;
 }
 .playlist-item.is-video .video-progress-bar {
-    display: block; /* 当列表项有 is-video 类时显示进度条 */
+    display: block;
 }
 .video-progress-bar-inner {
-    width: 0%; /* 宽度由JS根据播放进度控制 */
+    width: 0%;
     height: 100%;
-    background-color: var(--primary-color); /* 进度条的前景色 */
+    background-color: var(--primary-color);
     border-radius: 2px;
-    transition: width 0.2s linear; /* 进度更新时有平滑过渡效果 */
+    transition: width 0.2s linear;
 }
-/* ========================================================================= */
 
 
-/* --- 播放列表下载按钮样式 --- */
+/* --- 播放列表下载按钮样式 (增强版) --- */
 .playlist-download-btn {
     background: none;
     border: none;
@@ -172,28 +166,74 @@
     justify-content: center;
     flex-shrink: 0;
     margin-left: 10px;
-    transition: color 0.2s, background-color 0.2s;
+    transition: all 0.2s;
+    position: relative; /* 为绝对定位子元素 */
 }
+
 .playlist-download-btn:hover {
     color: var(--text-primary);
     background-color: rgba(255, 255, 255, 0.1);
 }
+
 .playlist-download-btn svg {
     width: 20px;
     height: 20px;
     fill: currentColor;
+    transition: transform 0.2s;
 }
-.playlist-download-btn .spinner-icon,
+
+.playlist-download-btn .spinner-icon-container,
 .playlist-download-btn .cached-icon {
     display: none;
 }
-.playlist-download-btn.downloading .download-icon,
-.playlist-download-btn.cached .download-icon {
+
+/* 下载中状态 */
+.playlist-download-btn.downloading .download-icon {
     display: none;
 }
+
+/* 容器：包含旋转圈和停止图标 */
+.playlist-download-btn.downloading .spinner-icon-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+/* 旋转的外圈 */
 .playlist-download-btn.downloading .spinner-icon {
     display: block;
     animation: spin 1s linear infinite;
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    color: var(--primary-color);
+}
+
+/* 中心的停止方块 */
+.playlist-download-btn.downloading .stop-icon {
+    display: block;
+    width: 10px;
+    height: 10px;
+    z-index: 2;
+    fill: var(--text-primary); /* 默认白色 */
+    transition: fill 0.2s;
+}
+
+/* Hover 状态：停止图标变红，旋转圈变淡 */
+.playlist-download-btn.downloading:hover .stop-icon {
+    fill: #ff5252;
+}
+.playlist-download-btn.downloading:hover .spinner-icon {
+    opacity: 0.3;
+}
+
+/* 已缓存状态 */
+.playlist-download-btn.cached .download-icon,
+.playlist-download-btn.cached .spinner-icon-container {
+    display: none;
 }
 .playlist-download-btn.cached .cached-icon {
     display: block;
@@ -408,6 +448,15 @@
 .action-btn { background-color: var(--primary-color); color: #000; font-weight: bold; border: none; padding: 12px 20px; border-radius: 50px; cursor: pointer; font-size: 15px; text-align: center; transition: background-color 0.2s ease, transform 0.1s ease; display: flex; justify-content: center; align-items: center; position: relative; flex-shrink: 0; }
 .action-btn:hover:not(:disabled) { background-color: #1ed760; transform: scale(1.03); }
 .action-btn:disabled { background-color: var(--slider-track-color); color: var(--text-secondary); cursor: not-allowed; transform: scale(1); }
+
+/* --- 危险模式按钮（用于取消下载等操作） --- */
+.action-btn.danger-mode {
+    background-color: #d32f2f;
+    color: white;
+}
+.action-btn.danger-mode:hover:not(:disabled) {
+    background-color: #b71c1c;
+}
 
 .action-btn .btn-loader { display: none; width: 20px; height: 20px; border: 3px solid rgba(0, 0, 0, 0.3); border-radius: 50%; border-top-color: #000; animation: spin 1s ease-in-out infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

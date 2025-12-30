@@ -8,14 +8,19 @@ import { downloadFile } from './download-service.js';
 /**
  * @class OnlineService
  * @description 负责协调在线音乐相关的业务逻辑。
- *              它作为应用层和底层音乐API服务（MusicApiService）之间的桥梁，
- *              处理如搜索、获取播放链接、缓存等高级任务。
+ *              它作为应用层和底层音乐API服务（MusicApiService）之间的桥梁。
+ *              【新增功能】支持管理和取消在线歌曲缓存任务。
  */
 export class OnlineService {
     #config;
     #sendMessageCallback;
     #libraryService;
     #musicApiService;
+
+    // 【核心新增】用于管理所有正在进行的缓存任务
+    // Map<taskId, AbortController>
+    // taskId 通常是 track.id (或者组合 source+id)
+    #activeTasks = new Map();
 
     /**
      * @param {object} config - 应用的全局配置对象。
@@ -47,17 +52,12 @@ export class OnlineService {
         }
     }
 
-    /**
-     * 获取音乐播放 URL 和封面图。
-     * 此方法现在会处理普通和会员歌曲两种情况。
-     */
     async handleGetMusicUrl(trackData) {
         if (!trackData || !trackData.id) {
             return { success: false, error: '获取 URL 失败: 缺少曲目 ID。' };
         }
 
         try {
-            // 1. 并行获取歌曲元信息（可能包含试听URL）和封面真实URL
             const [urlInfo, picUrl] = await Promise.all([
                 this.#musicApiService.getTrackUrl(trackData),
                 this.#musicApiService.getPicUrl(trackData)
@@ -67,19 +67,17 @@ export class OnlineService {
                 throw new Error('API未能返回有效的播放链接，可能是版权或地区限制。');
             }
 
-            // 2. 处理封面图
             let finalAlbumArtUrl = picUrl;
             if (!finalAlbumArtUrl) {
                 const safeFilename = this.#sanitizeFilename(`${trackData.artist} - ${trackData.title}`);
                 finalAlbumArtUrl = this.#libraryService.generateAndSavePlaceholderArt(trackData.title, safeFilename);
             }
 
-            // 3. 构造并返回包含所有必要信息的响应对象
             return {
                 success: true,
-                url: urlInfo.url, // 对VIP歌曲是试听URL，对普通歌曲是最终URL
+                url: urlInfo.url,
                 isVip: urlInfo.isVip,
-                originalTrackInfo: urlInfo.originalTrackInfo, // 仅在VIP歌曲时存在
+                originalTrackInfo: urlInfo.originalTrackInfo,
                 albumArtUrl: finalAlbumArtUrl
             };
         } catch (e) {
@@ -88,15 +86,6 @@ export class OnlineService {
         }
     }
 
-    // =========================================================================
-    // 【核心新增】处理获取会员歌曲正式URL的请求
-    // =========================================================================
-    /**
-     * 处理获取会员歌曲真实播放链接的请求。
-     * 此方法会调用 MusicApiService 中带缓存的逻辑。
-     * @param {object} trackInfo - 从前端传来的原始轨道信息。
-     * @returns {Promise<object>} - 包含 { success, url } 的对象。
-     */
     async handleGetVipMusicUrl(trackInfo) {
         if (!trackInfo || !trackInfo.id) {
             return { success: false, error: '获取 VIP URL 失败: 缺少曲目 ID。' };
@@ -113,44 +102,74 @@ export class OnlineService {
             return { success: false, error: error.message };
         }
     }
-    // =========================================================================
 
+    /**
+     * 【核心修改】处理缓存请求，支持中断。
+     */
     async handleCacheRequest(trackData) {
         const title = trackData.title || 'Unknown';
         const artist = Array.isArray(trackData.artist) ? trackData.artist.join(' & ') : (trackData.artist || 'Unknown');
         const safeFilename = this.#sanitizeFilename(`${artist} - ${title}`);
-        const downloadPromises = [];
+
+        // 生成唯一任务ID
+        const taskId = trackData.id;
+
+        // 如果该任务已在运行，不重复启动
+        if (this.#activeTasks.has(taskId)) {
+            console.log(`[Online] 任务 ${taskId} 已经在运行中。`);
+            return;
+        }
+
+        // 创建中止控制器
+        const controller = new AbortController();
+        this.#activeTasks.set(taskId, controller);
+        const signal = controller.signal;
 
         try {
-            // --- 1. 获取音频下载链接 (对VIP歌曲，这将是真实链接) ---
-            // 注意：这里我们总是获取最终链接来下载，而不是试听版
+            this.#sendMessageCallback('download-status', { message: `准备下载: ${title}`, type: 'default' });
+
+            // --- 1. 获取音频下载链接 (支持取消检查) ---
+            if (signal.aborted) throw new Error('aborted');
+
             const audioUrl = await this.#musicApiService.getVipTrackUrl(trackData);
             if (!audioUrl) {
                 throw new Error('无法获取音频下载链接，可能受版权或地区限制。');
             }
-            downloadPromises.push(downloadFile(audioUrl, this.#config.MUSIC_DIR, `${safeFilename}.mp3`));
 
-            // --- 2. 获取并处理封面 ---
+            if (signal.aborted) throw new Error('aborted');
+
+            // --- 2. 准备并发下载任务 ---
+            const downloadPromises = [];
+
+            // 音频文件 (传递 signal)
+            downloadPromises.push(downloadFile(audioUrl, this.#config.MUSIC_DIR, `${safeFilename}.mp3`, {}, () => {}, 3, signal));
+
+            // 封面图
             let finalAlbumArtPath = "";
             const picUrl = await this.#musicApiService.getPicUrl(trackData);
             if (picUrl) {
                 finalAlbumArtPath = `albumArt/${safeFilename}.jpg`;
-                downloadPromises.push(downloadFile(picUrl, this.#config.ALBUMART_DIR, `${safeFilename}.jpg`));
+                downloadPromises.push(downloadFile(picUrl, this.#config.ALBUMART_DIR, `${safeFilename}.jpg`, {}, () => {}, 3, signal));
             } else {
                 finalAlbumArtPath = this.#libraryService.generateAndSavePlaceholderArt(title, safeFilename);
             }
 
-            // --- 3. 获取并处理歌词 ---
+            // 歌词
             const lyricsPath = path.join(this.#config.MUSIC_DIR, `${safeFilename}.lrc`);
             const lyricContent = await this.#musicApiService.getLyric(trackData);
             if (lyricContent) {
-                downloadPromises.push(fs.promises.writeFile(lyricsPath, lyricContent, 'utf-8'));
+                // 写入文件是瞬时操作，但仍检查 signal
+                if (!signal.aborted) {
+                    downloadPromises.push(fs.promises.writeFile(lyricsPath, lyricContent, 'utf-8'));
+                }
             }
 
-            // --- 4. 并发执行所有下载和写入任务 ---
+            // --- 3. 执行所有下载 ---
             await Promise.all(downloadPromises);
 
-            // --- 5. 创建新的轨道对象并更新播放列表 ---
+            if (signal.aborted) throw new Error('aborted');
+
+            // --- 4. 更新媒体库 ---
             const newTrack = {
                 title, artist,
                 src: `music/${safeFilename}.mp3`,
@@ -164,12 +183,41 @@ export class OnlineService {
             };
             await this.#libraryService.updateLocalPlaylist([newTrack]);
 
-            // --- 6. 通知前端 ---
+            // --- 5. 通知前端 ---
             this.#sendMessageCallback('new-track-added', newTrack);
             this.#sendMessageCallback('download-status', { message: `下载完成: ${title}`, type: 'success' });
+
         } catch (error) {
-            console.error(`[Online] 缓存 "${title}" 失败:`, error);
-            this.#sendMessageCallback('download-status', { message: `下载 "${title}" 失败: ${error.message}`, type: 'error' });
+            // 处理取消逻辑
+            if (signal.aborted || error.message === 'aborted' || error.message === 'Download aborted by user') {
+                console.log(`[Online] 缓存任务 ${title} 已被用户取消。`);
+                // 清理可能残留的半成品文件
+                const mp3Path = path.join(this.#config.MUSIC_DIR, `${safeFilename}.mp3`);
+                if (fs.existsSync(mp3Path)) fs.unlink(mp3Path, () => {});
+
+                // 通知前端任务结束（可能需要刷新UI状态）
+                // type: 'error' 会让前端移除 loading 状态
+                this.#sendMessageCallback('download-status', { message: `下载取消: ${title}`, type: 'error' });
+            } else {
+                console.error(`[Online] 缓存 "${title}" 失败:`, error);
+                this.#sendMessageCallback('download-status', { message: `下载 "${title}" 失败: ${error.message}`, type: 'error' });
+            }
+        } finally {
+            // 移除任务记录
+            this.#activeTasks.delete(taskId);
+        }
+    }
+
+    /**
+     * 【核心新增】取消指定ID的缓存任务
+     * @param {string|number} taskId
+     */
+    cancelTask(taskId) {
+        const controller = this.#activeTasks.get(taskId);
+        if (controller) {
+            console.log(`[Online] 正在中断任务: ${taskId}`);
+            controller.abort();
+            this.#activeTasks.delete(taskId);
         }
     }
 
