@@ -1,38 +1,66 @@
 /* panels.css */
+
 /* --- 侧滑面板 (通用样式) --- */
+/* -------------------------------------------------------------------------- */
+
+/* 定义所有侧滑面板的通用行为，如位置、大小、背景和滑入/滑出动画 */
 .playlist-panel, .info-panel, .shortcut-panel, .download-panel, .settings-panel {
+    /* 绝对定位，使其浮动在主视图之上 */
     position: absolute;
     top: 0;
     right: 0;
     bottom: 0;
-    width: 340px;
-    max-width: 90%;
-    background-color: var(--panel-bg);
-    box-shadow: -5px 0 15px rgba(0,0,0,0.2);
-    z-index: 2000;
+    width: 340px; /* 面板默认宽度 */
+    max-width: 90%; /* 在小屏幕上，最大宽度不超过90% */
+    background-color: var(--panel-bg); /* 面板背景色 */
+    box-shadow: -5px 0 15px rgba(0,0,0,0.2); /* 左侧阴影，增强立体感 */
+    z-index: 2000; /* 确保面板在其他UI元素之上 */
+    /* 默认状态下移出屏幕外 */
     transform: translateX(100%);
     visibility: hidden;
+    /* 为 transform 和 visibility 属性添加平滑过渡效果 */
     transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), visibility 0s 0.4s;
+    /* 使用 Flexbox 布局，使内部元素垂直排列 */
     display: flex;
     flex-direction: column;
+    /* 底部留出空间，避免被播放控制条遮挡 */
     padding-bottom: var(--controls-height);
 }
 
+/* 当面板具有 .active 类时，将其滑入视图内 */
 .playlist-panel.active, .info-panel.active, .shortcut-panel.active, .download-panel.active, .settings-panel.active {
     transform: translateX(0);
     visibility: visible;
     transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
-.panel-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; flex-shrink: 0; border-bottom: 1px solid var(--highlight-bg); }
-.panel-header h2 { font-size: 16px; font-weight: 700; color: var(--text-primary); }
-.panel-header .control-btn:hover { background-color: var(--highlight-bg); border-radius: 50%;}
+/* --- 面板内部布局 --- */
+/* -------------------------------------------------------------------------- */
 
+/* 面板头部样式 */
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    flex-shrink: 0; /* 防止头部在内容过多时被压缩 */
+    border-bottom: 1px solid var(--highlight-bg); /* 头部底部分隔线 */
+}
+.panel-header h2 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.panel-header .control-btn:hover {
+    background-color: var(--highlight-bg);
+    border-radius: 50%; /* 关闭按钮悬停效果 */
+}
 .panel-header-actions {
     display: flex;
     align-items: center;
 }
 
+/* 媒体库过滤模式按钮容器 */
 .filter-mode-container {
     display: flex;
     justify-content: center;
@@ -40,9 +68,8 @@
     padding: 12px 20px 0;
     flex-shrink: 0;
 }
-
 .filter-mode-btn {
-    flex: 1;
+    flex: 1; /* 按钮平均分配容器宽度 */
     background-color: var(--highlight-bg);
     border: 1px solid var(--slider-track-color);
     border-radius: 6px;
@@ -54,26 +81,22 @@
     justify-content: center;
     align-items: center;
 }
-
 .filter-mode-btn svg {
     width: 20px;
     height: 20px;
     fill: currentColor;
 }
-
 .filter-mode-btn:hover {
     background-color: #3e3e3e;
     color: var(--text-primary);
 }
-
 .filter-mode-btn.active {
     background-color: var(--primary-color);
     color: #000;
     border-color: var(--primary-color);
 }
 
-
-/* Panel Search Input */
+/* 面板搜索框样式 */
 .panel-search-container {
     padding: 16px 20px 8px;
     flex-shrink: 0;
@@ -86,19 +109,32 @@
     color: var(--text-primary);
     padding: 8px 12px;
     font-size: 14px;
-    outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    outline: none; /* 移除默认的焦点轮廓 */
+    transition: border-color 0.2s, box-shadow 0.2s; /* 焦点状态过渡 */
 }
 .panel-search:focus {
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.3);
+    box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.3); /* 模拟发光效果 */
 }
 .panel-search::placeholder {
     color: var(--text-secondary);
 }
 
 /* --- 播放列表项目样式 --- */
-.playlist { list-style: none; overflow-y: auto; padding: 8px 8px 16px 20px; flex-grow: 1; scrollbar-width: thin; scrollbar-color: var(--slider-track-color) transparent; }
+/* -------------------------------------------------------------------------- */
+
+/* 列表容器样式 */
+.playlist {
+    list-style: none; /* 移除默认的项目符号 */
+    overflow-y: auto; /* 内容超出时显示滚动条 */
+    padding: 8px 8px 16px 20px;
+    flex-grow: 1; /* 占据剩余的垂直空间 */
+    /* 自定义滚动条样式 (Firefox) */
+    scrollbar-width: thin;
+    scrollbar-color: var(--slider-track-color) transparent;
+}
+
+/* 单个列表项样式 */
 .playlist-item {
     display: flex;
     align-items: center;
@@ -108,29 +144,91 @@
     cursor: pointer;
     transition: background-color 0.2s;
     margin-bottom: 8px;
-    position: relative;
-    overflow: hidden;
+    position: relative; /* 为内部绝对定位的进度条提供参照 */
+    overflow: hidden; /* 隐藏溢出的子元素 */
 }
-.playlist-item-main-content { display: flex; align-items: center; overflow: hidden; flex-grow: 1; }
-.playlist-item:hover, .playlist-item.active { background-color: var(--highlight-bg); }
-.playlist-item.active .playlist-title { color: var(--primary-color); }
-.playlist-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; margin-right: 15px; font-size: 20px; color: var(--text-secondary); flex-shrink: 0; }
-.playlist-details { overflow: hidden; }
-.playlist-title { font-size: 14px; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
-.playlist-artist { font-size: 12px; color: var(--text-secondary); }
-.no-results-message { color: var(--text-secondary); padding: 20px; text-align: center; display: none; }
+
+/* 列表项主要内容容器 */
+.playlist-item-main-content {
+    display: flex;
+    align-items: center;
+    overflow: hidden; /* 防止内部文本过长时撑开布局 */
+    flex-grow: 1;
+}
+
+/* 悬停和激活状态的背景色 */
+.playlist-item:hover, .playlist-item.active {
+    background-color: var(--highlight-bg);
+}
+
+/* 当前播放项的标题颜色高亮 */
+.playlist-item.active .playlist-title {
+    color: var(--primary-color);
+}
+
+/* 媒体类型图标 (音乐/视频) */
+.playlist-icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 15px;
+    font-size: 20px;
+    color: var(--text-secondary);
+    flex-shrink: 0; /* 防止图标被压缩 */
+}
+
+/* 曲目详情容器 (标题和作者) */
+.playlist-details {
+    overflow: hidden; /* 关键：确保内部文本溢出时能被截断 */
+}
+
+/* 曲目标题样式 */
+.playlist-title {
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap; /* 文本不换行 */
+    text-overflow: ellipsis; /* 超出部分显示省略号 */
+    overflow: hidden; /* 隐藏溢出内容 */
+}
+
+/*
+ * =========================================================================
+ * 【核心修改】为作者名添加文本溢出处理
+ * =========================================================================
+ */
+.playlist-artist {
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: nowrap;      /* 确保文本在一行内显示 */
+    overflow: hidden;         /* 隐藏超出容器宽度的部分 */
+    text-overflow: ellipsis;  /* 使用省略号(...)表示被截断的文本 */
+}
+/* ========================================================================= */
+
+/* 搜索无结果时的提示信息 */
+.no-results-message {
+    color: var(--text-secondary);
+    padding: 20px;
+    text-align: center;
+    display: none; /* 默认隐藏 */
+}
+
+/* 自定义滚动条样式 (WebKit 浏览器) */
 .playlist::-webkit-scrollbar { width: 8px; }
 .playlist::-webkit-scrollbar-track { background-color: transparent; }
 .playlist::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; }
 .playlist::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
 
+/* 用于通过JS隐藏不符合过滤条件的列表项 */
 .playlist-item.hidden {
     display: none;
 }
 
-/* 视频播放进度条样式 */
+/* 视频项的播放进度条 */
 .video-progress-bar {
-    display: none;
+    display: none; /* 默认隐藏，仅对视频项显示 */
     position: absolute;
     bottom: 0;
     left: 4px;
@@ -138,7 +236,7 @@
     height: 4px;
     background-color: rgba(255, 255, 255, 0.2);
     border-radius: 2px;
-    pointer-events: none;
+    pointer-events: none; /* 确保进度条不会影响鼠标事件 */
 }
 .playlist-item.is-video .video-progress-bar {
     display: block;
@@ -148,11 +246,11 @@
     height: 100%;
     background-color: var(--primary-color);
     border-radius: 2px;
-    transition: width 0.2s linear;
+    transition: width 0.2s linear; /* 进度更新时的平滑动画 */
 }
 
-
-/* --- 播放列表下载按钮样式 (增强版) --- */
+/* --- 搜索结果下载按钮 (增强版) --- */
+/* -------------------------------------------------------------------------- */
 .playlist-download-btn {
     background: none;
     border: none;
@@ -167,14 +265,12 @@
     flex-shrink: 0;
     margin-left: 10px;
     transition: all 0.2s;
-    position: relative; /* 为绝对定位子元素 */
+    position: relative; /* 为内部绝对定位的图标提供参照 */
 }
-
 .playlist-download-btn:hover {
     color: var(--text-primary);
     background-color: rgba(255, 255, 255, 0.1);
 }
-
 .playlist-download-btn svg {
     width: 20px;
     height: 20px;
@@ -182,17 +278,16 @@
     transition: transform 0.2s;
 }
 
+/* 默认隐藏加载中和已缓存的图标 */
 .playlist-download-btn .spinner-icon-container,
 .playlist-download-btn .cached-icon {
     display: none;
 }
 
-/* 下载中状态 */
+/* 下载中状态：隐藏下载图标，显示加载动画 */
 .playlist-download-btn.downloading .download-icon {
     display: none;
 }
-
-/* 容器：包含旋转圈和停止图标 */
 .playlist-download-btn.downloading .spinner-icon-container {
     display: flex;
     align-items: center;
@@ -202,7 +297,7 @@
     position: relative;
 }
 
-/* 旋转的外圈 */
+/* 旋转的加载圈 */
 .playlist-download-btn.downloading .spinner-icon {
     display: block;
     animation: spin 1s linear infinite;
@@ -212,17 +307,17 @@
     color: var(--primary-color);
 }
 
-/* 中心的停止方块 */
+/* 中间的停止图标 (用于取消) */
 .playlist-download-btn.downloading .stop-icon {
     display: block;
     width: 10px;
     height: 10px;
     z-index: 2;
-    fill: var(--text-primary); /* 默认白色 */
+    fill: var(--text-primary);
     transition: fill 0.2s;
 }
 
-/* Hover 状态：停止图标变红，旋转圈变淡 */
+/* 悬停在“下载中”按钮上时，停止图标变红，加载圈变淡，提示可取消 */
 .playlist-download-btn.downloading:hover .stop-icon {
     fill: #ff5252;
 }
@@ -230,7 +325,7 @@
     opacity: 0.3;
 }
 
-/* 已缓存状态 */
+/* 已缓存状态：显示对勾图标 */
 .playlist-download-btn.cached .download-icon,
 .playlist-download-btn.cached .spinner-icon-container {
     display: none;
@@ -240,14 +335,17 @@
 }
 .playlist-download-btn.cached {
     color: var(--primary-color);
-    cursor: default;
+    cursor: default; /* 已缓存，不可再点击 */
     pointer-events: none;
 }
 .playlist-download-btn.hidden {
     display: none;
 }
 
-/* --- Info Panel Content --- */
+/* --- 各面板专属内容样式 --- */
+/* -------------------------------------------------------------------------- */
+
+/* “关于项目”面板 */
 .info-content { padding: 0 20px 20px; flex-grow: 1; overflow-y: auto; line-height: 1.7; color: var(--text-secondary); scrollbar-width: thin; scrollbar-color: var(--slider-track-color) transparent; }
 .info-content h3 { font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 20px 0 12px 0; padding-bottom: 8px; border-bottom: 1px solid var(--highlight-bg); }
 .info-content p { font-size: 13px; margin-bottom: 10px; }
@@ -256,14 +354,9 @@
 .info-content a:hover { text-decoration: underline; }
 .info-content ul { list-style-position: inside; padding-left: 5px; font-size: 13px; }
 .info-content ul li { margin-bottom: 5px; }
-.info-content .inline-icon {
-    width: 1em;
-    height: 1em;
-    vertical-align: -0.125em;
-}
 .info-content::-webkit-scrollbar { width: 8px; } .info-content::-webkit-scrollbar-track { background-color: transparent; } .info-content::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; } .info-content::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
 
-/* --- Shortcut Panel List --- */
+/* “快捷键设置”面板 */
 .shortcut-list { list-style: none; overflow-y: auto; padding: 8px 8px 16px 20px; flex-grow: 1; scrollbar-width: thin; scrollbar-color: var(--slider-track-color) transparent; }
 .shortcut-item { display: flex; align-items: center; padding: 12px 10px; border-bottom: 1px solid var(--highlight-bg); transition: background-color 0.2s; } .shortcut-item:last-child { border-bottom: none; } .shortcut-item:hover { background-color: var(--highlight-bg); }
 .action-label { flex-grow: 1; font-size: 14px; color: var(--text-secondary); }
@@ -273,303 +366,62 @@
 .shortcut-item .actions { display: flex; gap: 8px; }
 .shortcut-item .actions button { background: none; border: 1px solid var(--text-secondary); color: var(--text-secondary); padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; transition: all 0.2s ease; }
 .shortcut-item .actions button:hover { background-color: var(--highlight-bg); color: var(--text-primary); border-color: var(--text-primary); } .shortcut-item .actions .set-btn:hover { border-color: var(--primary-color); color: var(--primary-color); }
-.shortcut-list::-webkit-scrollbar { width: 8px; }
-.shortcut-list::-webkit-scrollbar-track { background-color: transparent; }
-.shortcut-list::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; }
-.shortcut-list::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
+.shortcut-list::-webkit-scrollbar { width: 8px; } .shortcut-list::-webkit-scrollbar-track { background-color: transparent; } .shortcut-list::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; } .shortcut-list::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
 
-/* --- 下载面板专属样式 --- */
-.download-panel-content {
-    padding: 0 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    flex-grow: 1;
-    overflow: hidden;
-}
-.downloader-view {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    flex-grow: 1;
-    overflow: hidden;
-}
-
-.downloader-input-area {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    flex-shrink: 0;
-    padding-top: 8px;
-}
-
-.panel-description {
-    font-size: 13px;
-    color: var(--text-secondary);
-    line-height: 1.5;
-}
-
-.downloader-view textarea {
-    min-height: 80px;
-    height: 80px;
-    flex-grow: 0;
-    background-color: var(--highlight-bg);
-    border: 1px solid var(--slider-track-color);
-    border-radius: 6px;
-    color: var(--text-primary);
-    padding: 12px;
-    font-size: 14px;
-    font-family: var(--font-family);
-    resize: vertical;
-    outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s;
-    scrollbar-width: thin;
-    scrollbar-color: var(--slider-track-color) transparent;
-}
-.downloader-view textarea::-webkit-scrollbar { width: 8px; }
-.downloader-view textarea::-webkit-scrollbar-track { background-color: transparent; }
-.downloader-view textarea::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; }
-.downloader-view textarea::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
-
-.downloader-view textarea:focus {
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.3);
-}
-.download-actions-container {
-    display: flex;
-    gap: 10px;
-    width: 100%;
-}
-.download-actions-container .action-btn {
-    flex-grow: 1;
-}
-
-.download-status {
-    padding: 12px;
-    border-radius: 6px;
-    font-size: 14px;
-    line-height: 1.6;
-    background-color: var(--highlight-bg);
-    color: var(--text-secondary);
-    display: none;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    margin-top: -8px;
-}
+/* “添加资源”面板 */
+.download-panel-content { padding: 0 20px; display: flex; flex-direction: column; gap: 16px; flex-grow: 1; overflow: hidden; }
+.downloader-view { display: flex; flex-direction: column; gap: 16px; flex-grow: 1; overflow: hidden; }
+.downloader-input-area { display: flex; flex-direction: column; gap: 12px; flex-shrink: 0; padding-top: 8px; }
+.panel-description { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+.downloader-view textarea { min-height: 80px; height: 80px; flex-grow: 0; background-color: var(--highlight-bg); border: 1px solid var(--slider-track-color); border-radius: 6px; color: var(--text-primary); padding: 12px; font-size: 14px; font-family: var(--font-family); resize: vertical; outline: none; transition: border-color 0.2s, box-shadow 0.2s; scrollbar-width: thin; scrollbar-color: var(--slider-track-color) transparent; }
+.downloader-view textarea::-webkit-scrollbar { width: 8px; } .downloader-view textarea::-webkit-scrollbar-track { background-color: transparent; } .downloader-view textarea::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; } .downloader-view textarea::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
+.downloader-view textarea:focus { border-color: var(--primary-color); box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.3); }
+.download-actions-container { display: flex; gap: 10px; width: 100%; }
+.download-actions-container .action-btn { flex-grow: 1; }
+.download-status { padding: 12px; border-radius: 6px; font-size: 14px; line-height: 1.6; background-color: var(--highlight-bg); color: var(--text-secondary); display: none; white-space: pre-wrap; word-wrap: break-word; margin-top: -8px; }
 .download-status.success { background-color: rgba(29, 185, 84, 0.2); color: #1ed760; }
 .download-status.error { background-color: rgba(229, 20, 20, 0.2); color: #e51414; }
-
-.download-progress-container {
-    width: 100%;
-    height: 6px;
-    background-color: var(--highlight-bg);
-    border-radius: 3px;
-    overflow: hidden;
-    margin-top: -8px;
-    display: none;
-}
-.download-progress-bar {
-    width: 0;
-    height: 100%;
-    background-color: var(--primary-color);
-    border-radius: 3px;
-    transition: width 0.2s ease-out;
-}
-
-.search-results-container {
-    flex-grow: 1;
-    overflow-y: auto;
-    border-top: 1px solid var(--highlight-bg);
-    margin-top: 8px;
-    padding-top: 8px;
-    scrollbar-width: thin;
-    scrollbar-color: var(--slider-track-color) transparent;
-    display: flex;
-    flex-direction: column;
-}
-.search-results-container::-webkit-scrollbar { width: 8px; }
-.search-results-container::-webkit-scrollbar-track { background-color: transparent; }
-.search-results-container::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; }
-.search-results-container::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
-#search-results-list {
-    padding: 8px;
-    flex-grow: 1;
-}
-#search-results-list:empty::before {
-    content: '搜索或下载结果将显示在这里...';
-    display: block;
-    text-align: center;
-    color: var(--text-secondary);
-    padding: 40px 20px;
-    font-style: italic;
-}
-
-.pagination-controls {
-    display: none;
-    justify-content: center;
-    align-items: center;
-    flex-shrink: 0;
-    border-top: 1px solid var(--highlight-bg);
-    margin-top: auto;
-}
-.pagination-btn {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color 0.2s, color 0.2s;
-}
-.pagination-btn:hover:not(:disabled) {
-    background-color: var(--highlight-bg);
-    color: var(--text-primary);
-}
-.pagination-btn:disabled {
-    color: var(--slider-track-color);
-    cursor: not-allowed;
-}
-.pagination-btn svg {
-    width: 24px;
-    height: 24px;
-    fill: currentColor;
-}
-.page-info {
-    font-size: 14px;
-    color: var(--text-secondary);
-    margin: 0 16px;
-    font-variant-numeric: tabular-nums;
-}
-
+.download-progress-container { width: 100%; height: 6px; background-color: var(--highlight-bg); border-radius: 3px; overflow: hidden; margin-top: -8px; display: none; }
+.download-progress-bar { width: 0; height: 100%; background-color: var(--primary-color); border-radius: 3px; transition: width 0.2s ease-out; }
+.search-results-container { flex-grow: 1; overflow-y: auto; border-top: 1px solid var(--highlight-bg); margin-top: 8px; padding-top: 8px; scrollbar-width: thin; scrollbar-color: var(--slider-track-color) transparent; display: flex; flex-direction: column; }
+.search-results-container::-webkit-scrollbar { width: 8px; } .search-results-container::-webkit-scrollbar-track { background-color: transparent; } .search-results-container::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; } .search-results-container::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
+#search-results-list { padding: 8px; flex-grow: 1; }
+#search-results-list:empty::before { content: '搜索或下载结果将显示在这里...'; display: block; text-align: center; color: var(--text-secondary); padding: 40px 20px; font-style: italic; }
+.pagination-controls { display: none; justify-content: center; align-items: center; flex-shrink: 0; border-top: 1px solid var(--highlight-bg); margin-top: auto; }
+.pagination-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background-color 0.2s, color 0.2s; }
+.pagination-btn:hover:not(:disabled) { background-color: var(--highlight-bg); color: var(--text-primary); }
+.pagination-btn:disabled { color: var(--slider-track-color); cursor: not-allowed; }
+.pagination-btn svg { width: 24px; height: 24px; fill: currentColor; }
+.page-info { font-size: 14px; color: var(--text-secondary); margin: 0 16px; font-variant-numeric: tabular-nums; }
 .action-btn { background-color: var(--primary-color); color: #000; font-weight: bold; border: none; padding: 12px 20px; border-radius: 50px; cursor: pointer; font-size: 15px; text-align: center; transition: background-color 0.2s ease, transform 0.1s ease; display: flex; justify-content: center; align-items: center; position: relative; flex-shrink: 0; }
 .action-btn:hover:not(:disabled) { background-color: #1ed760; transform: scale(1.03); }
 .action-btn:disabled { background-color: var(--slider-track-color); color: var(--text-secondary); cursor: not-allowed; transform: scale(1); }
-
-/* --- 危险模式按钮（用于取消下载等操作） --- */
-.action-btn.danger-mode {
-    background-color: #d32f2f;
-    color: white;
-}
-.action-btn.danger-mode:hover:not(:disabled) {
-    background-color: #b71c1c;
-}
-
+.action-btn.danger-mode { background-color: #d32f2f; color: white; }
+.action-btn.danger-mode:hover:not(:disabled) { background-color: #b71c1c; }
 .action-btn .btn-loader { display: none; width: 20px; height: 20px; border: 3px solid rgba(0, 0, 0, 0.3); border-radius: 50%; border-top-color: #000; animation: spin 1s ease-in-out infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .action-btn.loading .btn-text { display: none; }
 .action-btn.loading .btn-loader { display: block; }
 
-/* 系统设置面板专属样式 */
-.settings-content {
-    padding: 0 20px 20px;
-    flex-grow: 1;
-    overflow-y: auto;
-    color: var(--text-secondary);
-    scrollbar-width: thin;
-    scrollbar-color: var(--slider-track-color) transparent;
-}
-.settings-section {
-    margin-bottom: 30px;
-}
-.section-title {
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--text-primary);
-    margin-bottom: 8px;
-}
-.section-desc {
-    font-size: 13px;
-    margin-bottom: 16px;
-    line-height: 1.5;
-}
-
-/* 工具卡片样式 */
-.tool-card {
-    background-color: var(--highlight-bg);
-    border-radius: 8px;
-    padding: 16px;
-    margin-bottom: 12px;
-    border: 1px solid transparent;
-    transition: border-color 0.2s;
-}
-.tool-card:hover {
-    border-color: rgba(255, 255, 255, 0.1);
-}
-
-.tool-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-}
-.tool-name {
-    font-size: 16px;
-    font-weight: bold;
-    color: var(--text-primary);
-    margin-right: 10px;
-}
-.tool-status-badge {
-    font-size: 12px;
-    padding: 2px 8px;
-    border-radius: 10px;
-    background-color: rgba(255, 255, 255, 0.1);
-    color: var(--text-secondary);
-}
-.tool-status-badge.installed {
-    background-color: rgba(29, 185, 84, 0.2);
-    color: #1ed760;
-}
-.tool-status-badge.missing {
-    background-color: rgba(229, 20, 20, 0.2);
-    color: #e51414;
-}
-
-.tool-icon svg {
-    width: 24px;
-    height: 24px;
-}
+/* “系统设置”面板 */
+.settings-content { padding: 0 20px 20px; flex-grow: 1; overflow-y: auto; color: var(--text-secondary); scrollbar-width: thin; scrollbar-color: var(--slider-track-color) transparent; }
+.settings-section { margin-bottom: 30px; }
+.section-title { font-size: 15px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
+.section-desc { font-size: 13px; margin-bottom: 16px; line-height: 1.5; }
+.tool-card { background-color: var(--highlight-bg); border-radius: 8px; padding: 16px; margin-bottom: 12px; border: 1px solid transparent; transition: border-color 0.2s; }
+.tool-card:hover { border-color: rgba(255, 255, 255, 0.1); }
+.tool-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.tool-name { font-size: 16px; font-weight: bold; color: var(--text-primary); margin-right: 10px; }
+.tool-status-badge { font-size: 12px; padding: 2px 8px; border-radius: 10px; background-color: rgba(255, 255, 255, 0.1); color: var(--text-secondary); }
+.tool-status-badge.installed { background-color: rgba(29, 185, 84, 0.2); color: #1ed760; }
+.tool-status-badge.missing { background-color: rgba(229, 20, 20, 0.2); color: #e51414; }
+.tool-icon svg { width: 24px; height: 24px; }
 .tool-icon svg.success { fill: #1ed760; }
 .tool-icon svg.error { fill: #e51414; }
-
-.tool-path-container {
-    background-color: rgba(0, 0, 0, 0.2);
-    padding: 8px;
-    border-radius: 4px;
-    margin-bottom: 12px;
-    overflow: hidden;
-}
-.tool-path {
-    font-family: monospace;
-    font-size: 12px;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: block;
-}
-
-.tool-actions {
-    display: flex;
-    justify-content: flex-end;
-}
-.small-btn {
-    padding: 8px 16px;
-    font-size: 13px;
-    min-width: 100px;
-}
-.full-width {
-    width: 100%;
-}
-.action-btn.secondary-btn {
-    background-color: transparent;
-    border: 1px solid var(--text-secondary);
-    color: var(--text-primary);
-}
-.action-btn.secondary-btn:hover:not(:disabled) {
-    background-color: rgba(255, 255, 255, 0.1);
-    border-color: var(--text-primary);
-}
+.tool-path-container { background-color: rgba(0, 0, 0, 0.2); padding: 8px; border-radius: 4px; margin-bottom: 12px; overflow: hidden; }
+.tool-path { font-family: monospace; font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.tool-actions { display: flex; justify-content: flex-end; }
+.small-btn { padding: 8px 16px; font-size: 13px; min-width: 100px; }
+.full-width { width: 100%; }
+.action-btn.secondary-btn { background-color: transparent; border: 1px solid var(--text-secondary); color: var(--text-primary); }
+.action-btn.secondary-btn:hover:not(:disabled) { background-color: rgba(255, 255, 255, 0.1); border-color: var(--text-primary); }

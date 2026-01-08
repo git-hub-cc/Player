@@ -12,6 +12,7 @@ import { showToast, showConfirmationModal } from '../ui/modals.js';
 import { pinyin } from 'pinyin-pro';
 import path from 'path-browserify';
 import { DEFAULT_ART } from '../config.js';
+import * as dom from '../dom.js'; // 【核心新增】导入 dom 模块以访问 mediaPlayer 元素
 
 // --- 缓存与请求锁定配置 ---
 const CACHE_EXPIRATION_MS = 30 * 60 * 1000;
@@ -102,19 +103,15 @@ export async function searchOnline(query, page) {
     }
 }
 
-/**
- * 解析在线曲目的可播放URL。
- * 现在返回一个更详细的对象，以支持VIP歌曲的试听-切换逻辑。
- */
 export async function resolvePlayableUrl(trackInfo) {
     try {
         const result = await window.electronAPI.getMusicUrl(trackInfo);
         if (result.success && result.url) {
             return {
-                playableSrc: result.url, // 对VIP是试听URL
+                playableSrc: result.url,
                 albumArtUrl: result.albumArtUrl || trackInfo.albumArt,
                 isVip: result.isVip,
-                originalTrackInfo: result.originalTrackInfo // VIP歌曲需要它来获取正式URL
+                originalTrackInfo: result.originalTrackInfo
             };
         }
         throw new Error(result.error || "未能获取播放链接");
@@ -154,71 +151,87 @@ export function cacheTrack(trackData) {
 }
 
 /**
- * 删除指定的轨道。
- * 【核心修复】解决了 EBUSY 锁定问题：先在前端卸载媒体，释放句柄后再通知后端删除。
+ * 删除指定的轨道，并优雅地处理文件句柄锁定问题。
+ * @param {number} index - 要删除的轨道在播放列表中的索引。
  */
 export async function deleteTrack(index) {
     const track = getters.playlist()[index];
     if (!track) return;
 
     try {
+        // 1. 弹出确认对话框
         await showConfirmationModal(`确定要删除 "${track.title}" 吗？\n文件将从磁盘中永久移除。`);
 
-        // 保存状态，以便后续恢复或判断
         const wasPlaying = getters.isPlaying();
         const isDeletingCurrent = getters.currentTrackIndex() === index;
         const decodedRelativeSrc = decodeURIComponent(track.src.substring('media://'.length));
 
-        // =========================================================================
-        // 【核心修复】防止文件锁定 (File Lock / EBUSY)
-        // =========================================================================
-        // 如果要删除的是当前正在播放（或暂停但已加载）的曲目，
-        // 必须先在渲染进程停止播放并清除 src，迫使浏览器释放对文件的句柄。
-        if (isDeletingCurrent) {
-            console.log('[MediaService] 正在删除当前活动曲目，先卸载媒体以释放句柄...');
-            mutations.setIsPlaying(false);
-            mutations.clearPlayingTrackInfo(); // 这会触发 video 元素 src 被置空
+        // 2. 定义一个发送删除请求到主进程的函数
+        const sendDeleteRequest = async () => {
+            const result = await window.electronAPI.deleteTrack({ src: decodedRelativeSrc });
 
-            // 关键：给予浏览器/操作系统一点时间来完成句柄释放
-            await new Promise(resolve => setTimeout(resolve, 100));
-        }
-        // =========================================================================
-
-        // 此时句柄应已释放，安全发送 IPC 请求
-        const result = await window.electronAPI.deleteTrack({ src: decodedRelativeSrc });
-
-        if (!result.success) {
-            showToast(result.error, 'error');
-            // 如果删除失败且之前是当前曲目，可能需要考虑恢复状态，但通常不需要，让用户重新点击即可
-            return;
-        }
-
-        // 物理文件删除成功，更新前端状态
-        mutations.removeTrack(index);
-        showToast(`"${track.title}" 已删除`);
-
-        // 如果列表空了，刷新页面
-        if (getters.playlist().length === 0) {
-            setTimeout(() => window.location.reload(), 1500);
-            return;
-        }
-
-        // 如果刚才删除了当前曲目，尝试播放下一首（或保持原来的位置）
-        if (isDeletingCurrent) {
-            // 由于 removeTrack 已经调整了数组，当前 index 现在指向原来的“下一首”
-            // 确保索引不越界
-            const nextIndex = Math.min(index, getters.playlist().length - 1);
-            mutations.setCurrentTrackIndex(nextIndex);
-
-            // 如果之前在播放，则继续播放新的当前曲目
-            if (wasPlaying) {
-                mutations.setIsPlaying(true);
+            if (!result.success) {
+                showToast(result.error || '文件删除失败，可能仍被占用', 'error');
+                // 如果删除失败，可能需要重新加载以同步状态
+                setTimeout(() => window.location.reload(), 1500);
+                return;
             }
+
+            // 物理文件删除成功后，更新前端状态
+            mutations.removeTrack(index);
+            showToast(`"${track.title}" 已删除`);
+
+            // 如果列表空了，刷新页面
+            if (getters.playlist().length === 0) {
+                setTimeout(() => window.location.reload(), 1500);
+                return;
+            }
+
+            // 如果删除了当前曲目，决定下一步操作
+            if (isDeletingCurrent) {
+                const nextIndex = Math.min(index, getters.playlist().length - 1);
+                mutations.setCurrentTrackIndex(nextIndex);
+                if (wasPlaying) {
+                    mutations.setIsPlaying(true);
+                }
+            }
+        };
+
+        // =========================================================================
+        // 【核心修复】解决 EBUSY 文件锁定问题的无竞态流程
+        // =========================================================================
+        // 3. 检查是否在删除当前活动轨道
+        if (isDeletingCurrent) {
+            console.log('[MediaService] 正在删除当前活动曲目，将等待句柄释放...');
+
+            // 使用 Promise 封装基于 'emptied' 事件的异步流程
+            await new Promise(resolve => {
+                // a. 在 <video> 元素上注册一个一次性的 'emptied' 事件监听器。
+                //    此事件在媒体元素被清空（例如 src 更改并调用 load()）后触发，
+                //    标志着旧资源的文件句柄已被操作系统释放。
+                dom.mediaPlayer.addEventListener('emptied', async () => {
+                    console.log('[MediaService] "emptied" 事件触发，文件句柄已释放。');
+                    await sendDeleteRequest();
+                    resolve();
+                }, { once: true });
+
+                // b. 触发媒体卸载
+                mutations.setIsPlaying(false);
+                dom.mediaPlayer.src = ''; // 清空 src
+                dom.mediaPlayer.load();   // 强制重新加载，这将触发 'emptied' 事件
+            });
+        } else {
+            // 如果删除的不是当前轨道，文件未被锁定，直接发送删除请求
+            await sendDeleteRequest();
         }
+        // =========================================================================
 
     } catch (err) {
-        // 用户取消或 IPC 错误
-        if (err !== 'cancel') console.error(err);
+        // 捕获 showConfirmationModal 的拒绝（用户取消）或 IPC 错误
+        if (err !== 'cancel') {
+            console.error('删除轨道时发生错误:', err);
+            showToast('操作失败，请查看控制台日志', 'error');
+        }
     }
 }
 

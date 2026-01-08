@@ -18,7 +18,7 @@ import * as ui from '../ui.js';
 const LONG_PRESS_THRESHOLD = 250;
 const SEEK_STEP_SHORT = 10;
 const SEEK_STEP_LONG = 30;
-const LONG_PRESS_RATE = 4.0;
+const LONG_PRESS_RATE = 8.0;
 
 let longPressTimer = null;
 let isLongPressActive = false;
