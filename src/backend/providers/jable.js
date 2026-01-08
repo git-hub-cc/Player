@@ -36,10 +36,12 @@ export class JableProvider extends BaseProvider {
             this._checkCancelled(signal);
             if (!info.m3u8Url) throw new Error('未找到 m3u8 播放地址');
 
-            const safeFilename = this._sanitizeFilename(info.title);
+            // 【核心修改】使用时间戳生成唯一文件名，而不是清理后的标题
+            const uniqueFilenameBase = `media_jable_${Date.now()}`;
 
             if (info.coverUrl) {
-                await downloadFile(info.coverUrl, this.config.ALBUMART_DIR, `${safeFilename}.jpg`, {}, () => {}, 3, signal);
+                // 封面也使用唯一文件名
+                await downloadFile(info.coverUrl, this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`, {}, () => {}, 3, signal);
             }
 
             this.sendMessage('download-status', { message: '开始下载并解密视频分片...', type: 'default' });
@@ -47,7 +49,7 @@ export class JableProvider extends BaseProvider {
             await this._downloadAndProcessM3u8(
                 info.m3u8Url,
                 this.config.VIDEOS_DIR,
-                `${safeFilename}.mp4`,
+                `${uniqueFilenameBase}.mp4`, // 传递唯一文件名
                 (progress) => this.sendMessage('download-status', {
                     message: `下载进度: ${(progress * 100).toFixed(1)}%`,
                     progress: progress,
@@ -62,8 +64,8 @@ export class JableProvider extends BaseProvider {
             await this._addTrackToPlaylist({
                 title: info.title,
                 artist: 'Jable TV',
-                src: `videos/${safeFilename}.mp4`,
-                albumArt: `albumArt/${safeFilename}.jpg`,
+                src: `videos/${uniqueFilenameBase}.mp4`,
+                albumArt: fs.existsSync(path.join(this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`)) ? `albumArt/${uniqueFilenameBase}.jpg` : '',
                 type: "video"
             });
 

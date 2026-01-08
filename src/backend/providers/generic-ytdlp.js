@@ -47,13 +47,14 @@ export class GenericYtDlpProvider extends BaseProvider {
             // 3. 准备文件名和封面
             // 优先使用 title，如果没有则使用 ID，最后使用 fallback
             const title = info.title || info.id || 'Unknown_Video';
-            // 清理文件名
-            const safeFilename = this._sanitizeFilename(title);
+            // 【核心修改】使用时间戳和视频ID生成唯一文件名，而不是清理后的标题
+            const uniqueFilenameBase = `media_ytdlp_${info.id || Date.now()}`;
+
 
             // 下载封面 (如果有)
             if (info.thumbnail) {
                 // 异步下载封面，不阻塞主流程，但会响应取消信号
-                downloadFile(info.thumbnail, this.config.ALBUMART_DIR, `${safeFilename}.jpg`, {}, () => {}, 3, signal)
+                downloadFile(info.thumbnail, this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`, {}, () => {}, 3, signal)
                     .catch(e => {
                         if (!signal || !signal.aborted) console.warn('[GenericYtDlp] 封面下载轻微错误:', e.message);
                     });
@@ -65,7 +66,7 @@ export class GenericYtDlpProvider extends BaseProvider {
             const finalFilePath = await this._downloadVideoWithYtDlp(
                 videoUrl,
                 this.config.VIDEOS_DIR,
-                safeFilename,
+                uniqueFilenameBase, // 使用唯一文件名
                 (progress) => this.sendMessage('download-status', {
                     message: `下载进度: ${(progress * 100).toFixed(1)}%`,
                     progress: progress,
@@ -83,8 +84,8 @@ export class GenericYtDlpProvider extends BaseProvider {
                 artist: info.uploader || info.channel || info.uploader_id || 'Unknown Artist',
                 src: `videos/${path.basename(finalFilePath)}`,
                 // 检查封面文件是否存在，如果存在则设置路径
-                albumArt: fs.existsSync(path.join(this.config.ALBUMART_DIR, `${safeFilename}.jpg`))
-                    ? `albumArt/${safeFilename}.jpg`
+                albumArt: fs.existsSync(path.join(this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`))
+                    ? `albumArt/${uniqueFilenameBase}.jpg`
                     : '',
                 type: "video"
             });

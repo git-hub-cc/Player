@@ -42,7 +42,8 @@ export class IyfProvider extends BaseProvider {
 
             if (!info.m3u8Url) throw new Error('未能在页面中提取到有效的 M3U8 地址');
 
-            const safeFilename = this._sanitizeFilename(info.title);
+            // 【核心修改】使用时间戳生成唯一文件名，而不是清理后的标题
+            const uniqueFilenameBase = `media_iyf_${Date.now()}`;
             const headers = {
                 'User-Agent': IYF_USER_AGENT,
                 'Referer': IYF_REFERER,
@@ -52,7 +53,7 @@ export class IyfProvider extends BaseProvider {
             this.sendMessage('download-status', { message: `解析成功: ${info.title}`, type: 'default' });
 
             if (info.coverUrl) {
-                downloadFile(info.coverUrl, this.config.ALBUMART_DIR, `${safeFilename}.jpg`, headers, () => {}, 3, signal)
+                downloadFile(info.coverUrl, this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`, headers, () => {}, 3, signal)
                     .catch(e => { if(!signal.aborted) console.warn('[Iyf Provider] 封面下载失败:', e.message) });
             }
 
@@ -82,14 +83,14 @@ export class IyfProvider extends BaseProvider {
             await this._mergeFiles(tempDir, downloadedFiles, combinedTsPath);
 
             this.sendMessage('download-status', { message: '正在修复时间戳并封装为 MP4...', type: 'default' });
-            const finalPath = path.join(this.config.VIDEOS_DIR, `${safeFilename}.mp4`);
+            const finalPath = path.join(this.config.VIDEOS_DIR, `${uniqueFilenameBase}.mp4`);
             await this._remuxToMp4(combinedTsPath, finalPath);
 
             await this._addTrackToPlaylist({
                 title: info.title,
                 artist: 'IYF',
                 src: `videos/${path.basename(finalPath)}`,
-                albumArt: `albumArt/${safeFilename}.jpg`,
+                albumArt: fs.existsSync(path.join(this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`)) ? `albumArt/${uniqueFilenameBase}.jpg` : '',
                 type: "video"
             });
 

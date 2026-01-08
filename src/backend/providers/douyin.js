@@ -172,8 +172,9 @@ export class DouyinProvider extends BaseProvider {
             if (!totalSize) throw new Error('资源已被锁定或链接失效');
 
             const title = awemeDetail.desc || "无标题";
-            const safeFilename = this._sanitizeFilename(`${awemeDetail.author?.nickname || '未知'} - ${title}`);
-            const finalFilePath = path.join(this.config.VIDEOS_DIR, `${safeFilename}.mp4`);
+            // 【核心修改】使用 aweme_id 或时间戳生成唯一文件名，而不是清理后的标题
+            const uniqueFilenameBase = `media_douyin_${awemeId || Date.now()}`;
+            const finalFilePath = path.join(this.config.VIDEOS_DIR, `${uniqueFilenameBase}.mp4`);
 
             const tempDir = path.join(this.config.MEDIA_ROOT, `temp_${awemeId}`);
             if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
@@ -205,7 +206,7 @@ export class DouyinProvider extends BaseProvider {
 
             const coverUrl = awemeDetail?.video?.cover?.url_list?.[0];
             if (coverUrl) {
-                tasks.push(limit(() => downloadFile(coverUrl, this.config.ALBUMART_DIR, `${safeFilename}.jpg`, {}, () => {}, 3, signal)));
+                tasks.push(limit(() => downloadFile(coverUrl, this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`, {}, () => {}, 3, signal)));
             }
 
             // 等待所有任务完成，如果有任一任务因 signal 失败，这里会 reject
@@ -220,7 +221,7 @@ export class DouyinProvider extends BaseProvider {
                 title,
                 artist: awemeDetail.author?.nickname || "未知",
                 src: `videos/${path.basename(finalFilePath)}`,
-                albumArt: fs.existsSync(path.join(this.config.ALBUMART_DIR, `${safeFilename}.jpg`)) ? `albumArt/${safeFilename}.jpg` : '',
+                albumArt: fs.existsSync(path.join(this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`)) ? `albumArt/${uniqueFilenameBase}.jpg` : '',
                 type: "video"
             });
 

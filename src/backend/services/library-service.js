@@ -33,18 +33,24 @@ export class LibraryService {
 
     // --- 私有辅助方法 ---
 
+    #generateUniqueFilename() {
+        const timestamp = Date.now();
+        const randomSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+        return `media_${timestamp}_${randomSuffix}`;
+    }
+
     #sanitizeFilename(filename) {
         if (!filename) return 'untitled';
         const sanitized = filename.replace(/[\/\\?%*:|"<>_,\s\.\#\&\…'’]+/g, '-');
         return sanitized.replace(/-+/g, '-').replace(/^-+|-+$/g, '').trim();
     }
 
-    async #generateVideoThumbnail(videoPath, outputDir, filename) {
+    async #generateVideoThumbnail(videoPath, outputDir, uniqueFilenameBase) {
         if (!this.#ffmpegPath) {
             console.warn('[Library] FFmpeg 未安装，跳过视频截图生成。');
             return null;
         }
-        const outputFilename = `${filename}.jpg`;
+        const outputFilename = `${uniqueFilenameBase}.jpg`;
         const outputPath = path.join(outputDir, outputFilename);
         const command = `"${this.#ffmpegPath}" -y -ss 00:00:01.000 -i "${videoPath}" -vframes 1 -q:v 2 "${outputPath}"`;
 
@@ -115,12 +121,12 @@ export class LibraryService {
         return canvas.toDataURL('image/png');
     }
 
-    generateAndSavePlaceholderArt(title, safeFilenameBase) {
+    generateAndSavePlaceholderArt(title, uniqueFilenameBase) {
         if (!createCanvas || !this.#config.ALBUMART_DIR) return '';
         const base64Url = this.generatePlaceholderArt(title);
         if (!base64Url) return '';
         try {
-            const filename = `${safeFilenameBase}.png`;
+            const filename = `${uniqueFilenameBase}.png`;
             const absolutePath = path.join(this.#config.ALBUMART_DIR, filename);
             const base64Data = base64Url.replace(/^data:image\/png;base64,/, "");
             fs.writeFileSync(absolutePath, base64Data, 'base64');
@@ -162,12 +168,14 @@ export class LibraryService {
 
                     try {
                         const filePath = path.join(this.#config.MEDIA_ROOT, fileRelativePath);
-                        try {
-                            await fs.promises.unlink(filePath);
-                            console.log(`[Library] 成功删除文件: ${filePath}`);
-                        } catch (err) {
-                            if (err.code !== 'ENOENT') {
-                                console.warn(`[Library] 删除物理文件失败 (${key}): ${filePath}`, err.message);
+                        // 【核心修复】使用同步删除，并对 EBUSY 等错误进行健壮的日志记录
+                        if (fs.existsSync(filePath)) {
+                            try {
+                                fs.unlinkSync(filePath);
+                                console.log(`[Library] 成功删除文件: ${filePath}`);
+                            } catch (err) {
+                                // 详细记录删除失败的错误，包括错误码
+                                console.warn(`[Library] 删除物理文件失败 (${key}): ${filePath}`, err.message, `(Code: ${err.code})`);
                             }
                         }
                     } catch (pathError) {
@@ -224,9 +232,10 @@ export class LibraryService {
         for (const file of validFiles) {
             try {
                 const originalPath = file.path, ext = path.extname(originalPath).toLowerCase(), title = path.basename(originalPath, ext);
-                const safeFilename = this.#sanitizeFilename(title); const isVideo = videoExt.includes(ext);
+                const uniqueFilenameBase = this.#generateUniqueFilename();
+                const isVideo = videoExt.includes(ext);
                 const targetDir = isVideo ? this.#config.VIDEOS_DIR : this.#config.MUSIC_DIR; const relativeDirName = isVideo ? 'videos' : 'music';
-                const newMediaPath = path.join(targetDir, `${safeFilename}${ext}`); await fs.promises.copyFile(originalPath, newMediaPath);
+                const newMediaPath = path.join(targetDir, `${uniqueFilenameBase}${ext}`); await fs.promises.copyFile(originalPath, newMediaPath);
                 const newTrack = {
                     title, artist: '拖拽导入', src: `${relativeDirName}/${path.basename(newMediaPath)}`, albumArt: '', lyrics: '',
                     type: isVideo ? 'video' : 'audio',
@@ -235,12 +244,12 @@ export class LibraryService {
                 };
 
                 if (isVideo) {
-                    const generatedImageName = await this.#generateVideoThumbnail(newMediaPath, this.#config.ALBUMART_DIR, safeFilename);
+                    const generatedImageName = await this.#generateVideoThumbnail(newMediaPath, this.#config.ALBUMART_DIR, uniqueFilenameBase);
                     if (generatedImageName) newTrack.albumArt = `albumArt/${generatedImageName}`;
                     newTrack.lastPosition = 0;
                     newTrack.totalDuration = 0;
                 } else {
-                    newTrack.albumArt = this.generateAndSavePlaceholderArt(title, safeFilename);
+                    newTrack.albumArt = this.generateAndSavePlaceholderArt(title, uniqueFilenameBase);
                 }
 
                 newPlaylistTracks.push(newTrack); importedCount++; sendMessage('new-track-added', newTrack);
@@ -269,10 +278,10 @@ export class LibraryService {
                 try {
                     const { media, mediaType, lrc, art } = group;
                     const ext = path.extname(media), title = path.basename(media, ext);
-                    const safeFilename = this.#sanitizeFilename(title);
+                    const uniqueFilenameBase = this.#generateUniqueFilename();
                     const isVideo = mediaType === 'video';
                     const targetDir = isVideo ? this.#config.VIDEOS_DIR : this.#config.MUSIC_DIR;
-                    const newMediaPath = path.join(targetDir, `${safeFilename}${ext}`);
+                    const newMediaPath = path.join(targetDir, `${uniqueFilenameBase}${ext}`);
                     await fs.promises.copyFile(media, newMediaPath);
 
                     const newTrack = {
@@ -283,20 +292,20 @@ export class LibraryService {
                     };
 
                     if (lrc) {
-                        const newLrcPath = path.join(targetDir, `${safeFilename}.lrc`);
+                        const newLrcPath = path.join(targetDir, `${uniqueFilenameBase}.lrc`);
                         await fs.promises.copyFile(lrc, newLrcPath);
                         newTrack.lyrics = path.relative(this.#config.MEDIA_ROOT, newLrcPath).replace(/\\/g, '/');
                     } else { newTrack.lyrics = ''; }
 
                     if (art) {
-                        const newArtPath = path.join(this.#config.ALBUMART_DIR, `${safeFilename}${path.extname(art)}`);
+                        const newArtPath = path.join(this.#config.ALBUMART_DIR, `${uniqueFilenameBase}${path.extname(art)}`);
                         await fs.promises.copyFile(art, newArtPath);
                         newTrack.albumArt = path.relative(this.#config.MEDIA_ROOT, newArtPath).replace(/\\/g, '/');
                     } else if (isVideo) {
-                        const thumbName = await this.#generateVideoThumbnail(newMediaPath, this.#config.ALBUMART_DIR, safeFilename);
+                        const thumbName = await this.#generateVideoThumbnail(newMediaPath, this.#config.ALBUMART_DIR, uniqueFilenameBase);
                         newTrack.albumArt = thumbName ? `albumArt/${thumbName}` : '';
                     } else {
-                        newTrack.albumArt = this.generateAndSavePlaceholderArt(title, safeFilename);
+                        newTrack.albumArt = this.generateAndSavePlaceholderArt(title, uniqueFilenameBase);
                     }
 
                     if (isVideo) {
