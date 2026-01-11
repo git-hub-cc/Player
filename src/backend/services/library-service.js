@@ -205,8 +205,19 @@ export class LibraryService {
         const sourceFullPath = path.join(this.#config.MEDIA_ROOT, sourceRelativePath); if (!fs.existsSync(sourceFullPath)) { return { success: false, error: '源视频文件不存在。' }; }
         try {
             const sourceDir = path.dirname(sourceFullPath), sourceExt = path.extname(sourceFullPath), sourceBaseName = path.basename(sourceFullPath, sourceExt);
-            const videoOnlyPath = path.join(sourceDir, `${sourceBaseName}_video${sourceExt}`); const audioOnlyPath = path.join(this.#config.MUSIC_DIR, `${sourceBaseName}_audio.opus`);
-            const videoCommand = `"${this.#ffmpegPath}" -y -i "${sourceFullPath}" -c:v copy -an "${videoOnlyPath}"`; const audioCommand = `"${this.#ffmpegPath}" -y -i "${sourceFullPath}" -vn -c:a libopus -b:a 128k "${audioOnlyPath}"`;
+
+            // =========================================================================
+            // 【核心修改】修改输出路径和FFmpeg命令，将音频分离为 MP3 格式
+            // =========================================================================
+            const videoOnlyPath = path.join(sourceDir, `${sourceBaseName}_video${sourceExt}`);
+            // 修改后缀为 .mp3
+            const audioOnlyPath = path.join(this.#config.MUSIC_DIR, `${sourceBaseName}_audio.mp3`);
+
+            const videoCommand = `"${this.#ffmpegPath}" -y -i "${sourceFullPath}" -c:v copy -an "${videoOnlyPath}"`;
+            // 修改编码器为 libmp3lame，码率为 192k
+            const audioCommand = `"${this.#ffmpegPath}" -y -i "${sourceFullPath}" -vn -c:a libmp3lame -b:a 192k "${audioOnlyPath}"`;
+            // =========================================================================
+
             const runCommand = (cmd) => new Promise((resolve, reject) => { exec(cmd, (error, stdout, stderr) => { if (error) return reject(new Error(`FFmpeg 错误: ${stderr || error.message}`)); resolve(stdout); }); });
             await Promise.all([runCommand(videoCommand), runCommand(audioCommand)]);
             const generatedThumbName = await this.#generateVideoThumbnail(videoOnlyPath, this.#config.ALBUMART_DIR, `${sourceBaseName}_video`);
