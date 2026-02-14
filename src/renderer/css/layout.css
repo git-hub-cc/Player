@@ -3,10 +3,12 @@
 .container {
     width: 100%;
     height: 100%;
-    display: flex; /* Allow player-container to be centered within it */
+    display: flex;
+    /* Allow player-container to be centered within it */
     justify-content: center;
     align-items: center;
 }
+
 .player-container {
     width: 100%;
     max-width: 1400px;
@@ -25,8 +27,7 @@
 }
 
 /* 【修改】用于在拖拽背景或进入演示模式时隐藏主播放器 */
-.player-container.hidden-by-gallery,
-.player-container.screensaver-active {
+.player-container.hidden-by-gallery, .player-container.screensaver-active {
     opacity: 0;
     pointer-events: none;
     transform: scale(0.95);
@@ -88,4 +89,34 @@
     margin-top: 10px;
     font-size: 14px;
     color: var(--text-secondary);
+}
+
+/* ========================================================================= */
+/* 【核心修改】自定义窗口拖拽按钮样式 */
+/* ========================================================================= */
+#window-drag-handle {
+    position: fixed; /* 保持 fixed 定位，使其始终位于窗口右上角 */
+    top: 1px;
+    right: 135px; /* 避开 Windows 原生控制按钮区域 (约 138px) */
+    width: 45px; /* 调整宽度以匹配标准按钮尺寸 */
+    height: 31px; /* 标题栏标准高度 */
+    z-index: 10000; /* 确保层级最高 */
+    -webkit-app-region: drag; /* 关键：标记为可拖拽区域 */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    /* 【新增】样式调整，使其与原生黑色标题栏/控制按钮一致 */
+    background-color: #121212; /* 纯黑背景 */
+    color: #fff; /* 白色图标 */
+    border-bottom-left-radius: 4px; /* 可选：增加一点圆角美感 */
+
+    transition: background-color 0.2s;
+}
+
+#window-drag-handle svg {
+    width: 16px; /* 稍微调小图标尺寸使其更精致 */
+    height: 16px;
+    fill: currentColor;
+    pointer-events: none; /* 防止图标干扰拖拽判定 */
 }

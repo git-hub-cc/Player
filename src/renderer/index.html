@@ -5,49 +5,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Player - 媒体播放器</title>
 
-    <!-- SEO Meta Tags -->
     <meta name="description" content="一个功能强大的HTML5媒体播放器，支持音频和视频播放，具有动态背景、歌词同步和快捷键。A powerful HTML5 media player with audio/video, dynamic backgrounds, synced lyrics, and shortcuts.">
     <meta name="keywords" content="media player, html5 player, javascript, audio player, video player, lyrics, playlist, shortcuts, 媒体播放器, 音乐播放器, 视频播放器, 快捷键, Player">
     <meta name="author" content="Player Project">
 
-    <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:title" content="Player - 媒体播放器">
     <meta property="og:description" content="一个功能强大的HTML5媒体播放器，支持音频和视频播放、动态背景和歌词同步。">
 
-    <!-- Twitter -->
     <meta property="twitter:card" content="summary">
     <meta property="twitter:title" content="Player - 媒体播放器">
     <meta property="twitter:description" content="一个功能强大的HTML5媒体播放器，支持音频和视频播放、动态背景和歌词同步。">
 
-    <!-- 基础和布局 -->
     <link rel="stylesheet" href="css/base.css">
     <link rel="stylesheet" href="css/layout.css">
     <link rel="stylesheet" href="css/gallery.css">
 
-    <!-- 主要视图和控制区域 -->
     <link rel="stylesheet" href="css/player-view.css">
     <link rel="stylesheet" href="css/player-controls.css">
 
-    <!-- 面板和独立组件 -->
     <link rel="stylesheet" href="css/panels.css">
     <link rel="stylesheet" href="css/components.css">
 
-    <!-- 响应式样式 (最后加载) -->
     <link rel="stylesheet" href="css/responsive.css">
 </head>
 <body>
 
-<!-- 背景画廊容器 -->
+<div id="window-drag-handle" title="按住拖动窗口">
+    <svg viewBox="0 0 24 24">
+        <path d="M10 9h4V6h3l-5-5-5 5h3v3zm-1 1H6V7l-5 5 5 5v-3h3v-4zm14 2l-5-5v3h-3v4h3v3l5-5zm-9 3h-4v3H7l5 5 5-5h-3v-3z"/>
+    </svg>
+</div>
 <div id="gallery-container">
     <div id="gallery-wrapper">
-        <!-- 图片由 gallery.js 动态生成 -->
     </div>
 </div>
 
 <div class="container">
     <div class="player-container">
-        <!-- 文件拖拽覆盖层 -->
         <div id="drag-overlay" class="drag-overlay">
             <div class="drag-overlay-icon">
                 <span class="icon-placeholder" data-icon="DRAG_ADD"></span>
@@ -56,9 +51,7 @@
             <p class="drag-overlay-subtext">支持音频、视频文件</p>
         </div>
 
-        <!-- 主视图区域：仅包含媒体、封面和歌词 -->
         <main class="main-view">
-            <!-- 正常播放时的媒体可视区域 -->
             <div class="media-visualizer">
                 <video id="media-player" playsinline crossorigin="anonymous"></video>
                 <canvas id="audio-visualizer"></canvas>
@@ -67,7 +60,6 @@
                 </div>
             </div>
 
-            <!-- 空状态视图 - 当播放列表为空时显示 -->
             <div id="empty-state-view" class="empty-state-view">
                 <div class="empty-content">
                     <div class="empty-icon">
@@ -97,7 +89,6 @@
             <div id="speed-feedback" class="speed-feedback"></div>
         </main>
 
-        <!-- 媒体库面板 (原播放列表) -->
         <aside id="playlist-panel" class="playlist-panel">
             <div class="panel-header">
                 <h2>媒体库</h2>
@@ -127,11 +118,9 @@
                 <input type="search" id="playlist-search" class="panel-search" placeholder="搜索 (歌名/歌手/拼音/首字母)">
             </div>
             <ul id="playlist" class="playlist">
-                <!-- 列表项由JS动态生成 -->
             </ul>
         </aside>
 
-        <!-- 关于项目面板 -->
         <aside id="info-panel" class="info-panel">
             <div class="panel-header">
                 <h2>关于项目</h2>
@@ -157,7 +146,6 @@
             </div>
         </aside>
 
-        <!-- 快捷键设置面板 -->
         <aside id="shortcut-panel" class="shortcut-panel">
             <div class="panel-header">
                 <h2>快捷键设置</h2>
@@ -166,11 +154,9 @@
                 </button>
             </div>
             <ul id="shortcut-list" class="shortcut-list">
-                <!-- 快捷键项由JS动态生成 -->
             </ul>
         </aside>
 
-        <!-- 添加资源面板 -->
         <aside id="download-panel" class="download-panel">
             <div class="panel-header">
                 <h2>添加资源</h2>
@@ -210,7 +196,6 @@
             </div>
         </aside>
 
-        <!-- 系统设置面板 -->
         <aside id="settings-panel" class="settings-panel">
             <div class="panel-header">
                 <h2>系统设置</h2>
@@ -228,7 +213,6 @@
                     <h3 class="section-title">核心组件状态</h3>
                     <p class="section-desc">部分下载和处理功能依赖以下工具。如果功能异常，请检查状态或尝试重新下载。</p>
 
-                    <!-- FFmpeg 卡片 -->
                     <div class="tool-card" id="ffmpeg-tool-card">
                         <div class="tool-header">
                             <div class="tool-info">
@@ -236,7 +220,6 @@
                                 <span class="tool-status-badge pending">检查中...</span>
                             </div>
                             <div class="tool-icon">
-                                <!-- 图标由 JS 动态注入 -->
                             </div>
                         </div>
                         <div class="tool-path-container">
@@ -250,7 +233,6 @@
                         </div>
                     </div>
 
-                    <!-- yt-dlp 卡片 -->
                     <div class="tool-card" id="ytdlp-tool-card">
                         <div class="tool-header">
                             <div class="tool-info">
@@ -258,7 +240,6 @@
                                 <span class="tool-status-badge pending">检查中...</span>
                             </div>
                             <div class="tool-icon">
-                                <!-- 图标由 JS 动态注入 -->
                             </div>
                         </div>
                         <div class="tool-path-container">
@@ -275,7 +256,6 @@
             </div>
         </aside>
 
-        <!-- 底部播放控制条 -->
         <footer class="player-controls">
             <div class="track-info">
                 <img id="control-album-art" src="" alt="Album Art" crossorigin="anonymous" draggable="false">
@@ -362,10 +342,8 @@
         </footer>
     </div>
 
-    <!-- Custom Context Menu -->
     <div id="custom-context-menu" class="custom-context-menu"><ul></ul></div>
 
-    <!-- 快捷键录制模态框 -->
     <div class="modal-overlay" id="shortcut-modal-overlay">
         <div class="modal-content shortcut-modal-content">
             <p>请按下您想设置的快捷键组合...</p>
@@ -374,7 +352,6 @@
         </div>
     </div>
 
-    <!-- 通用确认模态框 -->
     <div class="modal-overlay" id="confirmation-modal-overlay">
         <div class="modal-content confirmation-modal-content">
             <p id="confirmation-message"></p>
@@ -385,7 +362,6 @@
         </div>
     </div>
 
-    <!-- 核心组件下载进度模态框 -->
     <div class="modal-overlay" id="download-progress-modal">
         <div class="modal-content download-progress-content">
             <h3 id="download-progress-title">正在准备核心组件...</h3>
@@ -397,10 +373,8 @@
         </div>
     </div>
 
-    <!-- 提示消息元素 -->
     <div id="toast-notification" class="toast"></div>
 
-    <!-- Container for HTML templates -->
     <div id="templates" style="display: none;">
         <template id="template-lyric-line"><p></p></template>
         <template id="template-no-lyrics"><p class="no-lyrics">暂无歌词</p></template>
@@ -414,16 +388,12 @@
                         <div class="playlist-artist"></div>
                     </div>
                 </div>
-                <!-- 视频进度条容器 -->
                 <div class="video-progress-bar">
                     <div class="video-progress-bar-inner"></div>
                 </div>
             </li>
         </template>
 
-        <!-- ========================================================================= -->
-        <!-- 【核心修改】搜索结果模板：增加取消按钮结构 -->
-        <!-- ========================================================================= -->
         <template id="template-search-result-item">
             <li class="playlist-item">
                 <div class="playlist-item-main-content">
@@ -434,21 +404,17 @@
                     </div>
                 </div>
                 <button class="playlist-download-btn" title="下载到本地">
-                    <!-- 默认下载图标 -->
                     <span class="icon-placeholder download-icon" data-icon="DOWNLOAD"></span>
 
-                    <!-- 加载动画容器，内部包含一个停止图标，实现Hover时停止的效果 -->
                     <div class="spinner-icon-container">
                         <span class="icon-placeholder spinner-icon" data-icon="SPINNER"></span>
                         <span class="icon-placeholder stop-icon" data-icon="STOP"></span>
                     </div>
 
-                    <!-- 已缓存图标 -->
                     <span class="icon-placeholder cached-icon" data-icon="CACHED"></span>
                 </button>
             </li>
         </template>
-        <!-- ========================================================================= -->
 
         <template id="template-playlist-no-results"><li id="playlist-no-results" class="no-results-message">未找到结果</li></template>
         <template id="template-shortcut-item"><li class="shortcut-item"><span class="action-label"></span><div class="shortcut-display"></div><div class="actions"><button class="set-btn">设置</button><button class="clear-btn">清除</button></div></li></template>

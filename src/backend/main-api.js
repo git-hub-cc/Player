@@ -13,20 +13,24 @@ let diContainer;
 let initialFileToOpen = null;
 
 // --- 常量配置 ---
+// 伪装 User-Agent 以避免部分在线服务拦截
 const SPOOF_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
+// 注册特权协议，支持流媒体播放和 CORS
 protocol.registerSchemesAsPrivileged([
     { scheme: 'media', privileges: { standard: true, secure: true, supportFetch: true, corsEnabled: true } }
 ]);
 
+// 如果是 Squirrel 安装/更新过程，立即退出
 if (started) {
     app.quit();
 }
 
 // =========================================================================
-// 【文件关联】核心逻辑
+// 【文件关联】核心逻辑：处理“使用此应用打开”
 // =========================================================================
 function findFilePathInArgs(argv) {
+    // 过滤掉开发环境的参数，寻找真实文件路径
     const potentialPath = argv.slice(app.isPackaged ? 1 : 2).find(arg =>
         !arg.startsWith('-') && fs.existsSync(arg)
     );
@@ -36,16 +40,21 @@ function findFilePathInArgs(argv) {
 function sendFileToRenderer(filePath) {
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
         mainWindow.webContents.send('open-file', filePath);
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
     } else {
+        // 如果窗口未就绪，暂存路径等待加载完成
         initialFileToOpen = filePath;
     }
 }
 
+// 单实例锁：防止多开
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
     app.quit();
 } else {
     app.on('second-instance', (event, commandLine, workingDirectory) => {
+        // 当用户试图打开第二个实例时，聚焦主窗口并处理新文件
         if (mainWindow) {
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.focus();
@@ -53,11 +62,16 @@ if (!gotTheLock) {
             if (filePath) sendFileToRenderer(filePath);
         }
     });
+
+    // 处理冷启动时的文件参数
     const initialFilePath = findFilePathInArgs(process.argv);
     if (initialFilePath) initialFileToOpen = initialFilePath;
 }
 // =========================================================================
 
+/**
+ * 通用发送消息到渲染进程
+ */
 function sendMessage(type, data) {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(type, data);
@@ -66,21 +80,41 @@ function sendMessage(type, data) {
 
 const createWindow = () => {
     mainWindow = new BrowserWindow({
-        width: 1200, height: 800, minWidth: 940, minHeight: 600,
-        darkTheme: true,
+        width: 1200,
+        height: 800,
+        minWidth: 940,
+        minHeight: 600,
+
+        // =========================================================================
+        // 【核心修改】强制深色标题栏配置
+        // titleBarStyle: 'hidden' -> 隐藏原生白色标题栏，接管绘制权
+        // titleBarOverlay -> 在原位置绘制深色背景和原生控制按钮
+        // =========================================================================
+        titleBarStyle: 'hidden',
+        titleBarOverlay: {
+            color: '#121212',       // 深灰色背景，匹配应用主题
+            symbolColor: '#FFFFFF', // 白色控制按钮（最小化/关闭等）
+            height: 32              // 标准标题栏高度
+        },
+        // =========================================================================
+
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
-            sandbox: true, contextIsolation: true, webSecurity: true,
+            sandbox: true,
+            contextIsolation: true,
+            webSecurity: true, // 保持开启以确保安全
         }
     });
 
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
         mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+        // 开发模式下默认打开控制台，方便调试
         mainWindow.webContents.openDevTools({ mode: 'detach' });
     } else {
         mainWindow.loadFile(path.join(__dirname, '../renderer/main_window/index.html'));
     }
 
+    // 窗口加载完成后，处理暂存的文件打开请求
     mainWindow.webContents.on('did-finish-load', () => {
         if (initialFileToOpen) {
             sendFileToRenderer(initialFileToOpen);
@@ -88,6 +122,7 @@ const createWindow = () => {
         }
     });
 
+    // 监听全屏事件，同步状态给前端 UI
     mainWindow.on('enter-full-screen', () => sendMessage('fullscreen-change', true));
     mainWindow.on('leave-full-screen', () => sendMessage('fullscreen-change', false));
 };
@@ -98,48 +133,36 @@ function registerIpcHandlers() {
     const downloadService = diContainer.get('downloadService');
     const config = diContainer.get('config');
 
-    // --- 媒体库相关 ---
+    // --- 1. 媒体库服务 ---
     ipcMain.handle('get-local-playlist', () => libraryService.getLocalPlaylist());
     ipcMain.handle('delete-track', (_, trackData) => libraryService.handleDeleteTrack(trackData));
     ipcMain.handle('select-import-directory', () => libraryService.handleSelectDirectory());
     ipcMain.handle('start-local-import', (_, dirPath) => libraryService.handleLocalImport(dirPath, sendMessage));
     ipcMain.on('open-media-folder', () => libraryService.handleOpenMediaFolder());
+    ipcMain.handle('separate-video', (_, trackData) => libraryService.handleSeparateVideo(trackData));
+    ipcMain.handle('handle-file-drop', (_, files) => libraryService.handleDroppedFiles(files, sendMessage));
 
-    // --- 在线服务相关 ---
+    // --- 2. 在线搜索与解析服务 ---
     ipcMain.handle('search-online', (_, { query, page }) => onlineService.handleSearchRequest({ query, page }));
     ipcMain.handle('get-music-url', (_, trackInfo) => onlineService.handleGetMusicUrl(trackInfo));
     ipcMain.handle('get-vip-music-url', (_, trackInfo) => onlineService.handleGetVipMusicUrl(trackInfo));
     ipcMain.handle('get-lrc-content', (_, relativePath) => onlineService.handleGetLrcContent(relativePath));
-    // 缓存下载（在线歌曲）
-    ipcMain.on('cache-track', (_, trackData) => onlineService.handleCacheRequest(trackData));
     ipcMain.handle('get-online-lyric', (_, trackInfo) => onlineService.handleGetOnlineLyric(trackInfo));
+    ipcMain.on('cache-track', (_, trackData) => onlineService.handleCacheRequest(trackData));
 
-    // --- 下载与工具相关 ---
-    // URL 下载
+    // --- 3. 下载管理服务 ---
     ipcMain.on('download-douyin', (_, data) => downloadService.handleDownloadRequest(data));
 
-    // =========================================================================
-    // 【核心新增】取消下载的 IPC 处理器
-    // =========================================================================
+    // 取消下载（支持 URL 下载和在线缓存）
     ipcMain.on('cancel-download', (_, { id, type }) => {
         if (type === 'url-download') {
-            // 取消主下载器的任务 (URL 下载)
             downloadService.cancelCurrentTask();
         } else if (type === 'cache-download') {
-            // 取消在线歌曲缓存任务
             onlineService.cancelTask(id);
         }
     });
-    // =========================================================================
 
-    ipcMain.handle('separate-video', (_, trackData) => libraryService.handleSeparateVideo(trackData));
-    ipcMain.handle('handle-file-drop', (_, files) => libraryService.handleDroppedFiles(files, sendMessage));
-
-    // --- 窗口控制 ---
-    ipcMain.on('toggle-fullscreen', (_, state) => mainWindow?.setFullScreen(state));
-    ipcMain.on('show-user-data', () => shell.openPath(app.getPath('userData')));
-
-    // --- 工具下载 ---
+    // --- 4. 核心工具管理 (FFmpeg / yt-dlp) ---
     ipcMain.handle('download-core-tool', async (_, toolName) => {
         try {
             const binDir = config.BIN_DIR;
@@ -158,33 +181,24 @@ function registerIpcHandlers() {
         }
     });
 
-    // --- 检查核心工具状态 ---
     ipcMain.handle('check-core-tools', () => {
         const binDir = config.BIN_DIR;
         const ffmpegName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
         const ytDlpName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
-
-        const ffmpegPath = path.join(binDir, ffmpegName);
-        const ytDlpPath = path.join(binDir, ytDlpName);
-
         return {
-            ffmpeg: {
-                exists: fs.existsSync(ffmpegPath),
-                path: ffmpegPath
-            },
-            ytDlp: {
-                exists: fs.existsSync(ytDlpPath),
-                path: ytDlpPath
-            }
+            ffmpeg: { exists: fs.existsSync(path.join(binDir, ffmpegName)), path: path.join(binDir, ffmpegName) },
+            ytDlp: { exists: fs.existsSync(path.join(binDir, ytDlpName)), path: path.join(binDir, ytDlpName) }
         };
     });
 
-    // --- 打开工具目录 ---
     ipcMain.handle('open-tools-folder', () => {
-        const binDir = config.BIN_DIR;
-        if (binDir) shell.openPath(binDir);
-        return !!binDir;
+        if (config.BIN_DIR) shell.openPath(config.BIN_DIR);
+        return !!config.BIN_DIR;
     });
+
+    // --- 5. 系统交互 ---
+    ipcMain.on('toggle-fullscreen', (_, state) => mainWindow?.setFullScreen(state));
+    ipcMain.on('show-user-data', () => shell.openPath(app.getPath('userData')));
 }
 
 function setupLogging() {
@@ -203,29 +217,37 @@ function setupLogging() {
 }
 
 function registerGlobalShortcuts() {
+    // DevTools 快捷键
     globalShortcut.register('CommandOrControl+Shift+I', () => mainWindow?.webContents.toggleDevTools());
+    // 快速打开数据目录快捷键
     globalShortcut.register('CommandOrControl+Shift+L', () => {
         const userDataPath = app.getPath('userData');
         shell.openPath(userDataPath);
-        if (mainWindow) {
-            dialog.showMessageBox(mainWindow, { type: 'info', title: '日志与工具目录', message: `数据目录位于:\n\n${userDataPath}` });
-        }
     });
 }
 
+// =========================================================================
+// 应用生命周期入口
+// =========================================================================
 app.whenReady().then(async () => {
+    // 拦截请求头，注入伪装 User-Agent
     session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
         details.requestHeaders['User-Agent'] = SPOOF_USER_AGENT;
-        delete details.requestHeaders['X-Electron-Version'];
+        delete details.requestHeaders['X-Electron-Version']; // 隐藏 Electron 标识
         delete details.requestHeaders['Electron'];
         callback({ cancel: false, requestHeaders: details.requestHeaders });
     });
     console.log('[Main API] 全局 User-Agent 伪装已激活。');
 
     setupLogging();
+
+    // 【双重保险】设置原生主题为深色（配合 titleBarOverlay 使用效果最佳）
     nativeTheme.themeSource = 'dark';
+
+    // 移除默认的应用菜单（Windows/Linux）
     Menu.setApplicationMenu(null);
 
+    // 初始化依赖注入容器
     try {
         diContainer = await configureContainer(app, sendMessage);
     } catch (error) {
@@ -236,6 +258,7 @@ app.whenReady().then(async () => {
     }
 
     const config = diContainer.get('config');
+    // 注册 'media://' 协议，用于安全地加载本地资源
     protocol.registerFileProtocol('media', (request, callback) => {
         const url = request.url.substring('media://'.length);
         const filePath = path.join(config.MEDIA_ROOT, decodeURIComponent(url));
