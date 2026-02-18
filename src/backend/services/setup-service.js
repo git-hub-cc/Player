@@ -253,7 +253,7 @@ export async function initializeApp(app, mainWin) {
     const config = {
         MEDIA_ROOT: path.join(userDataPath, 'media'),
         VIDEOS_DIR: path.join(userDataPath, 'media', 'videos'),
-        ALBUMART_DIR: path.join(userDataPath, 'media', 'albumArt'),
+        ALBUMART_DIR: path.join(userDataPath, 'media', 'albumart'),
         MUSIC_DIR: path.join(userDataPath, 'media', 'music'),
         PLAYLIST_PATH: path.join(userDataPath, 'media', 'playlist.json'),
         BIN_DIR: binDir

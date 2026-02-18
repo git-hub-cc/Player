@@ -1,11 +1,11 @@
 {
-  "name": "my-app",
+  "name": "Player",
   "productName": "Player",
   "version": "2.7.0",
   "description": "A powerful local and online media player.",
   "main": ".vite/build/main-api.js",
   "scripts": {
-    "start": "chcp 65001 && electron-forge start",
+    "start": "electron-forge start",
     "clean": "npm cache clean --force && rmdir /s /q node_modules && del package-lock.json",
     "package": "electron-forge package",
     "proxy_make": "cross-env HTTP_PROXY=http://127.0.0.1:7890 HTTPS_PROXY=http://127.0.0.1:7890 electron-forge make",
