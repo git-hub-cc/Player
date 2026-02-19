@@ -78,6 +78,7 @@ module.exports = {
                 // 【核心新增】为 Debian/Ubuntu 添加 MIME 类型支持
                 // =========================================================================
                 options: {
+                    icon: path.resolve(__dirname, 'src/renderer/assets/app.png'), // 显式指定 Linux 图标
                     mimeType: [
                         'video/mp4',
                         'video/x-matroska',
