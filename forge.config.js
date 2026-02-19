@@ -8,6 +8,7 @@ module.exports = {
     packagerConfig: {
         asar: true,
         icon: path.resolve(__dirname, 'src/renderer/assets/app'),
+        executableName: 'git-hub-cc-player', // 强制指定可执行文件名为全小写
         extraResource: [],
         // =========================================================================
         // 【核心新增】文件关联配置
@@ -86,6 +87,7 @@ module.exports = {
                         'audio/mpeg',
                         'audio/flac',
                     ],
+                    categories: ['AudioVideo', 'Player'],
                 },
                 // =========================================================================
             },
@@ -94,6 +96,21 @@ module.exports = {
             name: '@electron-forge/maker-rpm',
             config: {},
         },
+        // =========================================================================
+        // 【核心新增】Snap 支持
+        // 需要系统安装 snapcraft: sudo snap install snapcraft --classic
+        // =========================================================================
+        // {
+        //     name: '@electron-forge/maker-snap',
+        //     config: {
+        //         features: {
+        //             audio: true, // 启用音频支持
+        //             mpris: 'git-hub-cc-player', // 媒体控制 MPRIS 支持
+        //         },
+        //         summary: 'Local and online media player', // 简短描述
+        //         category: 'AudioVideo', // 类别
+        //     },
+        // },
     ],
     plugins: [
         {
