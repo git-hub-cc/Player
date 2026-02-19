@@ -1,5 +1,4 @@
 // src/backend/services/setup-service.js
-// [无改动]
 import path from 'path';
 import fs from 'fs';
 import https from 'https';
@@ -8,6 +7,11 @@ import AdmZip from 'adm-zip';
 import WinReg from 'winreg';
 import { arch } from 'node:process';
 import { dialog, shell } from 'electron';
+// 【核心新增】引入 child_process 和 promisify 以支持在 Linux 上调用原生原生命令
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 // --- 全局变量 ---
 let mainWindow;
@@ -166,14 +170,23 @@ export async function downloadYtDlp(binDir) {
 }
 
 export async function downloadFfmpeg(binDir) {
-    const exeName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
-    const binaryPath = path.join(binDir, exeName);
-    const zipPath = path.join(binDir, 'ffmpeg.zip');
+    // 【核心修改】增加 Linux 环境平台判定
+    const isWin = process.platform === 'win32';
+    const isLinux = process.platform === 'linux';
 
-    const downloadUrl = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-win64-gpl-7.1.zip';
-    if (process.platform !== 'win32' || arch !== 'x64') {
-        throw new Error('FFmpeg 自动下载目前仅支持 Windows x64 平台。');
+    if ((!isWin && !isLinux) || arch !== 'x64') {
+        throw new Error('FFmpeg 自动下载目前仅支持 Windows x64 和 Linux x64 平台。');
     }
+
+    // 根据系统分配对应的可执行文件名、压缩包名和下载链接
+    const exeName = isWin ? 'ffmpeg.exe' : 'ffmpeg';
+    const archiveName = isWin ? 'ffmpeg.zip' : 'ffmpeg.tar.xz';
+    const binaryPath = path.join(binDir, exeName);
+    const archivePath = path.join(binDir, archiveName);
+
+    const downloadUrl = isWin
+        ? 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-win64-gpl-7.1.zip'
+        : 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-linux64-gpl-7.1.tar.xz';
 
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('download-started', { file: 'FFmpeg' });
@@ -181,24 +194,66 @@ export async function downloadFfmpeg(binDir) {
     console.log(`[FFmpeg Downloader] 正在从以下地址下载: ${downloadUrl}`);
 
     try {
-        await downloadFileWithProgress(downloadUrl, zipPath, 'FFmpeg');
+        await downloadFileWithProgress(downloadUrl, archivePath, 'FFmpeg');
 
         console.log('[FFmpeg Downloader] 下载完成，正在解压...');
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('download-progress', { file: 'FFmpeg', progress: -1, status: '正在解压...' });
         }
 
-        const zip = new AdmZip(zipPath);
-        const ffmpegEntry = zip.getEntries().find(entry =>
-            entry.entryName.endsWith('ffmpeg.exe') && !entry.isDirectory
-        );
+        if (isWin) {
+            // --- Windows 解压逻辑 (ZIP) ---
+            const zip = new AdmZip(archivePath);
+            const ffmpegEntry = zip.getEntries().find(entry =>
+                entry.entryName.endsWith('ffmpeg.exe') && !entry.isDirectory
+            );
 
-        if (!ffmpegEntry) {
-            throw new Error('在下载的压缩包中未找到 ffmpeg.exe。');
+            if (!ffmpegEntry) {
+                throw new Error('在下载的压缩包中未找到 ffmpeg.exe。');
+            }
+
+            fs.writeFileSync(binaryPath, ffmpegEntry.getData());
+            fs.unlinkSync(archivePath); // 清理 zip 包
+
+        } else if (isLinux) {
+            // --- Linux 解压逻辑 (TAR.XZ) ---
+            // 创建安全的临时目录用于存放解压出的原始文件层级
+            const tempExtractDir = path.join(binDir, `ffmpeg_temp_${Date.now()}`);
+            if (!fs.existsSync(tempExtractDir)) {
+                fs.mkdirSync(tempExtractDir, { recursive: true });
+            }
+
+            // 使用 Node.js 异步执行系统的 tar 命令解压缩文件
+            await execAsync(`tar -xf "${archivePath}" -C "${tempExtractDir}"`);
+
+            // 递归搜寻解压出的文件夹，寻找 'ffmpeg' 可执行文件
+            let foundFfmpegPath = null;
+            const findFfmpeg = (dir) => {
+                const files = fs.readdirSync(dir, { withFileTypes: true });
+                for (const file of files) {
+                    const fullPath = path.join(dir, file.name);
+                    if (file.isDirectory()) {
+                        findFfmpeg(fullPath);
+                    } else if (file.name === 'ffmpeg') {
+                        foundFfmpegPath = fullPath;
+                    }
+                }
+            };
+            findFfmpeg(tempExtractDir);
+
+            if (!foundFfmpegPath) {
+                throw new Error('在下载的压缩包中未找到 ffmpeg 可执行文件。');
+            }
+
+            // 复制出二进制文件，并赋予系统执行权限
+            fs.copyFileSync(foundFfmpegPath, binaryPath);
+            fs.chmodSync(binaryPath, '755');
+
+            // 深度无痕清理：删除临时文件夹和下载的原始 tar.xz 包
+            fs.rmSync(tempExtractDir, { recursive: true, force: true });
+            fs.unlinkSync(archivePath);
         }
 
-        fs.writeFileSync(binaryPath, ffmpegEntry.getData());
-        fs.unlinkSync(zipPath);
         console.log(`[FFmpeg Downloader] 解压成功，ffmpeg 已保存至: ${binaryPath}`);
 
         if (mainWindow && !mainWindow.isDestroyed()) {
