@@ -2,26 +2,14 @@
 
 import path from 'path';
 import fs from 'fs';
-import axios from 'axios';
-import https from 'https';
 import { spawn } from 'child_process';
-import pLimit from 'p-limit';
-import crypto from 'crypto';
-import * as m3u8Parser from 'm3u8-parser';
+import YTDlpWrap from 'yt-dlp-wrap-plus';
 import { BrowserWindow, session } from 'electron';
 import { BaseProvider } from './base-provider.js';
 import { downloadFile } from '../services/download-service.js';
 
 const IYF_REFERER = 'https://www.iyf.lv/';
 const IYF_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-const CONCURRENT_LIMIT = 32;
-
-const insecureAgent = new https.Agent({
-    rejectUnauthorized: false,
-    keepAlive: true,
-    ciphers: 'DEFAULT@SECLEVEL=0',
-    minVersion: 'TLSv1'
-});
 
 export class IyfProvider extends BaseProvider {
     isApplicable(url) {
@@ -29,20 +17,19 @@ export class IyfProvider extends BaseProvider {
     }
 
     async execute(videoUrl, signal) {
-        if (!this._checkTools(['ffmpeg'])) return;
-
-        let tempDir = null;
+        if (!this._checkTools(['yt-dlp', 'ffmpeg'])) return;
 
         try {
             this._checkCancelled(signal);
-            this.sendMessage('download-status', { message: '正在启动隐身窗口解析 IYF 页面...', type: 'default' });
+            this.sendMessage('download-status', { message: '正在启动隐身窗口拦截 M3U8 地址...', type: 'default' });
 
             const info = await this._getVideoInfo(videoUrl, signal);
             this._checkCancelled(signal);
 
-            if (!info.m3u8Url) throw new Error('未能在页面中提取到有效的 M3U8 地址');
+            if (!info.m3u8Url) throw new Error('未能在页面中拦截到有效的 M3U8 地址');
 
-            // 【核心修改】使用时间戳生成唯一文件名，而不是清理后的标题
+            this.sendMessage('download-status', { message: `解析成功: ${info.title}`, type: 'default' });
+
             const uniqueFilenameBase = `media_iyf_${Date.now()}`;
             const headers = {
                 'User-Agent': IYF_USER_AGENT,
@@ -50,48 +37,34 @@ export class IyfProvider extends BaseProvider {
                 'Cookie': info.cookieString || ''
             };
 
-            this.sendMessage('download-status', { message: `解析成功: ${info.title}`, type: 'default' });
-
             if (info.coverUrl) {
-                downloadFile(info.coverUrl, this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`, headers, () => {}, 3, signal)
-                    .catch(e => { if(!signal.aborted) console.warn('[Iyf Provider] 封面下载失败:', e.message) });
+                downloadFile(info.coverUrl, this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`, headers, () => { }, 3, signal)
+                    .catch(e => { if (!signal.aborted) console.warn('[Iyf Provider] 封面下载失败:', e.message); });
             }
 
-            this.sendMessage('download-status', { message: '分析播放列表结构...', type: 'default' });
-            const { segments, keyInfo } = await this._parseM3u8Recursive(info.m3u8Url, headers, signal);
+            this.sendMessage('download-status', { message: '正在调用 yt-dlp 下载视频...', type: 'default' });
+
+            const finalFilePath = await this._downloadWithYtDlp(
+                info.m3u8Url,
+                this.config.VIDEOS_DIR,
+                uniqueFilenameBase,
+                info.cookieString,
+                (progress) => this.sendMessage('download-status', {
+                    message: `下载进度: ${(progress * 100).toFixed(1)}%`,
+                    progress: progress,
+                    type: 'progress'
+                }),
+                signal
+            );
+
             this._checkCancelled(signal);
-
-            if (!segments || segments.length === 0) throw new Error('未找到有效的视频分片');
-
-            tempDir = path.join(this.config.MEDIA_ROOT, `temp_iyf_${Date.now()}`);
-            if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-
-            let decryptionKey = null;
-            if (keyInfo && keyInfo.method === 'AES-128' && keyInfo.uri) {
-                this.sendMessage('download-status', { message: '检测到加密内容，获取解密密钥...', type: 'default' });
-                decryptionKey = await this._downloadKey(keyInfo.uri, info.m3u8Url, headers, signal);
-            }
-            this._checkCancelled(signal);
-
-            this.sendMessage('download-status', { message: `开始多线程下载 (${CONCURRENT_LIMIT}线程)...`, type: 'default' });
-
-            const downloadedFiles = await this._downloadSegmentsParallel(segments, tempDir, info.m3u8Url, decryptionKey, keyInfo?.iv, headers, signal);
-            this._checkCancelled(signal);
-
-            this.sendMessage('download-status', { message: '正在进行二进制流合并...', type: 'default' });
-            const combinedTsPath = path.join(tempDir, 'combined.ts');
-            await this._mergeFiles(tempDir, downloadedFiles, combinedTsPath);
-
-            this.sendMessage('download-status', { message: '正在修复时间戳并封装为 MP4...', type: 'default' });
-            const finalPath = path.join(this.config.VIDEOS_DIR, `${uniqueFilenameBase}.mp4`);
-            await this._remuxToMp4(combinedTsPath, finalPath);
 
             await this._addTrackToPlaylist({
                 title: info.title,
                 artist: 'IYF',
-                src: `videos/${path.basename(finalPath)}`,
+                src: `videos/${path.basename(finalFilePath)}`,
                 albumArt: fs.existsSync(path.join(this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`)) ? `albumArt/${uniqueFilenameBase}.jpg` : '',
-                type: "video"
+                type: 'video'
             });
 
             this.sendMessage('download-status', { message: `"${info.title}" 下载成功！`, type: 'success' });
@@ -100,23 +73,20 @@ export class IyfProvider extends BaseProvider {
             if (signal && signal.aborted) throw error;
             console.error('[Iyf Provider] 错误:', error);
             throw new Error(`IYF 下载失败: ${error.message}`);
-        } finally {
-            if (tempDir && fs.existsSync(tempDir)) {
-                setTimeout(() => {
-                    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (e) {}
-                }, 2000);
-            }
         }
     }
 
+    /**
+     * 启动虚拟浏览器，注册网络请求拦截来捕获 m3u8 URL，同时获取标题、封面和 Cookie。
+     */
     async _getVideoInfo(videoUrl, signal) {
-        console.log(`[Iyf Provider] 正在启动浏览器获取信息: ${videoUrl}`);
+        console.log(`[Iyf Provider] 正在启动浏览器拦截 m3u8: ${videoUrl}`);
 
         const partition = `persist:iyf_session_${Date.now()}`;
         const win = new BrowserWindow({
             show: false,
-            width: 1024,
-            height: 768,
+            width: 1280,
+            height: 800,
             webPreferences: {
                 offscreen: true,
                 partition: partition,
@@ -126,7 +96,6 @@ export class IyfProvider extends BaseProvider {
             }
         });
 
-        // 监听 signal，关闭窗口
         if (signal) {
             signal.addEventListener('abort', () => {
                 if (!win.isDestroyed()) win.destroy();
@@ -135,6 +104,8 @@ export class IyfProvider extends BaseProvider {
 
         try {
             const iyfSession = session.fromPartition(partition);
+
+            // 修改请求头，注入 User-Agent 和 Referer
             iyfSession.webRequest.onBeforeSendHeaders((details, callback) => {
                 details.requestHeaders['User-Agent'] = IYF_USER_AGENT;
                 if (details.url.includes('iyf')) {
@@ -143,224 +114,152 @@ export class IyfProvider extends BaseProvider {
                 callback({ cancel: false, requestHeaders: details.requestHeaders });
             });
 
+            // 注册 m3u8 URL 拦截
+            let resolveM3u8;
+            const m3u8Promise = new Promise((resolve) => {
+                resolveM3u8 = resolve;
+                const filter = { urls: ['*://*/*.m3u8', '*://*/*.m3u8?*'] };
+                iyfSession.webRequest.onBeforeRequest(filter, (details, callback) => {
+                    const url = details.url;
+                    // 过滤预览片段，只捕获真正的播放列表
+                    if (url.includes('.m3u8') && !url.includes('preview')) {
+                        console.log(`[Iyf Provider] 拦截到 m3u8: ${url}`);
+                        resolve(url);
+                    }
+                    callback({ cancel: false });
+                });
+            });
+
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('拦截 m3u8 超时 (60秒)，请确认页面可以正常播放视频。')), 60000)
+            );
+
+            // 加载页面，触发播放器初始化
             await win.loadURL(videoUrl);
 
-            const script = `
-                new Promise((resolve, reject) => {
-                    let attempts = 0;
-                    const interval = setInterval(() => {
-                        attempts++;
-                        if (window.player_aaaa) {
-                            clearInterval(interval);
-                            const title = document.title || document.querySelector('meta[property="og:title"]')?.content || 'Unknown';
-                            const cover = document.querySelector('meta[property="og:image"]')?.content;
-                            const episode = window.vod_part || '';
-                            resolve({
-                                title: title,
-                                coverUrl: cover,
-                                playerConfig: window.player_aaaa,
-                                episode: episode
-                            });
-                        }
-                        if (attempts > 150) { 
-                            clearInterval(interval);
-                            reject('Timeout waiting for player_aaaa');
-                        }
-                    }, 200);
-                });
-            `;
+            // 等待 m3u8 URL 出现（或超时）
+            const m3u8Url = await Promise.race([m3u8Promise, timeoutPromise]);
+            this.sendMessage('download-status', { message: `拦截成功，准备下载...`, type: 'default' });
 
-            const result = await win.webContents.executeJavaScript(script);
+            // 获取页面元数据和 Cookie
+            const metaData = await win.webContents.executeJavaScript(`
+                (() => ({
+                    title: document.querySelector('meta[property="og:title"]')?.content || document.title || 'Unknown',
+                    cover: document.querySelector('meta[property="og:image"]')?.content || null
+                }))();
+            `).catch(() => ({ title: 'IYF Video', cover: null }));
+
             const cookies = await iyfSession.cookies.get({ url: videoUrl });
             const cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
 
-            const playerBlock = result.playerConfig;
-            let m3u8Url = playerBlock.url;
-            const encryptType = playerBlock.encrypt || 0;
-
-            if (m3u8Url) {
-                if (encryptType === 1) m3u8Url = unescape(m3u8Url);
-                else if (encryptType === 2) {
-                    try {
-                        const decodedBase64 = Buffer.from(m3u8Url, 'base64').toString('binary');
-                        m3u8Url = unescape(decodedBase64);
-                    } catch (e) {}
-                }
-                m3u8Url = m3u8Url.replace(/\\\//g, '/');
-            }
-
-            let coverUrl = result.coverUrl;
+            let title = metaData.title.replace(/[-|]?\s*爱壹帆.*/, '').trim() || 'IYF Video';
+            let coverUrl = metaData.cover;
             if (coverUrl && coverUrl.startsWith('//')) coverUrl = 'https:' + coverUrl;
-
-            let title = result.title.replace(/- 爱壹帆.*/, '').trim();
-            if (result.episode) title = `${title} - ${result.episode}`;
 
             return { title, coverUrl, m3u8Url, cookieString };
 
         } catch (error) {
-            // 如果是被 signal 销毁导致的错误
             if (signal && signal.aborted) throw new Error('Download aborted by user');
             console.error('[Iyf Provider] BrowserWindow 解析失败:', error);
-            throw new Error('页面加载超时，请检查网络连接');
+            throw error;
         } finally {
             if (win && !win.isDestroyed()) win.destroy();
         }
     }
 
-    async _parseM3u8Recursive(url, headers, signal) {
-        const response = await axios.get(url, {
-            headers: headers,
-            ...this._getAxiosConfig(),
-            signal: signal // 传递 signal
-        });
+    /**
+     * 调用 yt-dlp 下载 m3u8 视频流，携带 Cookie 和 Referer 以通过鉴权。
+     */
+    _downloadWithYtDlp(m3u8Url, outputDir, filename, cookieString, onProgress, signal) {
+        return new Promise((resolve, reject) => {
+            // 使用 %(ext)s 占位符让 yt-dlp 决定最终扩展名，再 remux 到 mp4
+            const outputTemplate = path.join(outputDir, `${filename}.%(ext)s`);
+            const ffmpegDir = path.dirname(this.ffmpegPath);
+            const YTDlpClass = YTDlpWrap.default || YTDlpWrap;
+            const ytDlpWrap = new YTDlpClass(this.ytDlpPath);
 
-        const parser = new m3u8Parser.Parser();
-        parser.push(response.data);
-        parser.end();
-        const manifest = parser.manifest;
+            const args = [
+                '--no-playlist',
+                '--force-ipv4',
+                '--socket-timeout', '60',
+                // 下载最佳质量
+                '-f', 'best',
+                // 用 ffmpeg 重封装为真正的 mp4（moov atom 在文件头，浏览器可直接播放）
+                '--ffmpeg-location', ffmpegDir,
+                '--merge-output-format', 'mp4',
+                // 传递鉴权信息
+                '--add-header', `Referer:${IYF_REFERER}`,
+                '--add-header', `User-Agent:${IYF_USER_AGENT}`,
+                '--output', outputTemplate,
+                '--no-warnings',
+            ];
 
-        if (manifest.playlists && manifest.playlists.length > 0) {
-            const bestPlaylist = manifest.playlists.sort((a, b) => (b.attributes.BANDWIDTH || 0) - (a.attributes.BANDWIDTH || 0))[0];
-            const nextUrl = new URL(bestPlaylist.uri, url).toString();
-            return this._parseM3u8Recursive(nextUrl, headers, signal);
-        }
-
-        if (manifest.segments && manifest.segments.length > 0) {
-            const segments = manifest.segments.map(seg => ({
-                uri: new URL(seg.uri, url).toString(),
-                key: seg.key
-            }));
-            return { segments: segments, keyInfo: segments[0].key };
-        }
-        throw new Error('无法解析 M3U8 内容：格式不正确');
-    }
-
-    async _downloadKey(keyUri, m3u8Url, headers, signal) {
-        try {
-            const absoluteKeyUrl = new URL(keyUri, m3u8Url).toString();
-            const response = await axios.get(absoluteKeyUrl, {
-                responseType: 'arraybuffer',
-                headers: headers,
-                ...this._getAxiosConfig(),
-                signal: signal
-            });
-            return Buffer.from(response.data);
-        } catch (e) {
-            if (signal && signal.aborted) throw e;
-            console.error('[Iyf Provider] 获取解密 Key 失败:', e.message);
-            throw new Error('无法下载解密密钥');
-        }
-    }
-
-    async _downloadSegmentsParallel(segments, tempDir, refererUrl, globalKey, globalIv, headers, signal) {
-        const limit = pLimit(CONCURRENT_LIMIT);
-        const total = segments.length;
-        let completed = 0;
-
-        const tasks = segments.map((seg, index) => {
-            return limit(async () => {
-                this._checkCancelled(signal); // 每个任务开始前检查
-                const filename = `${String(index).padStart(5, '0')}.ts`;
-                const filePath = path.join(tempDir, filename);
-
-                const key = (seg.key && seg.key.method === 'AES-128') ?
-                    (seg.key.uri ? await this._downloadKey(seg.key.uri, refererUrl, headers, signal) : globalKey)
-                    : globalKey;
-
-                let iv = globalIv;
-                if (seg.key && seg.key.iv) {
-                    iv = Buffer.from(seg.key.iv.buffer);
-                } else if (key && !iv) {
-                    const ivBuffer = Buffer.alloc(16);
-                    ivBuffer.writeUInt32BE(index, 12);
-                    iv = ivBuffer;
-                }
-
-                await this._downloadAndDecryptSegment(seg.uri, filePath, refererUrl, key, iv, headers, signal);
-
-                completed++;
-                if (completed % 10 === 0 || completed === total) {
-                    this.sendMessage('download-status', {
-                        message: `下载中: ${((completed / total) * 100).toFixed(1)}% (${completed}/${total})`,
-                        progress: completed / total,
-                        type: 'progress'
-                    });
-                }
-                return filename;
-            });
-        });
-
-        return await Promise.all(tasks);
-    }
-
-    async _downloadAndDecryptSegment(url, destPath, referer, key, iv, headers, signal) {
-        for (let i = 0; i < 3; i++) {
-            if (signal && signal.aborted) throw new Error('Download aborted by user');
-            try {
-                const response = await axios({
-                    url,
-                    method: 'GET',
-                    responseType: 'arraybuffer',
-                    headers: { ...headers, 'Referer': referer },
-                    timeout: 20000,
-                    ...this._getAxiosConfig(),
-                    signal: signal
-                });
-
-                let data = Buffer.from(response.data);
-
-                if (key && iv) {
-                    const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
-                    decipher.setAutoPadding(true);
-                    data = Buffer.concat([decipher.update(data), decipher.final()]);
-                }
-
-                fs.writeFileSync(destPath, data);
-                if (data.length === 0) throw new Error('分片数据为空');
-                return;
-            } catch (error) {
-                if (signal && signal.aborted) throw error;
-                if (i === 2) throw error;
-                await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+            // 传入 Cookie
+            if (cookieString) {
+                args.push('--add-header', `Cookie:${cookieString}`);
             }
-        }
-    }
 
-    _getAxiosConfig() {
-        return {
-            httpsAgent: insecureAgent,
-            proxy: undefined
-        };
-    }
+            // 传入代理
+            if (this.systemProxy) {
+                args.push('--proxy', this.systemProxy);
+            }
 
-    async _mergeFiles(tempDir, fileNames, outputPath) {
-        const writeStream = fs.createWriteStream(outputPath);
-        for (const fileName of fileNames) {
-            const filePath = path.join(tempDir, fileName);
-            if (!fs.existsSync(filePath)) continue;
-            await new Promise((resolve, reject) => {
-                const readStream = fs.createReadStream(filePath);
-                readStream.pipe(writeStream, { end: false });
-                readStream.on('end', resolve);
-                readStream.on('error', reject);
+            args.push(m3u8Url);
+
+            const emitter = ytDlpWrap.exec(args);
+
+            emitter.on('progress', (progress) => {
+                if (onProgress && progress.percent) {
+                    onProgress(progress.percent / 100);
+                }
             });
-        }
-        return new Promise((resolve, reject) => {
-            writeStream.end();
-            writeStream.on('finish', resolve);
-            writeStream.on('error', reject);
+
+            emitter.on('error', (error) => reject(error));
+
+            emitter.on('close', (code) => {
+                if (signal && signal.aborted) {
+                    return reject(new Error('Download aborted by user'));
+                }
+                if (code !== 0) {
+                    return reject(new Error(`yt-dlp 下载失败，退出码: ${code}`));
+                }
+
+                // 按优先级查找生成的文件：mp4 > mkv > webm > ts
+                const mp4Path = path.join(outputDir, `${filename}.mp4`);
+                if (fs.existsSync(mp4Path)) {
+                    resolve(mp4Path);
+                } else {
+                    const files = fs.readdirSync(outputDir);
+                    const match = files.find(f =>
+                        f.startsWith(filename) && ['.mp4', '.mkv', '.webm', '.ts'].some(ext => f.endsWith(ext))
+                    );
+                    resolve(match ? path.join(outputDir, match) : mp4Path);
+                }
+            });
+
+            if (signal) {
+                signal.addEventListener('abort', () => {
+                    this._killProcess(emitter.ytDlpProcess);
+                    reject(new Error('Download aborted by user'));
+                });
+            }
         });
     }
 
-    async _remuxToMp4(inputTs, outputMp4) {
-        const args = ['-y', '-fflags', '+genpts', '-i', inputTs, '-c:v', 'copy', '-c:a', 'aac', '-movflags', '+faststart', outputMp4];
-        return new Promise((resolve, reject) => {
-            const proc = spawn(this.ffmpegPath, args);
-            proc.on('close', (code) => {
-                if (code === 0) resolve();
-                else reject(new Error(`FFmpeg 封装失败，退出码: ${code}`));
-            });
-            proc.on('error', (err) => reject(err));
-        });
+    /**
+     * 强力终止 yt-dlp 进程（包括子进程），兼容 Windows 和 Unix。
+     */
+    _killProcess(processInstance) {
+        if (!processInstance) return;
+        try {
+            if (process.platform === 'win32') {
+                spawn('taskkill', ['/pid', processInstance.pid, '/f', '/t']);
+            } else {
+                processInstance.kill('SIGKILL');
+            }
+            console.log(`[Iyf Provider] 已终止进程 PID: ${processInstance.pid}`);
+        } catch (e) {
+            console.error('[Iyf Provider] 终止进程失败:', e);
+        }
     }
 }

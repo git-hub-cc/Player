@@ -6,9 +6,16 @@ import { DouyinProvider } from './douyin.js';
 import { JableProvider } from './jable.js';
 import { IyfProvider } from './iyf.js';
 
+// --- 导入新增通用策略 ---
+// M3U8 直链：匹配以 .m3u8 结尾的 URL，直接用 yt-dlp 下载
+import { M3u8DirectProvider } from './m3u8-direct.js';
+// 浏览器拦截：对任意未匹配的网页启动虚拟浏览器，拦截 m3u8 后下载
+import { BrowserInterceptProvider } from './browser-intercept.js';
+
 // --- 导入通用下载策略 (Generic Provider) ---
 // 该 Provider 基于 yt-dlp，支持成千上万个网站，作为最后的兜底策略。
 import { GenericYtDlpProvider } from './generic-ytdlp.js';
+
 
 
 /**
@@ -55,15 +62,18 @@ export class ProviderRegistry {
         console.log('[Provider Registry] 正在初始化所有下载服务提供者...');
 
         // =========================================================================
-        // 【核心修改】调整注册顺序
-        // 1. 专用 Provider 优先 (如抖音、Jable、IYF)
-        // 2. 通用 GenericYtDlpProvider 最后 (兜底)
+        // 注册顺序（优先级从高到低）：
+        // 1. 专用 Provider（抖音、Jable、IYF）—— 精确匹配特定域名
+        // 2. M3u8DirectProvider —— 输入链接本身是 .m3u8 直链
+        // 3. BrowserInterceptProvider —— 通用浏览器拦截（对任意未匹配网页）
+        // 4. GenericYtDlpProvider —— 最终兜底（YouTube、Bilibili 等）
         // =========================================================================
         const ProviderClasses = [
             DouyinProvider,
             JableProvider,
             IyfProvider,
-            // 原 Bilibili 和 Youtube Provider 已被 GenericYtDlpProvider 替代
+            M3u8DirectProvider,
+            BrowserInterceptProvider,
             GenericYtDlpProvider
         ];
 
