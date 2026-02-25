@@ -138,7 +138,7 @@ function registerIpcHandlers() {
     ipcMain.handle('delete-track', (_, trackData) => libraryService.handleDeleteTrack(trackData));
     ipcMain.handle('select-import-directory', () => libraryService.handleSelectDirectory());
     ipcMain.handle('start-local-import', (_, dirPath) => libraryService.handleLocalImport(dirPath, sendMessage));
-    ipcMain.on('open-media-folder', () => libraryService.handleOpenMediaFolder());
+    ipcMain.on('open-media-folder', (_, type) => libraryService.handleOpenMediaFolder(type));
     ipcMain.handle('separate-video', (_, trackData) => libraryService.handleSeparateVideo(trackData));
     ipcMain.handle('handle-file-drop', (_, files) => libraryService.handleDroppedFiles(files, sendMessage));
 

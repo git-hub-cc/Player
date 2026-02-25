@@ -41,7 +41,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     startDownload: (requestData) => ipcRenderer.send('download-douyin', requestData),
     cacheTrack: (trackData) => ipcRenderer.send('cache-track', trackData),
     toggleFullscreen: (state) => ipcRenderer.send('toggle-fullscreen', state),
-    openMediaFolder: () => ipcRenderer.send('open-media-folder'),
+    openMediaFolder: (type) => ipcRenderer.send('open-media-folder', type),
 
     // =========================================================================
     // 【核心新增】发送取消下载指令

@@ -136,6 +136,7 @@
 │       └── index.html
 ├── forge.config.js          # Electron Forge 配置文件
 └── package.json             # 项目依赖与脚本
+234
 ```
 
 ## 🚀 未来计划 (Roadmap)

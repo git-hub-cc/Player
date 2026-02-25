@@ -190,7 +190,7 @@ export async function deleteTrack(index) {
             // 如果删除了当前曲目，决定下一步操作
             if (isDeletingCurrent) {
                 const nextIndex = Math.min(index, getters.playlist().length - 1);
-                mutations.setCurrentTrackIndex(nextIndex);
+                mutations.setCurrentTrackIndex(nextIndex, true);
                 if (wasPlaying) {
                     mutations.setIsPlaying(true);
                 }
@@ -217,7 +217,7 @@ export async function deleteTrack(index) {
 
                 // b. 触发媒体卸载
                 mutations.setIsPlaying(false);
-                dom.mediaPlayer.src = ''; // 清空 src
+                dom.mediaPlayer.removeAttribute('src'); // 使用 removeAttribute 而非赋值空字符串，防止触发非法请求
                 dom.mediaPlayer.load();   // 强制重新加载，这将触发 'emptied' 事件
             });
         } else {

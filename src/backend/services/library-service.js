@@ -347,11 +347,23 @@ export class LibraryService {
         return dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });
     }
 
-    handleOpenMediaFolder() {
-        if (this.#config.MEDIA_ROOT && fs.existsSync(this.#config.MEDIA_ROOT)) {
-            shell.openPath(this.#config.MEDIA_ROOT);
+    handleOpenMediaFolder(type) {
+        let targetPath = this.#config.MEDIA_ROOT;
+
+        if (type === 'audio') {
+            targetPath = this.#config.MUSIC_DIR;
+        } else if (type === 'video') {
+            targetPath = this.#config.VIDEOS_DIR;
+        }
+
+        if (targetPath && fs.existsSync(targetPath)) {
+            shell.openPath(targetPath);
         } else {
-            console.warn(`[Library] 媒体目录不存在: ${this.#config.MEDIA_ROOT}`);
+            console.warn(`[Library] 目录不存在: ${targetPath}`);
+            // 如果子目录不存在，回退到媒体根目录
+            if (this.#config.MEDIA_ROOT && fs.existsSync(this.#config.MEDIA_ROOT)) {
+                shell.openPath(this.#config.MEDIA_ROOT);
+            }
         }
     }
 }

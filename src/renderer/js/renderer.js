@@ -278,7 +278,7 @@ function setupEventListeners() {
         const item = e.target.closest('.playlist-item[data-index]');
         if (item) {
             const newIndex = parseInt(item.dataset.index, 10);
-            if (!isNaN(newIndex)) { mutations.setCurrentTrackIndex(newIndex); mutations.setIsPlaying(true); }
+            if (!isNaN(newIndex)) { mutations.setCurrentTrackIndex(newIndex, true); mutations.setIsPlaying(true); }
         }
     });
     dom.playlistEl?.addEventListener('contextmenu', (e) => {
@@ -303,7 +303,7 @@ function setupEventListeners() {
         else if (action === 'delete-track' && !isNaN(index)) mediaService.deleteTrack(index);
     });
     dom.playlistSearchInput?.addEventListener('input', ui.filterPlaylist);
-    dom.openMediaFolderBtn?.addEventListener('click', () => window.electronAPI.openMediaFolder());
+    dom.openMediaFolderBtn?.addEventListener('click', () => window.electronAPI.openMediaFolder(getters.mediaFilterMode()));
     dom.fullscreenBtn?.addEventListener('click', () => {
         if (!document.fullscreenElement) dom.mediaPlayer?.requestFullscreen().catch(console.error);
         else document.exitFullscreen();
