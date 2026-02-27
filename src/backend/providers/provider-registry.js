@@ -65,8 +65,9 @@ export class ProviderRegistry {
         // 注册顺序（优先级从高到低）：
         // 1. 专用 Provider（抖音、Jable、IYF）—— 精确匹配特定域名
         // 2. M3u8DirectProvider —— 输入链接本身是 .m3u8 直链
-        // 3. BrowserInterceptProvider —— 通用浏览器拦截（对任意未匹配网页）
-        // 4. GenericYtDlpProvider —— 最终兜底（YouTube、Bilibili 等）
+        // 3. BrowserInterceptProvider —— 通用浏览器拦截（对未匹配网页且非 yt-dlp 原生支持的链接）
+        //      → isApplicable 内部会自动排除 Bilibili、YouTube 等 yt-dlp 已知站点
+        // 4. GenericYtDlpProvider —— 最终兜底（Bilibili、YouTube 等 yt-dlp 原生支持平台）
         // =========================================================================
         const ProviderClasses = [
             DouyinProvider,

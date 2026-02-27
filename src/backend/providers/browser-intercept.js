@@ -4,6 +4,7 @@
 // 对未被专用 Provider 匹配的任意 HTTP 页面，启动隐身 BrowserWindow，
 // 监听网络请求，捕获 .m3u8 地址后交给 yt-dlp 下载。
 // 注册顺序应在所有专用 Provider 之后，generic-ytdlp 之前。
+// 注意：yt-dlp 原生支持的网站（Bilibili、YouTube 等）会被排除，由 GenericYtDlpProvider 处理。
 
 import path from 'path';
 import fs from 'fs';
@@ -17,13 +18,53 @@ const DEFAULT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 // 等待 m3u8 出现的超时时间（毫秒）
 const INTERCEPT_TIMEOUT_MS = 60000;
 
+/**
+ * yt-dlp 原生支持、应优先使用 GenericYtDlpProvider 处理的域名列表。
+ * 这些网站不需要浏览器拦截，yt-dlp 能直接解析。
+ */
+const YTDLP_SUPPORTED_DOMAINS = [
+    // 视频平台
+    'bilibili.com', 'b23.tv',                        // B站
+    'youtube.com', 'youtu.be',                        // YouTube
+    'vimeo.com',                                      // Vimeo
+    'dailymotion.com',                                // Dailymotion
+    'twitch.tv',                                      // Twitch
+    'nicovideo.jp', 'nico.ms',                        // NicoNico
+    'tiktok.com',                                     // TikTok
+    'twitter.com', 'x.com',                           // Twitter/X
+    'facebook.com', 'fb.watch',                       // Facebook
+    'instagram.com',                                  // Instagram
+    'reddit.com', 'v.redd.it',                        // Reddit
+    'soundcloud.com',                                 // SoundCloud
+    'bandcamp.com',                                   // Bandcamp
+    'mixcloud.com',                                   // Mixcloud
+    'weibo.com',                                      // 微博
+    'ixigua.com',                                     // 西瓜
+    'kuaishou.com', 'gifshow.com',                    // 快手
+    'huya.com', 'douyu.com', 'live.bilibili.com',     // 直播平台（非浏览器拦截专用）
+];
+
 export class BrowserInterceptProvider extends BaseProvider {
     /**
-     * 匹配所有 HTTP/HTTPS URL，作为兜底。
-     * 优先级应低于所有专用 Provider（在注册时放在倒数第二，generic-ytdlp 最后）。
+     * 匹配所有 HTTP/HTTPS URL，但排除 yt-dlp 原生支持的网站（让它们走 GenericYtDlpProvider）。
+     * 优先级应低于所有专用 Provider，且在 GenericYtDlpProvider 之前注册。
      */
     isApplicable(url) {
-        return url.startsWith('http://') || url.startsWith('https://');
+        if (!url.startsWith('http://') && !url.startsWith('https://')) return false;
+        try {
+            const hostname = new URL(url).hostname.toLowerCase();
+            // 如果是 yt-dlp 已知支持的域名，跳过，交给 GenericYtDlpProvider
+            const isYtDlpSupported = YTDLP_SUPPORTED_DOMAINS.some(
+                domain => hostname === domain || hostname.endsWith('.' + domain)
+            );
+            if (isYtDlpSupported) {
+                console.log(`[BrowserIntercept] 跳过 yt-dlp 已知站点: ${hostname}`);
+                return false;
+            }
+            return true;
+        } catch {
+            return false;
+        }
     }
 
     async execute(videoUrl, signal) {
@@ -116,13 +157,26 @@ export class BrowserInterceptProvider extends BaseProvider {
                 callback({ cancel: false, requestHeaders: details.requestHeaders });
             });
 
-            // 拦截 m3u8 请求
+            // 拦截 m3u8 / HLS 流请求
+            // 使用宽泛的 URL 过滤器，再在回调中做精确判断，
+            // 以兼容 URL 中包含 m3u8 关键字但路径不以 .m3u8 结尾的情况。
             const m3u8Promise = new Promise((resolve) => {
-                const filter = { urls: ['*://*/*.m3u8', '*://*/*.m3u8?*'] };
+                // 同时监听标准路径和含 m3u8 参数的 URL
+                const filter = { urls: ['<all_urls>'] };
+                let resolved = false;
                 browserSession.webRequest.onBeforeRequest(filter, (details, callback) => {
                     const url = details.url;
-                    if (url.includes('.m3u8') && !url.toLowerCase().includes('preview')) {
-                        console.log(`[BrowserIntercept] 拦截到 m3u8: ${url}`);
+                    // 判断是否为 m3u8/HLS 流地址
+                    const isM3u8 = (
+                        url.includes('.m3u8') ||
+                        url.includes('/hls/') ||
+                        url.includes('playlist.m3u8') ||
+                        (url.includes('m3u8') && (details.resourceType === 'xhr' || details.resourceType === 'fetch' || details.resourceType === 'media'))
+                    );
+                    const isPreview = url.toLowerCase().includes('preview') || url.includes('_small') || url.includes('tiny');
+                    if (!resolved && isM3u8 && !isPreview) {
+                        resolved = true;
+                        console.log(`[BrowserIntercept] 拦截到 m3u8/HLS 流: ${url}`);
                         resolve(url);
                     }
                     callback({ cancel: false });
