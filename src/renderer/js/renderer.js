@@ -37,7 +37,8 @@ function loadIcons() {
             SETTINGS: ICONS.ICON_SETTINGS,
             FILTER_ALL: ICONS.ICON_FILTER_ALL,
             FILTER_AUDIO: ICONS.ICON_FILTER_AUDIO,
-            FILTER_VIDEO: ICONS.ICON_FILTER_VIDEO
+            FILTER_VIDEO: ICONS.ICON_FILTER_VIDEO,
+            LOCATE: ICONS.ICON_LOCATE
         };
         document.querySelectorAll('.icon-placeholder').forEach(p => {
             const iconName = p.dataset.icon;
@@ -303,6 +304,49 @@ function setupEventListeners() {
         else if (action === 'delete-track' && !isNaN(index)) mediaService.deleteTrack(index);
     });
     dom.playlistSearchInput?.addEventListener('input', ui.filterPlaylist);
+    dom.locateCurrentMediaBtn?.addEventListener('click', () => {
+        const index = getters.currentTrackIndex();
+        if (index === -1) {
+            ui.showToast('当前没有播放的内容', 'info');
+            return;
+        }
+
+        const playlist = getters.playlist();
+        const track = playlist[index];
+        if (!track) return;
+
+        const currentMode = getters.mediaFilterMode();
+        let modeChanged = false;
+        if (currentMode === FILTER_MODES.AUDIO && track.type === 'video') {
+            mutations.setMediaFilterMode(FILTER_MODES.ALL);
+            ui.showToast('已切换至混合模式以定位视频', 'info');
+            modeChanged = true;
+        } else if (currentMode === FILTER_MODES.VIDEO && track.type !== 'video') {
+            mutations.setMediaFilterMode(FILTER_MODES.ALL);
+            ui.showToast('已切换至混合模式以定位音频', 'info');
+            modeChanged = true;
+        }
+
+        setTimeout(() => {
+            const itemEl = dom.playlistEl.querySelector(`.playlist-item[data-index="${index}"]`);
+            if (itemEl) {
+                // Ensure playlist panel is open
+                if (!dom.playlistPanel.classList.contains('active')) {
+                    ui.togglePlaylistPanel();
+                }
+                itemEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                // Add highlight animation
+                itemEl.style.transition = 'background-color 0.3s';
+                const originalBg = itemEl.style.backgroundColor;
+                itemEl.style.backgroundColor = 'var(--highlight-bg)';
+                setTimeout(() => {
+                    itemEl.style.backgroundColor = originalBg;
+                    itemEl.style.transition = '';
+                }, 1500);
+            }
+        }, modeChanged ? 100 : 0);
+    });
     dom.openMediaFolderBtn?.addEventListener('click', () => window.electronAPI.openMediaFolder(getters.mediaFilterMode()));
     dom.fullscreenBtn?.addEventListener('click', () => {
         if (!document.fullscreenElement) dom.mediaPlayer?.requestFullscreen().catch(console.error);
