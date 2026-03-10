@@ -305,13 +305,27 @@ export async function initializeApp(app, mainWin) {
         console.log('[Setup] 所有核心组件已就绪。');
     }
 
+    const userConfigPath = path.join(userDataPath, 'user-config.json');
+    let mediaRootPath = path.join(userDataPath, 'media');
+    try {
+        if (fs.existsSync(userConfigPath)) {
+            const userConfig = JSON.parse(fs.readFileSync(userConfigPath, 'utf8'));
+            if (userConfig.mediaRoot) {
+                mediaRootPath = userConfig.mediaRoot;
+            }
+        }
+    } catch (e) {
+        console.error('[Setup] 读取 user-config.json 失败:', e);
+    }
+
     const config = {
-        MEDIA_ROOT: path.join(userDataPath, 'media'),
-        VIDEOS_DIR: path.join(userDataPath, 'media', 'videos'),
-        ALBUMART_DIR: path.join(userDataPath, 'media', 'albumart'),
-        MUSIC_DIR: path.join(userDataPath, 'media', 'music'),
-        PLAYLIST_PATH: path.join(userDataPath, 'media', 'playlist.json'),
-        BIN_DIR: binDir
+        MEDIA_ROOT: mediaRootPath,
+        VIDEOS_DIR: path.join(mediaRootPath, 'videos'),
+        ALBUMART_DIR: path.join(mediaRootPath, 'albumart'),
+        MUSIC_DIR: path.join(mediaRootPath, 'music'),
+        PLAYLIST_PATH: path.join(mediaRootPath, 'playlist.json'),
+        BIN_DIR: binDir,
+        USER_CONFIG_PATH: userConfigPath // 添加以供 service 使用
     };
 
     [config.VIDEOS_DIR, config.ALBUMART_DIR, config.MUSIC_DIR].forEach(dir => {

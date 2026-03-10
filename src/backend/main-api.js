@@ -141,6 +141,7 @@ function registerIpcHandlers() {
     ipcMain.on('open-media-folder', (_, type) => libraryService.handleOpenMediaFolder(type));
     ipcMain.handle('separate-video', (_, trackData) => libraryService.handleSeparateVideo(trackData));
     ipcMain.handle('handle-file-drop', (_, files) => libraryService.handleDroppedFiles(files, sendMessage));
+    ipcMain.handle('change-media-directory', () => libraryService.handleChangeMediaDirectory());
 
     // --- 2. 在线搜索与解析服务 ---
     ipcMain.handle('search-online', (_, { query, page }) => onlineService.handleSearchRequest({ query, page }));

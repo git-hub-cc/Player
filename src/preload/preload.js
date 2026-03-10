@@ -42,6 +42,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     cacheTrack: (trackData) => ipcRenderer.send('cache-track', trackData),
     toggleFullscreen: (state) => ipcRenderer.send('toggle-fullscreen', state),
     openMediaFolder: (type) => ipcRenderer.send('open-media-folder', type),
+    changeMediaDirectory: () => ipcRenderer.invoke('change-media-directory'),
 
     // =========================================================================
     // 【核心新增】发送取消下载指令

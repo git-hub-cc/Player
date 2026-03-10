@@ -50,6 +50,7 @@ export let playlistSearchInput = document.getElementById('playlist-search');
 export let playlistNoResultsEl = document.getElementById('playlist-no-results');
 export let locateCurrentMediaBtn = document.getElementById('locate-current-media-btn');
 export let openMediaFolderBtn = document.getElementById('open-media-folder-btn');
+export let changeMediaFolderBtn = document.getElementById('change-media-folder-btn');
 // =========================================================================
 // 【核心新增】过滤模式按钮 DOM 引用
 // =========================================================================

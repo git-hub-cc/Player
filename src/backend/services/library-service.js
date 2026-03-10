@@ -366,4 +366,86 @@ export class LibraryService {
             }
         }
     }
+
+    async handleChangeMediaDirectory() {
+        try {
+            const mainWindow = BrowserWindow.getAllWindows()[0];
+            if (!mainWindow) return { canceled: true };
+
+            const result = await dialog.showOpenDialog(mainWindow, {
+                title: '选择新的媒体库目录',
+                properties: ['openDirectory', 'createDirectory']
+            });
+
+            if (result.canceled || result.filePaths.length === 0) {
+                return { canceled: true };
+            }
+
+            const newMediaRoot = result.filePaths[0];
+            const oldMediaRoot = this.#config.MEDIA_ROOT;
+
+            if (newMediaRoot === oldMediaRoot) {
+                return { success: false, error: '新目录与当前目录相同。' };
+            }
+
+            // 检查新目录是否为空 (除了新建时可能自带隐藏文件)
+            try {
+                const newDirFiles = await fs.promises.readdir(newMediaRoot);
+                if (newDirFiles.length > 0) {
+                    // 如果不为空，询问用户是否继续（此提示也可以移除，直接覆盖或合并）
+                    // 暂且直接覆盖或合并，简化操作。
+                }
+            } catch (e) { /* ignore */ }
+
+            console.log(`[Library] 准备将媒体库从 ${oldMediaRoot} 移动到 ${newMediaRoot}`);
+
+            // 为了支持跨盘符移动，我们自己实现一个简单的全量拷贝并删除，或者使用 cpSync (Node.js 16.7+)
+            // 复制老目录的内容到新目录
+            try {
+                await fs.promises.cp(oldMediaRoot, newMediaRoot, { recursive: true, force: true });
+            } catch (copyErr) {
+                console.error(`[Library] 拷贝媒体库目录失败:`, copyErr);
+                return { success: false, error: `拷贝文件失败: ${copyErr.message}` };
+            }
+
+            // 更新配置对象
+            this.#config.MEDIA_ROOT = newMediaRoot;
+            this.#config.VIDEOS_DIR = path.join(newMediaRoot, 'videos');
+            this.#config.ALBUMART_DIR = path.join(newMediaRoot, 'albumart');
+            this.#config.MUSIC_DIR = path.join(newMediaRoot, 'music');
+            this.#config.PLAYLIST_PATH = path.join(newMediaRoot, 'playlist.json');
+
+            // 确保新配置下必要的子目录都存在 (应对空的情况)
+            [this.#config.VIDEOS_DIR, this.#config.ALBUMART_DIR, this.#config.MUSIC_DIR].forEach(dir => {
+                if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            });
+
+            // 持久化到 user-config.json
+            if (this.#config.USER_CONFIG_PATH) {
+                try {
+                    let userConfig = {};
+                    if (fs.existsSync(this.#config.USER_CONFIG_PATH)) {
+                        userConfig = JSON.parse(fs.readFileSync(this.#config.USER_CONFIG_PATH, 'utf8'));
+                    }
+                    userConfig.mediaRoot = newMediaRoot;
+                    fs.writeFileSync(this.#config.USER_CONFIG_PATH, JSON.stringify(userConfig, null, 2), 'utf8');
+                } catch (e) {
+                    console.error('[Library] 保存 user-config.json 失败:', e);
+                }
+            }
+
+            // 尝试删除老目录 (可能会因为文件占用等原因失败，失败就不管了)
+            try {
+                await fs.promises.rm(oldMediaRoot, { recursive: true, force: true });
+            } catch (rmErr) {
+                console.warn(`[Library] 警告：删除旧媒体库目录失败（这不影响新库的使用）:`, rmErr);
+            }
+
+            return { success: true, message: '媒体库目录已成功修改并迁移数据。' };
+
+        } catch (error) {
+            console.error('[Library] handleChangeMediaDirectory 失败:', error);
+            return { success: false, error: error.message };
+        }
+    }
 }

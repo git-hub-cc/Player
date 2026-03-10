@@ -38,7 +38,8 @@ function loadIcons() {
             FILTER_ALL: ICONS.ICON_FILTER_ALL,
             FILTER_AUDIO: ICONS.ICON_FILTER_AUDIO,
             FILTER_VIDEO: ICONS.ICON_FILTER_VIDEO,
-            LOCATE: ICONS.ICON_LOCATE
+            LOCATE: ICONS.ICON_LOCATE,
+            EDIT_FOLDER: ICONS.ICON_EDIT_FOLDER
         };
         document.querySelectorAll('.icon-placeholder').forEach(p => {
             const iconName = p.dataset.icon;
@@ -346,6 +347,24 @@ function setupEventListeners() {
                 }, 1500);
             }
         }, modeChanged ? 100 : 0);
+    });
+    dom.changeMediaFolderBtn?.addEventListener('click', async () => {
+        try {
+            ui.showToast('正在修改媒体库目录...', 'info');
+            const result = await window.electronAPI.changeMediaDirectory();
+            if (result.canceled) {
+                ui.showToast('已取消修改', 'info');
+                return;
+            }
+            if (result.success) {
+                ui.showToast(result.message || '媒体库目录修改成功', 'success');
+                await mediaService.loadInitialData();
+            } else {
+                ui.showToast(`修改失败: ${result.error}`, 'error');
+            }
+        } catch (err) {
+            ui.showToast(`发生错误: ${err.message}`, 'error');
+        }
     });
     dom.openMediaFolderBtn?.addEventListener('click', () => window.electronAPI.openMediaFolder(getters.mediaFilterMode()));
     dom.fullscreenBtn?.addEventListener('click', () => {
