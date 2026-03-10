@@ -23,9 +23,10 @@ const LONG_PRESS_RATE = 8.0;
 let longPressTimer = null;
 let isLongPressActive = false;
 let pressedShortcutKeys = new Set();
+// 新增：跟踪哪个快进/快退操作在 keydown 中被确实激活
+let activeSeekAction = null;
 // 用于倒带的定时器
 let rewindInterval = null;
-
 
 // =========================================================================
 // --- 命令模式实现 (Command Pattern) ---
@@ -385,6 +386,14 @@ function handleGlobalKeyDown(e) {
         if (requiredKeys.size > 0 && isExactKeyMatch(requiredKeys)) {
             e.preventDefault();
 
+            // 如果匹配到的是快进/快退，标记此时激发的 activeSeekAction
+            if (actionId === 'seek-forward' || actionId === 'seek-backward') {
+                activeSeekAction = actionId;
+            } else {
+                // 如果命中其他组合键，则重置 activeSeekAction
+                activeSeekAction = null;
+            }
+
             // 处理长按逻辑
             if (actionId === 'seek-forward') {
                 isLongPressActive = false;
@@ -418,27 +427,31 @@ function handleGlobalKeyUp(e) {
     const normalizedKey = normalizeKey(e.key);
 
     const settings = getters.shortcutSettings();
-    const seekForwardKeys = new Set(settings['seek-forward']?.keys || []);
-    const seekBackwardKeys = new Set(settings['seek-backward']?.keys || []);
 
-    if (seekForwardKeys.has(normalizedKey) && isExactKeyMatch(seekForwardKeys)) {
-        if (isLongPressActive) {
-            dom.mediaPlayer.playbackRate = getters.playbackRate();
-            ui.showSeekFeedback('恢复正常');
-        } else {
-            executeShortcut('seek-forward');
-        }
-    } else if (seekBackwardKeys.has(normalizedKey) && isExactKeyMatch(seekBackwardKeys)) {
-        if (isLongPressActive) {
-            if (rewindInterval) {
-                clearInterval(rewindInterval);
-                rewindInterval = null;
+    // 只有当之前触发了明确的 seek 操作，我们在 keyup 时才恢复状态或执行单击快跑
+    if (activeSeekAction) {
+        const requiredKeys = new Set(settings[activeSeekAction]?.keys || []);
+
+        // 我们需要确保松开的键确实是激发了快进快退的那个组合里的键
+        if (requiredKeys.has(normalizedKey)) {
+            if (isLongPressActive) {
+                if (activeSeekAction === 'seek-backward') {
+                    if (rewindInterval) {
+                        clearInterval(rewindInterval);
+                        rewindInterval = null;
+                    }
+                } else {
+                    dom.mediaPlayer.playbackRate = getters.playbackRate();
+                }
+                ui.showSeekFeedback('恢复正常');
+            } else {
+                // 只有没有触发长按操作，才执行默认的快跑/快退
+                executeShortcut(activeSeekAction);
             }
-            ui.showSeekFeedback('恢复正常');
-        } else {
-            executeShortcut('seek-backward');
+            activeSeekAction = null;
         }
     }
+
     isLongPressActive = false;
     pressedShortcutKeys.delete(normalizedKey);
 }
@@ -465,6 +478,7 @@ export function setupShortcutListeners() {
     window.addEventListener('blur', () => {
         pressedShortcutKeys.clear();
         isLongPressActive = false;
+        activeSeekAction = null;
         clearTimeout(longPressTimer);
         if (rewindInterval) {
             clearInterval(rewindInterval);
