@@ -87,7 +87,7 @@
     fill: currentColor;
 }
 .filter-mode-btn:hover {
-    background-color: #3e3e3e;
+    background-color: var(--color-gray-bg);
     color: var(--text-primary);
 }
 .filter-mode-btn.active {
@@ -221,9 +221,14 @@
 .playlist::-webkit-scrollbar-thumb { background-color: var(--slider-track-color); border-radius: 4px; }
 .playlist::-webkit-scrollbar-thumb:hover { background-color: var(--primary-color); }
 
-/* 用于通过JS隐藏不符合过滤条件的列表项 */
-.playlist-item.hidden {
-    display: none;
+/* 定位当前播放时的高亮动画（通过 Vue 响应式 class 驱动，无需直接修改 style） */
+@keyframes playlist-highlight-pulse {
+    0%   { background-color: var(--highlight-bg); }
+    20%  { background-color: var(--primary-color-dim, rgba(29, 185, 84, 0.35)); }
+    100% { background-color: var(--highlight-bg); }
+}
+.playlist-item.playlist-item-highlight {
+    animation: playlist-highlight-pulse 1.5s ease-out forwards;
 }
 
 /* 视频项的播放进度条 */
@@ -319,7 +324,7 @@
 
 /* 悬停在“下载中”按钮上时，停止图标变红，加载圈变淡，提示可取消 */
 .playlist-download-btn.downloading:hover .stop-icon {
-    fill: #ff5252;
+    fill: var(--color-error-text);
 }
 .playlist-download-btn.downloading:hover .spinner-icon {
     opacity: 0.3;
@@ -361,7 +366,7 @@
 .shortcut-item { display: flex; align-items: center; padding: 12px 10px; border-bottom: 1px solid var(--highlight-bg); transition: background-color 0.2s; } .shortcut-item:last-child { border-bottom: none; } .shortcut-item:hover { background-color: var(--highlight-bg); }
 .action-label { flex-grow: 1; font-size: 14px; color: var(--text-secondary); }
 .shortcut-display { display: flex; align-items: center; gap: 6px; margin: 0 15px; }
-.shortcut-display kbd { background-color: #3a3a3a; border: 1px solid #535353; border-radius: 4px; padding: 4px 8px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace; font-size: 13px; font-weight: 500; color: var(--text-primary); box-shadow: 0 2px 0 #282828; }
+.shortcut-display kbd { background-color: var(--color-gray-dark); border: 1px solid var(--color-gray-border); border-radius: 4px; padding: 4px 8px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace; font-size: 13px; font-weight: 500; color: var(--text-primary); box-shadow: 0 2px 0 #282828; }
 .shortcut-display .placeholder { color: var(--text-secondary); font-style: italic; font-size: 13px; }
 .shortcut-item .actions { display: flex; gap: 8px; }
 .shortcut-item .actions button { background: none; border: 1px solid var(--text-secondary); color: var(--text-secondary); padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; transition: all 0.2s ease; }
@@ -379,8 +384,8 @@
 .download-actions-container { display: flex; gap: 10px; width: 100%; }
 .download-actions-container .action-btn { flex-grow: 1; }
 .download-status { padding: 12px; border-radius: 6px; font-size: 14px; line-height: 1.6; background-color: var(--highlight-bg); color: var(--text-secondary); display: none; white-space: pre-wrap; word-wrap: break-word; margin-top: -8px; }
-.download-status.success { background-color: rgba(29, 185, 84, 0.2); color: #1ed760; }
-.download-status.error { background-color: rgba(229, 20, 20, 0.2); color: #e51414; }
+.download-status.success { background-color: var(--color-success-bg); color: var(--color-success-text); }
+.download-status.error { background-color: var(--color-error-bg); color: var(--color-error-text); }
 .download-progress-container { width: 100%; height: 6px; background-color: var(--highlight-bg); border-radius: 3px; overflow: hidden; margin-top: -8px; display: none; }
 .download-progress-bar { width: 0; height: 100%; background-color: var(--primary-color); border-radius: 3px; transition: width 0.2s ease-out; }
 .search-results-container { flex-grow: 1; overflow-y: auto; border-top: 1px solid var(--highlight-bg); margin-top: 8px; padding-top: 8px; scrollbar-width: thin; scrollbar-color: var(--slider-track-color) transparent; display: flex; flex-direction: column; }
@@ -396,8 +401,8 @@
 .action-btn { background-color: var(--primary-color); color: #000; font-weight: bold; border: none; padding: 12px 20px; border-radius: 50px; cursor: pointer; font-size: 15px; text-align: center; transition: background-color 0.2s ease, transform 0.1s ease; display: flex; justify-content: center; align-items: center; position: relative; flex-shrink: 0; }
 .action-btn:hover:not(:disabled) { background-color: #1ed760; transform: scale(1.03); }
 .action-btn:disabled { background-color: var(--slider-track-color); color: var(--text-secondary); cursor: not-allowed; transform: scale(1); }
-.action-btn.danger-mode { background-color: #d32f2f; color: white; }
-.action-btn.danger-mode:hover:not(:disabled) { background-color: #b71c1c; }
+.action-btn.danger-mode { background-color: var(--color-error); color: white; }
+.action-btn.danger-mode:hover:not(:disabled) { background-color: var(--color-error-hover); }
 .action-btn .btn-loader { display: none; width: 20px; height: 20px; border: 3px solid rgba(0, 0, 0, 0.3); border-radius: 50%; border-top-color: #000; animation: spin 1s ease-in-out infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .action-btn.loading .btn-text { display: none; }
@@ -413,15 +418,24 @@
 .tool-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .tool-name { font-size: 16px; font-weight: bold; color: var(--text-primary); margin-right: 10px; }
 .tool-status-badge { font-size: 12px; padding: 2px 8px; border-radius: 10px; background-color: rgba(255, 255, 255, 0.1); color: var(--text-secondary); }
-.tool-status-badge.installed { background-color: rgba(29, 185, 84, 0.2); color: #1ed760; }
-.tool-status-badge.missing { background-color: rgba(229, 20, 20, 0.2); color: #e51414; }
+.tool-status-badge.installed { background-color: var(--color-success-bg); color: var(--color-success-text); }
+.tool-status-badge.missing { background-color: var(--color-error-bg); color: var(--color-error-text); }
 .tool-icon svg { width: 24px; height: 24px; }
-.tool-icon svg.success { fill: #1ed760; }
-.tool-icon svg.error { fill: #e51414; }
+.tool-icon svg.success { fill: var(--color-success-text); }
+.tool-icon svg.error { fill: var(--color-error-text); }
 .tool-path-container { background-color: rgba(0, 0, 0, 0.2); padding: 8px; border-radius: 4px; margin-bottom: 12px; overflow: hidden; }
 .tool-path { font-family: monospace; font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 .tool-actions { display: flex; justify-content: flex-end; }
 .small-btn { padding: 8px 16px; font-size: 13px; min-width: 100px; }
 .full-width { width: 100%; }
-.action-btn.secondary-btn { background-color: transparent; border: 1px solid var(--text-secondary); color: var(--text-primary); }
-.action-btn.secondary-btn:hover:not(:disabled) { background-color: rgba(255, 255, 255, 0.1); border-color: var(--text-primary); }
+.action-btn.secondary-btn { background-color: transparent; border: 1px solid var(--text-secondary); color: var(--text-secondary); }
+.action-btn.secondary-btn:hover:not(:disabled) { background-color: var(--highlight-bg); color: var(--text-primary); border-color: var(--text-primary); }
+
+/* 系统设置：让下载与修复按钮风格与快捷键设置按钮一致 */
+.action-btn.download-tool-btn {
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: normal;
+    padding: 6px 12px;
+    min-width: auto;
+}

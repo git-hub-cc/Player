@@ -10,6 +10,21 @@
     --slider-thumb-color: #FFFFFF;
     --highlight-bg: #2a2a2a;
     --panel-bg: #1c1c1c;
+    /* --- 新增的状态与灰度颜色变量 --- */
+    --color-error: #d32f2f;
+    --color-error-hover: #b71c1c;
+    --color-error-bg: rgba(229, 20, 20, 0.2);
+    --color-error-text: #e51414;
+    
+    --color-success: #388e3c;
+    --color-success-bg: rgba(29, 185, 84, 0.2);
+    --color-success-text: #1ed760;
+    
+    --color-gray-dark: #3a3a3a;
+    --color-gray-border: #535353;
+    --color-gray-hover: #6a6a6a;
+    --color-gray-bg: #3e3e3e;
+    
     --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --controls-height: 90px;
     --mobile-controls-height: 130px;

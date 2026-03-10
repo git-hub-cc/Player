@@ -46,7 +46,7 @@
 .confirmation-actions { display: flex; justify-content: flex-end; gap: 12px; }
 .confirmation-actions .action-btn { padding: 10px 24px; font-size: 14px; }
 .action-btn.secondary-btn { background-color: var(--slider-track-color); color: var(--text-primary); }
-.action-btn.secondary-btn:hover { background-color: #6a6a6a; }
+.action-btn.secondary-btn:hover { background-color: var(--color-gray-hover); }
 
 /* --- 下载进度模态框样式 --- */
 .download-progress-content {
@@ -91,8 +91,8 @@
 /* --- Toast Notification --- */
 .toast { visibility: hidden; opacity: 0; position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%); min-width: 250px; background-color: var(--highlight-bg); color: var(--text-primary); text-align: center; border-radius: 4px; padding: 16px; z-index: 10001; box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: opacity 0.5s, visibility 0.5s; font-size: 14px; }
 .toast.show { visibility: visible; opacity: 1; }
-.toast.error { background-color: #d32f2f; color: white; }
-.toast.success { background-color: #388e3c; color: white; }
+.toast.error { background-color: var(--color-error); color: white; }
+.toast.success { background-color: var(--color-success); color: white; }
 
 /* --- Custom Context Menu --- */
 .custom-context-menu { display: none; position: fixed; z-index: 4000; background-color: var(--panel-bg); border-radius: 6px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); padding: 6px; min-width: 180px; border: 1px solid var(--highlight-bg); }

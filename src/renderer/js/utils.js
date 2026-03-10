@@ -1,11 +1,9 @@
 // js/utils.js
 
-import { getTemplateElementById } from "./dom.js";
-
 export function getTemplate(id) {
-    const template = getTemplateElementById(id);
+    const template = document.getElementById(id);
     if (!template) {
-        console.error(`Template with id "${id}" not found.`);
+        console.warn(`Template with id "${id}" not found.`);
         return document.createDocumentFragment();
     }
     return template.content.cloneNode(true);

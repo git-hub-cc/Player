@@ -1,6 +1,6 @@
 /* css/background-gallery.css */
 
-#gallery-container {
+.gallery-container {
     position: fixed;
     top: 0;
     left: 0;
@@ -15,17 +15,17 @@
 }
 
 /* 【核心新增】当主视图全屏时，隐藏背景画廊 */
-#gallery-container.suppressed-by-fullscreen {
+.gallery-container.suppressed-by-fullscreen {
     opacity: 0;
     pointer-events: none;
 }
 
 
-#gallery-container.active {
+.gallery-container.active {
     cursor: grabbing;
 }
 
-#gallery-wrapper {
+.gallery-wrapper {
     position: absolute;
     top: 0;
     left: 0;
