@@ -210,8 +210,8 @@ function setupLogging() {
         const logFileName = `main-${new Date().toISOString().replace(/:/g, '-')}.log`;
         const logFile = fs.createWriteStream(path.join(logDir, logFileName), { flags: 'w' });
         process.stdout.write = process.stderr.write = logFile.write.bind(logFile);
-        process.on('uncaughtException', (err) => console.error('未捕获的异常:', err, err.stack));
-        console.log('主进程日志记录已启动...');
+        process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err, err.stack));
+        console.log('Main process logging started...');
     } catch (error) {
         dialog.showErrorBox('日志初始化失败', `错误: ${error.message}`);
     }
@@ -238,7 +238,7 @@ app.whenReady().then(async () => {
         delete details.requestHeaders['Electron'];
         callback({ cancel: false, requestHeaders: details.requestHeaders });
     });
-    console.log('[Main API] 全局 User-Agent 伪装已激活。');
+    console.log('[Main API] Global User-Agent spoofing activated.');
 
     setupLogging();
 
@@ -252,8 +252,8 @@ app.whenReady().then(async () => {
     try {
         diContainer = await configureContainer(app, sendMessage);
     } catch (error) {
-        console.error('[Main API] DI 容器配置失败，应用无法启动:', error);
-        dialog.showErrorBox('应用初始化失败', `启动核心服务失败: ${error.message}\n\n应用即将退出。`);
+        console.error('[Main API] DI Container configuration failed, app cannot start:', error);
+        dialog.showErrorBox('App Initialization Failed', `Failed to start core services: ${error.message}\n\nApp will exit.`);
         app.quit();
         return;
     }

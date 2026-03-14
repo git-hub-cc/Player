@@ -20,7 +20,7 @@ export class DouyinProvider extends BaseProvider {
 
     async execute(videoUrl, signal) {
         this._checkCancelled(signal);
-        this.sendMessage('download-status', { message: '正在初始化环境 (强制直连模式)...' });
+        this.sendMessage('download-status', { message: 'Initializing environment (Forced Direct Mode)...' });
 
         const partitionName = `persist:douyin_session_${Date.now()}`;
         const douyinSession = session.fromPartition(partitionName);
@@ -63,21 +63,21 @@ export class DouyinProvider extends BaseProvider {
                 userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
             });
 
-            this.sendMessage('download-status', { message: '正在导航页面，等待解析 API...' });
+            this.sendMessage('download-status', { message: 'Navigating page, waiting for detail API...' });
 
             const apiResponseJson = await apiResponsePromise;
             this._checkCancelled(signal);
 
             if (!apiResponseJson?.aweme_detail) {
-                throw new Error('拦截到的 API 响应格式不正确');
+                throw new Error('Intercepted API response format is incorrect');
             }
 
             await this._processAndDownloadItem(apiResponseJson.aweme_detail, signal);
-            this.sendMessage('download-status', { message: '视频下载完成！', type: 'success' });
+            this.sendMessage('download-status', { message: 'Video download complete!', type: 'success' });
 
         } catch (error) {
             if (signal && signal.aborted) throw error;
-            throw new Error(`抖音解析失败: ${error.message}`);
+            throw new Error(`Douyin analysis failed: ${error.message}`);
         } finally {
             if (win && !win.isDestroyed()) {
                 if (win.webContents.debugger.isAttached()) {
@@ -93,7 +93,7 @@ export class DouyinProvider extends BaseProvider {
             // 如果已经被取消
             if (signal && signal.aborted) return reject(new Error('Download aborted by user'));
 
-            const timeout = setTimeout(() => reject(new Error('解析超时，请检查网络连接')), 60000);
+            const timeout = setTimeout(() => reject(new Error('Parsing timeout, please check connection')), 60000);
 
             // 监听取消信号
             if (signal) {
@@ -126,7 +126,7 @@ export class DouyinProvider extends BaseProvider {
                         }
                     });
                 } catch (attachError) {
-                    reject(new Error(`无法启动解析引擎: ${attachError.message}`));
+                    reject(new Error(`Failed to start analysis engine: ${attachError.message}`));
                 }
             });
         });
@@ -147,7 +147,7 @@ export class DouyinProvider extends BaseProvider {
         if (numericId) {
             urlToLoad = `https://www.douyin.com/video/${numericId}/`;
         } else {
-            throw new Error('无效的抖音链接。无法提取视频ID，请使用包含数字ID的链接或分享短链。');
+            throw new Error('Invalid Douyin link. Could not extract video ID.');
         }
         return urlToLoad;
     }
@@ -155,10 +155,10 @@ export class DouyinProvider extends BaseProvider {
     async _processAndDownloadItem(awemeDetail, signal) {
         const awemeId = awemeDetail?.aweme_id;
         const videoUrl = awemeDetail?.video?.play_addr?.url_list?.[0]?.replace(/^http:\/\//, 'https://');
-        if (!videoUrl) throw new Error("无法从 API 获取视频下载地址");
+        if (!videoUrl) throw new Error("Could not get video download URL from API");
 
         try {
-            this.sendMessage('download-status', { message: '正在探测资源 (Axios 直连模式)...' });
+            this.sendMessage('download-status', { message: 'Probing resource (Axios Direct Mode)...' });
 
             const headResponse = await axios.head(videoUrl, {
                 headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.douyin.com/' },
@@ -169,11 +169,10 @@ export class DouyinProvider extends BaseProvider {
             });
 
             const totalSize = parseInt(headResponse.headers['content-length'], 10);
-            if (!totalSize) throw new Error('资源已被锁定或链接失效');
+            if (!totalSize) throw new Error('Resource locked or link expired');
 
-            const title = awemeDetail.desc || "无标题";
-            // 【核心修改】使用 aweme_id 或时间戳生成唯一文件名，而不是清理后的标题
-            const uniqueFilenameBase = `media_douyin_${awemeId || Date.now()}`;
+            const title = awemeDetail.desc || "No Title";
+            const uniqueFilenameBase = await this.libraryService.getNextOrdinal();
             const finalFilePath = path.join(this.config.VIDEOS_DIR, `${uniqueFilenameBase}.mp4`);
 
             const tempDir = path.join(this.config.MEDIA_ROOT, `temp_${awemeId}`);
@@ -197,7 +196,7 @@ export class DouyinProvider extends BaseProvider {
                     const chunkSize = await this._downloadChunk(videoUrl, { start, end }, chunkPath, signal);
                     downloadedBytes += chunkSize;
                     this.sendMessage('download-status', {
-                        message: `下载中: ${((downloadedBytes / totalSize) * 100).toFixed(1)}%`,
+                        message: `Downloading: ${((downloadedBytes / totalSize) * 100).toFixed(1)}%`,
                         progress: downloadedBytes / totalSize,
                         type: 'progress'
                     });
@@ -213,7 +212,7 @@ export class DouyinProvider extends BaseProvider {
             await Promise.all(tasks);
 
             this._checkCancelled(signal);
-            this.sendMessage('download-status', { message: '合并数据分片...', type: 'default' });
+            this.sendMessage('download-status', { message: 'Merging data chunks...', type: 'default' });
             await this._mergeChunks(chunkPaths, finalFilePath);
             fs.rmSync(tempDir, { recursive: true, force: true });
 
@@ -227,7 +226,7 @@ export class DouyinProvider extends BaseProvider {
 
         } catch (e) {
             if (signal && signal.aborted) throw e;
-            throw new Error(`资源获取失败: ${e.message}`);
+            throw new Error(`Failed to fetch resource: ${e.message}`);
         }
     }
 

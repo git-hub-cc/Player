@@ -1,16 +1,20 @@
 // src/renderer/js/features/shortcuts.js
-// REFACTORED: Now uses Pinia stores instead of state.js / dom.js / ui.js
 
 /**
- * @file 快捷键管理器 (Shortcut Manager) — Vue/Pinia 版本
+ * @file 快捷键管理器 (Shortcut Manager)
+ * @description
+ * 负责处理所有全局快捷键的注册、监听和执行。
+ * 包含冲突检测逻辑，防止组合键触发单键功能。
  */
 
-import { usePlayerStore } from '../../stores/playerStore.js';
-import { useUiStore } from '../../stores/uiStore.js';
+import * as dom from '../dom.js';
+import { getters, mutations } from '../state.js';
 import { defaultShortcuts, PLAY_MODES, FILTER_MODES } from '../config.js';
-import { normalizeKey } from '../utils.js';
-import { getMediaElement } from '../../composables/usePlayer.js';
+import { getTemplate, normalizeKey } from '../utils.js';
+import * as ui from '../ui.js';
 
+
+// --- 配置与模块私有状态 ---
 const LONG_PRESS_THRESHOLD = 250;
 const SEEK_STEP_SHORT = 10;
 const SEEK_STEP_LONG = 30;
@@ -19,65 +23,80 @@ const LONG_PRESS_RATE = 8.0;
 let longPressTimer = null;
 let isLongPressActive = false;
 let pressedShortcutKeys = new Set();
+// 新增：跟踪哪个快进/快退操作在 keydown 中被确实激活
 let activeSeekAction = null;
+// 用于倒带的定时器
 let rewindInterval = null;
 
 // =========================================================================
-// --- 命令模式实现 ---
+// --- 命令模式实现 (Command Pattern) ---
 // =========================================================================
 
 class Command {
-    execute() { throw new Error('Command must implement execute method.'); }
+    execute() { throw new Error("Command must implement execute method."); }
 }
 
+class TogglePlayCommand extends Command {
+    execute() { mutations.togglePlayState(); }
+}
+
+/**
+ * 辅助函数：根据当前过滤模式检查曲目是否应该播放。
+ * @param {object} track - 轨道对象。
+ * @returns {boolean}
+ */
 function isTrackPlayableInCurrentMode(track) {
-    const store = usePlayerStore();
-    const mode = store.mediaFilterMode;
+    const mode = getters.mediaFilterMode();
     if (mode === FILTER_MODES.ALL) return true;
     if (mode === FILTER_MODES.AUDIO) return track.type !== 'video';
     if (mode === FILTER_MODES.VIDEO) return track.type === 'video';
     return true;
 }
 
-class TogglePlayCommand extends Command {
-    execute() { usePlayerStore().togglePlayState(); }
-}
-
 export class NextTrackCommand extends Command {
     execute() {
-        const store = usePlayerStore();
-        const ui = useUiStore();
-        const playlist = store.playlist;
+        const playlist = getters.playlist();
         const len = playlist.length;
-        if (len === 0 && !store.temporaryPlayingTrack) return;
+        if (len === 0 && !getters.temporaryPlayingTrack()) return;
 
-        if (store.temporaryPlayingTrack) {
-            store.clearPlayingTrackInfo();
-            if (len === 0) return;
+        if (getters.temporaryPlayingTrack()) {
+            mutations.clearPlayingTrackInfo();
+            // 如果有临时曲目，且播放列表非空，尝试从列表第一个开始播放（需符合过滤模式）
+            if (len > 0) {
+                // 这里复用下面的查找逻辑，假设当前索引为 -1
+            } else {
+                return;
+            }
         }
 
-        const currentMode = PLAY_MODES[store.currentModeIndex];
-        let currentIndex = store.currentTrackIndex;
+        const currentMode = PLAY_MODES[getters.currentModeIndex()];
+        let currentIndex = getters.currentTrackIndex();
 
+        // 随机模式处理
         if (currentMode === 'shuffle') {
+            // 先筛选出所有符合当前过滤模式的索引
             const validIndices = playlist
                 .map((track, idx) => ({ track, idx }))
                 .filter(({ track }) => isTrackPlayableInCurrentMode(track))
                 .map(({ idx }) => idx);
+
             if (validIndices.length > 0) {
                 let newIndex;
                 do {
                     const randPos = Math.floor(Math.random() * validIndices.length);
                     newIndex = validIndices[randPos];
                 } while (validIndices.length > 1 && newIndex === currentIndex);
-                store.setCurrentTrackIndex(newIndex);
+                mutations.setCurrentTrackIndex(newIndex);
             }
             return;
         }
 
+        // 顺序/列表循环/单曲循环模式 (手动切歌时单曲循环也切下一首)
         let searchIndex = (currentIndex + 1) % len;
         let foundIndex = -1;
         let loopCount = 0;
+
+        // 循环查找下一个符合过滤条件的曲目
         while (loopCount < len) {
             if (isTrackPlayableInCurrentMode(playlist[searchIndex])) {
                 foundIndex = searchIndex;
@@ -88,8 +107,9 @@ export class NextTrackCommand extends Command {
         }
 
         if (foundIndex !== -1) {
-            store.setCurrentTrackIndex(foundIndex);
+            mutations.setCurrentTrackIndex(foundIndex);
         } else {
+            // 如果当前过滤模式下没有可播放的曲目，且当前曲目也不符合（或是临时播放），停止播放
             ui.showToast('当前过滤模式下无可播放曲目', 'info');
         }
     }
@@ -97,23 +117,31 @@ export class NextTrackCommand extends Command {
 
 export class PrevTrackCommand extends Command {
     execute() {
-        const store = usePlayerStore();
-        const ui = useUiStore();
-        const playlist = store.playlist;
+        const playlist = getters.playlist();
         const len = playlist.length;
-        if (len === 0 && !store.temporaryPlayingTrack) return;
+        if (len === 0 && !getters.temporaryPlayingTrack()) return;
 
-        if (store.temporaryPlayingTrack) {
-            store.clearPlayingTrackInfo();
+        if (getters.temporaryPlayingTrack()) {
+            mutations.clearPlayingTrackInfo();
+            // 逻辑同 NextTrackCommand
         }
 
-        const currentMode = PLAY_MODES[store.currentModeIndex];
-        if (currentMode === 'shuffle') { new NextTrackCommand().execute(); return; }
+        const currentMode = PLAY_MODES[getters.currentModeIndex()];
+        let currentIndex = getters.currentTrackIndex();
 
-        let currentIndex = store.currentTrackIndex;
+        // 随机模式处理
+        if (currentMode === 'shuffle') {
+            // 随机模式下上一首通常也是随机，这里直接复用下一首的随机逻辑
+            new NextTrackCommand().execute();
+            return;
+        }
+
+        // 顺序模式
         let searchIndex = (currentIndex - 1 + len) % len;
         let foundIndex = -1;
         let loopCount = 0;
+
+        // 循环查找上一个符合过滤条件的曲目
         while (loopCount < len) {
             if (isTrackPlayableInCurrentMode(playlist[searchIndex])) {
                 foundIndex = searchIndex;
@@ -124,7 +152,7 @@ export class PrevTrackCommand extends Command {
         }
 
         if (foundIndex !== -1) {
-            store.setCurrentTrackIndex(foundIndex);
+            mutations.setCurrentTrackIndex(foundIndex);
         } else {
             ui.showToast('当前过滤模式下无可播放曲目', 'info');
         }
@@ -134,46 +162,42 @@ export class PrevTrackCommand extends Command {
 class SeekCommand extends Command {
     constructor(seconds) { super(); this.seconds = seconds; }
     execute() {
-        const store = usePlayerStore();
-        const ui = useUiStore();
-        const duration = store.duration || 0;
+        const duration = getters.duration() || 0;
         const step = this.seconds * (duration > 600 ? SEEK_STEP_LONG / SEEK_STEP_SHORT : 1);
-        const newTime = store.currentTime + step;
+        const newTime = getters.currentTime() + step;
         window.dispatchEvent(new CustomEvent('seekTo', { detail: newTime }));
-        ui.showSeekFeedback(step > 0 ? `+${Math.round(step)}s` : `${Math.round(step)}s`);
+        ui.showSeekFeedback(step);
     }
 }
 
 class VolumeCommand extends Command {
     constructor(delta) { super(); this.delta = delta; }
-    execute() { usePlayerStore().setVolume(usePlayerStore().volume + this.delta); }
+    execute() { mutations.setVolume(getters.volume() + this.delta); }
 }
 
 class SpeedCommand extends Command {
     constructor(delta) { super(); this.delta = delta; }
     execute() {
-        const store = usePlayerStore();
-        const ui = useUiStore();
-        const newRate = parseFloat((store.playbackRate + this.delta).toFixed(1));
-        store.setPlaybackRate(newRate);
-        ui.showSpeedFeedback(`${newRate}x`);
+        const newRate = parseFloat((getters.playbackRate() + this.delta).toFixed(1));
+        mutations.setPlaybackRate(newRate);
+        ui.showSpeedFeedback();
     }
 }
 
 class ResetSpeedCommand extends Command {
     execute() {
-        usePlayerStore().setPlaybackRate(1.0);
-        useUiStore().showSpeedFeedback('1.0x');
+        mutations.setPlaybackRate(1.0);
+        ui.showSpeedFeedback();
     }
 }
 
 class RotateCommand extends Command {
     constructor(degrees) { super(); this.degrees = degrees; }
     execute() {
-        const store = usePlayerStore();
-        const ui = useUiStore();
-        const newRotation = store.videoRotation + this.degrees;
-        store.setVideoRotation(newRotation);
+        const currentRotation = getters.videoRotation();
+        const newRotation = currentRotation + this.degrees;
+        mutations.setVideoRotation(newRotation);
+
         let displayAngle = newRotation % 360;
         if (displayAngle < 0) displayAngle += 360;
         ui.showSeekFeedback(`旋转 ${displayAngle}°`);
@@ -181,23 +205,24 @@ class RotateCommand extends Command {
 }
 
 class ToggleMuteCommand extends Command {
-    execute() { const s = usePlayerStore(); s.setIsMuted(!s.isMuted); }
+    execute() { mutations.setIsMuted(!getters.isMuted()); }
 }
 
 class ToggleLyricsCommand extends Command {
-    execute() { useUiStore().toggleLyricsPanel(); }
+    execute() { ui.toggleLyricsPanel(); }
 }
 
 class TogglePlaylistCommand extends Command {
-    execute() { useUiStore().togglePanel('playlist'); }
+    execute() { ui.togglePlaylistPanel(); }
 }
 
 class ToggleFullscreenCommand extends Command {
     execute() {
-        const mediaEl = getMediaElement();
         if (!document.fullscreenElement) {
-            mediaEl?.requestFullscreen().catch(console.error);
+            // 尝试请求媒体播放器元素全屏（通常用于视频模式）
+            dom.mediaPlayer?.requestFullscreen().catch(console.error);
         } else {
+            // 退出全屏
             document.exitFullscreen();
         }
     }
@@ -223,88 +248,126 @@ const commandMap = {
 };
 
 // =========================================================================
-// --- 快捷键设置的持久化与加载 ---
+// --- 快捷键设置 UI 与逻辑 ---
 // =========================================================================
 
+function formatKeysToFragment(keys) {
+    const fragment = document.createDocumentFragment();
+    if (!keys || keys.length === 0) {
+        fragment.appendChild(getTemplate('template-key-placeholder'));
+        return fragment;
+    }
+    keys.forEach((key, index) => {
+        const kbdNode = getTemplate('template-key-kbd');
+        kbdNode.querySelector('kbd').textContent = key;
+        fragment.appendChild(kbdNode);
+        if (index < keys.length - 1) fragment.appendChild(document.createTextNode(' + '));
+    });
+    return fragment;
+}
+
+function renderShortcutList() {
+    dom.shortcutListEl.innerHTML = '';
+    const fragment = document.createDocumentFragment();
+    const settings = getters.shortcutSettings();
+    for (const actionId in settings) {
+        const setting = settings[actionId];
+        const itemNode = getTemplate('template-shortcut-item');
+        const itemEl = itemNode.querySelector('.shortcut-item');
+        itemEl.dataset.action = actionId;
+        itemEl.querySelector('.action-label').textContent = setting.label;
+        const shortcutDisplay = itemEl.querySelector('.shortcut-display');
+        shortcutDisplay.innerHTML = '';
+        shortcutDisplay.appendChild(formatKeysToFragment(setting.keys));
+        fragment.appendChild(itemNode);
+    }
+    dom.shortcutListEl.appendChild(fragment);
+}
+
 function saveShortcuts() {
-    localStorage.setItem('player-shortcuts', JSON.stringify(usePlayerStore().shortcutSettings));
+    localStorage.setItem('player-shortcuts', JSON.stringify(getters.shortcutSettings()));
 }
 
 export function loadShortcuts() {
-    const store = usePlayerStore();
     const saved = localStorage.getItem('player-shortcuts');
     let settings;
     try {
         settings = saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(defaultShortcuts));
-    } catch {
+    } catch (e) {
         settings = JSON.parse(JSON.stringify(defaultShortcuts));
     }
-    // 强制合并新增快捷键
+
+    // 强制合并/更新旋转快捷键配置
     for (const [key, value] of Object.entries(defaultShortcuts)) {
         if (!settings[key] || key.startsWith('rotate-') || key === 'toggle-fullscreen') {
             settings[key] = value;
         }
     }
-    store.setShortcutSettings(settings);
+
+    mutations.setShortcutSettings(settings);
+    // 可选：如果修改了配置，最好保存回去，保持同步
     saveShortcuts();
+    renderShortcutList();
 }
 
-// =========================================================================
-// --- 快捷键录制 ---
-// =========================================================================
-
 function startRecording(actionId) {
-    const store = usePlayerStore();
-    const ui = useUiStore();
-    store.setCurrentRecordingAction(actionId);
-    store.setIsRecordingShortcut(true);
+    mutations.setCurrentRecordingAction(actionId);
+    mutations.setIsRecordingShortcut(true);
     pressedShortcutKeys.clear();
-    ui.showShortcutModal();
-    ui.setShortcutKeyPreview('');
+    dom.shortcutKeyPreviewEl.innerHTML = '';
+    dom.shortcutKeyPreviewEl.appendChild(getTemplate('template-recording-placeholder'));
+    dom.shortcutModalOverlayEl.classList.add('visible');
     window.addEventListener('keydown', handleShortcutKeyDownForRecording);
     window.addEventListener('keyup', handleShortcutKeyUpForRecording);
 }
 
 function stopRecording() {
-    const store = usePlayerStore();
-    const ui = useUiStore();
-    store.setIsRecordingShortcut(false);
-    store.setCurrentRecordingAction(null);
+    mutations.setIsRecordingShortcut(false);
+    mutations.setCurrentRecordingAction(null);
     pressedShortcutKeys.clear();
-    ui.hideShortcutModal();
+    dom.shortcutModalOverlayEl.classList.remove('visible');
     window.removeEventListener('keydown', handleShortcutKeyDownForRecording);
     window.removeEventListener('keyup', handleShortcutKeyUpForRecording);
 }
 
 function handleShortcutKeyDownForRecording(e) {
-    const store = usePlayerStore();
-    const ui = useUiStore();
-    if (!store.isRecordingShortcut) return;
+    if (!getters.isRecordingShortcut()) return;
     e.preventDefault(); e.stopPropagation();
     if (e.key === 'Escape') { stopRecording(); return; }
     pressedShortcutKeys.add(normalizeKey(e.key));
-    ui.setShortcutKeyPreview(Array.from(pressedShortcutKeys).join(' + '));
+    const keysFragment = formatKeysToFragment(Array.from(pressedShortcutKeys));
+    dom.shortcutKeyPreviewEl.innerHTML = '';
+    dom.shortcutKeyPreviewEl.appendChild(keysFragment);
 }
 
 function handleShortcutKeyUpForRecording(e) {
-    const store = usePlayerStore();
-    const ui = useUiStore();
-    if (!store.isRecordingShortcut || pressedShortcutKeys.size === 0) return;
+    if (!getters.isRecordingShortcut() || pressedShortcutKeys.size === 0) return;
     const modifierKeys = ['Ctrl', 'Alt', 'Shift', 'Cmd'];
     const hasNonModifierKey = Array.from(pressedShortcutKeys).some(k => !modifierKeys.includes(k));
     if (hasNonModifierKey) {
-        const newSettings = { ...store.shortcutSettings };
-        newSettings[store.currentRecordingAction].keys = Array.from(pressedShortcutKeys);
-        store.setShortcutSettings(newSettings);
+        const newSettings = { ...getters.shortcutSettings() };
+        newSettings[getters.currentRecordingAction()].keys = Array.from(pressedShortcutKeys);
+        mutations.setShortcutSettings(newSettings);
         saveShortcuts();
         stopRecording();
+        renderShortcutList();
     }
 }
 
 // =========================================================================
-// --- 全局快捷键监听 ---
+// --- 全局事件监听与执行 ---
 // =========================================================================
 
+function executeShortcut(actionId) {
+    const command = commandMap[actionId];
+    if (command) command.execute();
+}
+
+/**
+ * 辅助函数：判断当前按下的键是否与所需键完全匹配。
+ * @param {Set<string>} requiredKeys - 快捷键配置要求的键集合
+ * @returns {boolean}
+ */
 function isExactKeyMatch(requiredKeys) {
     if (requiredKeys.size !== pressedShortcutKeys.size) return false;
     for (let key of requiredKeys) {
@@ -313,38 +376,30 @@ function isExactKeyMatch(requiredKeys) {
     return true;
 }
 
-function executeShortcut(actionId) {
-    const command = commandMap[actionId];
-    if (command) command.execute();
-}
-
 function handleGlobalKeyDown(e) {
-    const store = usePlayerStore();
-    const ui = useUiStore();
-    if (e.repeat || store.isRecordingShortcut ||
-        ['input', 'textarea'].includes(e.target.tagName.toLowerCase()) ||
-        store.playlist.length === 0) return;
-
+    if (e.repeat || getters.isRecordingShortcut() || ['input', 'textarea'].includes(e.target.tagName.toLowerCase()) || getters.playlist().length === 0) return;
     pressedShortcutKeys.add(normalizeKey(e.key));
-    const settings = store.shortcutSettings;
-
+    const settings = getters.shortcutSettings();
     for (const actionId in settings) {
         const requiredKeys = new Set(settings[actionId].keys);
+
         if (requiredKeys.size > 0 && isExactKeyMatch(requiredKeys)) {
             e.preventDefault();
 
+            // 如果匹配到的是快进/快退，标记此时激发的 activeSeekAction
             if (actionId === 'seek-forward' || actionId === 'seek-backward') {
                 activeSeekAction = actionId;
             } else {
+                // 如果命中其他组合键，则重置 activeSeekAction
                 activeSeekAction = null;
             }
 
+            // 处理长按逻辑
             if (actionId === 'seek-forward') {
                 isLongPressActive = false;
                 longPressTimer = setTimeout(() => {
                     isLongPressActive = true;
-                    const mediaEl = getMediaElement();
-                    if (mediaEl) mediaEl.playbackRate = LONG_PRESS_RATE;
+                    dom.mediaPlayer.playbackRate = LONG_PRESS_RATE;
                     ui.showSeekFeedback('倍速播放');
                 }, LONG_PRESS_THRESHOLD);
             } else if (actionId === 'seek-backward') {
@@ -352,10 +407,9 @@ function handleGlobalKeyDown(e) {
                 longPressTimer = setTimeout(() => {
                     isLongPressActive = true;
                     if (rewindInterval) clearInterval(rewindInterval);
-                    const mediaEl = getMediaElement();
                     rewindInterval = setInterval(() => {
                         const step = LONG_PRESS_RATE * 0.05;
-                        if (mediaEl) mediaEl.currentTime = Math.max(0, mediaEl.currentTime - step);
+                        dom.mediaPlayer.currentTime = Math.max(0, dom.mediaPlayer.currentTime - step);
                     }, 50);
                     ui.showSeekFeedback('<< 倒带');
                 }, LONG_PRESS_THRESHOLD);
@@ -368,27 +422,30 @@ function handleGlobalKeyDown(e) {
 }
 
 function handleGlobalKeyUp(e) {
-    const store = usePlayerStore();
-    const ui = useUiStore();
-    if (store.isRecordingShortcut) return;
-
-    clearTimeout(longPressTimer);
-    longPressTimer = null;
+    if (getters.isRecordingShortcut()) return;
+    clearTimeout(longPressTimer); longPressTimer = null;
     const normalizedKey = normalizeKey(e.key);
-    const settings = store.shortcutSettings;
 
+    const settings = getters.shortcutSettings();
+
+    // 只有当之前触发了明确的 seek 操作，我们在 keyup 时才恢复状态或执行单击快跑
     if (activeSeekAction) {
         const requiredKeys = new Set(settings[activeSeekAction]?.keys || []);
+
+        // 我们需要确保松开的键确实是激发了快进快退的那个组合里的键
         if (requiredKeys.has(normalizedKey)) {
             if (isLongPressActive) {
                 if (activeSeekAction === 'seek-backward') {
-                    if (rewindInterval) { clearInterval(rewindInterval); rewindInterval = null; }
+                    if (rewindInterval) {
+                        clearInterval(rewindInterval);
+                        rewindInterval = null;
+                    }
                 } else {
-                    const mediaEl = getMediaElement();
-                    if (mediaEl) mediaEl.playbackRate = store.playbackRate;
+                    dom.mediaPlayer.playbackRate = getters.playbackRate();
                 }
                 ui.showSeekFeedback('恢复正常');
             } else {
+                // 只有没有触发长按操作，才执行默认的快跑/快退
                 executeShortcut(activeSeekAction);
             }
             activeSeekAction = null;
@@ -399,36 +456,34 @@ function handleGlobalKeyUp(e) {
     pressedShortcutKeys.delete(normalizedKey);
 }
 
-/**
- * 设置快捷键面板的事件监听（由 ShortcutPanel 组件调用）
- * @param {string} actionId
- * @param {'set'|'clear'} action
- */
-export function handleShortcutPanelAction(actionId, action) {
-    if (action === 'set') {
-        startRecording(actionId);
-    } else if (action === 'clear') {
-        const store = usePlayerStore();
-        const newSettings = { ...store.shortcutSettings };
-        newSettings[actionId].keys = [];
-        store.setShortcutSettings(newSettings);
-        saveShortcuts();
-    }
-}
-
 export function setupShortcutListeners() {
+    dom.shortcutListEl.addEventListener('click', (e) => {
+        const item = e.target.closest('.shortcut-item');
+        if (!item) return;
+        const actionId = item.dataset.action;
+        if (e.target.classList.contains('set-btn')) startRecording(actionId);
+        if (e.target.classList.contains('clear-btn')) {
+            const newSettings = { ...getters.shortcutSettings() };
+            newSettings[actionId].keys = [];
+            mutations.setShortcutSettings(newSettings);
+            saveShortcuts();
+            renderShortcutList();
+        }
+    });
+    dom.shortcutModalOverlayEl.addEventListener('click', (e) => {
+        if (e.target === dom.shortcutModalOverlayEl) stopRecording();
+    });
     window.addEventListener('keydown', handleGlobalKeyDown);
     window.addEventListener('keyup', handleGlobalKeyUp);
     window.addEventListener('blur', () => {
-        const store = usePlayerStore();
         pressedShortcutKeys.clear();
         isLongPressActive = false;
         activeSeekAction = null;
         clearTimeout(longPressTimer);
-        if (rewindInterval) { clearInterval(rewindInterval); rewindInterval = null; }
-        const mediaEl = getMediaElement();
-        if (mediaEl && mediaEl.playbackRate !== store.playbackRate) {
-            mediaEl.playbackRate = store.playbackRate;
+        if (rewindInterval) {
+            clearInterval(rewindInterval);
+            rewindInterval = null;
         }
+        if (dom.mediaPlayer.playbackRate !== getters.playbackRate()) dom.mediaPlayer.playbackRate = getters.playbackRate();
     });
 }

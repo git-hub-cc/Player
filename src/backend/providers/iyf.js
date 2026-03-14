@@ -21,16 +21,16 @@ export class IyfProvider extends BaseProvider {
 
         try {
             this._checkCancelled(signal);
-            this.sendMessage('download-status', { message: '正在启动隐身窗口拦截 M3U8 地址...', type: 'default' });
+            this.sendMessage('download-status', { message: 'Launching browser to intercept M3U8 URL...', type: 'default' });
 
             const info = await this._getVideoInfo(videoUrl, signal);
             this._checkCancelled(signal);
 
-            if (!info.m3u8Url) throw new Error('未能在页面中拦截到有效的 M3U8 地址');
+            if (!info.m3u8Url) throw new Error('Failed to intercept valid M3U8 URL from page');
 
-            this.sendMessage('download-status', { message: `解析成功: ${info.title}`, type: 'default' });
+            this.sendMessage('download-status', { message: `Parsed: ${info.title}`, type: 'default' });
 
-            const uniqueFilenameBase = `media_iyf_${Date.now()}`;
+            const uniqueFilenameBase = await this.libraryService.getNextOrdinal();
             const headers = {
                 'User-Agent': IYF_USER_AGENT,
                 'Referer': IYF_REFERER,
@@ -39,10 +39,10 @@ export class IyfProvider extends BaseProvider {
 
             if (info.coverUrl) {
                 downloadFile(info.coverUrl, this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`, headers, () => { }, 3, signal)
-                    .catch(e => { if (!signal.aborted) console.warn('[Iyf Provider] 封面下载失败:', e.message); });
+                    .catch(e => { if (!signal.aborted) console.warn('[Iyf Provider] Thumbnail download failed:', e.message); });
             }
 
-            this.sendMessage('download-status', { message: '正在调用 yt-dlp 下载视频...', type: 'default' });
+            this.sendMessage('download-status', { message: 'Calling yt-dlp to download video...', type: 'default' });
 
             const finalFilePath = await this._downloadWithYtDlp(
                 info.m3u8Url,
@@ -50,7 +50,7 @@ export class IyfProvider extends BaseProvider {
                 uniqueFilenameBase,
                 info.cookieString,
                 (progress) => this.sendMessage('download-status', {
-                    message: `下载进度: ${(progress * 100).toFixed(1)}%`,
+                    message: `Download progress: ${(progress * 100).toFixed(1)}%`,
                     progress: progress,
                     type: 'progress'
                 }),
@@ -67,12 +67,12 @@ export class IyfProvider extends BaseProvider {
                 type: 'video'
             });
 
-            this.sendMessage('download-status', { message: `"${info.title}" 下载成功！`, type: 'success' });
+            this.sendMessage('download-status', { message: `"${info.title}" download successful!`, type: 'success' });
 
         } catch (error) {
             if (signal && signal.aborted) throw error;
-            console.error('[Iyf Provider] 错误:', error);
-            throw new Error(`IYF 下载失败: ${error.message}`);
+            console.error('[Iyf Provider] Error:', error);
+            throw new Error(`IYF download failed: ${error.message}`);
         }
     }
 
@@ -80,7 +80,7 @@ export class IyfProvider extends BaseProvider {
      * 启动虚拟浏览器，注册网络请求拦截来捕获 m3u8 URL，同时获取标题、封面和 Cookie。
      */
     async _getVideoInfo(videoUrl, signal) {
-        console.log(`[Iyf Provider] 正在启动浏览器拦截 m3u8: ${videoUrl}`);
+        console.log(`[Iyf Provider] Starting browser intercept for m3u8: ${videoUrl}`);
 
         const partition = `persist:iyf_session_${Date.now()}`;
         const win = new BrowserWindow({
@@ -131,7 +131,7 @@ export class IyfProvider extends BaseProvider {
             });
 
             const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('拦截 m3u8 超时 (60秒)，请确认页面可以正常播放视频。')), 60000)
+                setTimeout(() => reject(new Error('Intercept m3u8 timeout (60s), please ensure the page can play video correctly.')), 60000)
             );
 
             // 加载页面，触发播放器初始化
@@ -139,7 +139,7 @@ export class IyfProvider extends BaseProvider {
 
             // 等待 m3u8 URL 出现（或超时）
             const m3u8Url = await Promise.race([m3u8Promise, timeoutPromise]);
-            this.sendMessage('download-status', { message: `拦截成功，准备下载...`, type: 'default' });
+            this.sendMessage('download-status', { message: `Intercepted successfully, preparing download...`, type: 'default' });
 
             // 获取页面元数据和 Cookie
             const metaData = await win.webContents.executeJavaScript(`
@@ -160,7 +160,7 @@ export class IyfProvider extends BaseProvider {
 
         } catch (error) {
             if (signal && signal.aborted) throw new Error('Download aborted by user');
-            console.error('[Iyf Provider] BrowserWindow 解析失败:', error);
+            console.error('[Iyf Provider] BrowserWindow parsing failed:', error);
             throw error;
         } finally {
             if (win && !win.isDestroyed()) win.destroy();
@@ -221,7 +221,7 @@ export class IyfProvider extends BaseProvider {
                     return reject(new Error('Download aborted by user'));
                 }
                 if (code !== 0) {
-                    return reject(new Error(`yt-dlp 下载失败，退出码: ${code}`));
+                    return reject(new Error(`yt-dlp download failed, exit code: ${code}`));
                 }
 
                 // 按优先级查找生成的文件：mp4 > mkv > webm > ts
@@ -257,9 +257,9 @@ export class IyfProvider extends BaseProvider {
             } else {
                 processInstance.kill('SIGKILL');
             }
-            console.log(`[Iyf Provider] 已终止进程 PID: ${processInstance.pid}`);
+            console.log(`[Iyf Provider] Terminated process PID: ${processInstance.pid}`);
         } catch (e) {
-            console.error('[Iyf Provider] 终止进程失败:', e);
+            console.error('[Iyf Provider] Failed to terminate process:', e);
         }
     }
 }

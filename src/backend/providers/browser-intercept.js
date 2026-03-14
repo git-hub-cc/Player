@@ -58,7 +58,7 @@ export class BrowserInterceptProvider extends BaseProvider {
                 domain => hostname === domain || hostname.endsWith('.' + domain)
             );
             if (isYtDlpSupported) {
-                console.log(`[BrowserIntercept] 跳过 yt-dlp 已知站点: ${hostname}`);
+                console.log(`[BrowserIntercept] Skipping yt-dlp supported site: ${hostname}`);
                 return false;
             }
             return true;
@@ -72,14 +72,14 @@ export class BrowserInterceptProvider extends BaseProvider {
 
         try {
             this._checkCancelled(signal);
-            this.sendMessage('download-status', { message: '正在启动浏览器拦截 M3U8 地址...', type: 'default' });
+            this.sendMessage('download-status', { message: 'Launching browser to intercept M3U8 URL...', type: 'default' });
 
             const info = await this._interceptM3u8FromPage(videoUrl, signal);
             this._checkCancelled(signal);
 
-            if (!info.m3u8Url) throw new Error('未能从页面中拦截到 M3U8 地址，请尝试使用 yt-dlp 直接下载。');
+            if (!info.m3u8Url) throw new Error('Failed to intercept M3U8 URL from page, please try yt-dlp direct download.');
 
-            this.sendMessage('download-status', { message: `拦截成功，准备下载: ${info.title}`, type: 'default' });
+            this.sendMessage('download-status', { message: `Intercepted successfully, preparing download: ${info.title}`, type: 'default' });
 
             const uniqueFilenameBase = `media_browser_${Date.now()}`;
             const referer = new URL(videoUrl).origin + '/';
@@ -87,7 +87,7 @@ export class BrowserInterceptProvider extends BaseProvider {
 
             if (info.coverUrl) {
                 downloadFile(info.coverUrl, this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`, headers, () => { }, 3, signal)
-                    .catch(e => { if (!signal?.aborted) console.warn('[BrowserIntercept] 封面下载失败:', e.message); });
+                    .catch(e => { if (!signal?.aborted) console.warn('[BrowserIntercept] Thumbnail download failed:', e.message); });
             }
 
             const finalFilePath = await this._downloadWithYtDlp(
@@ -97,7 +97,7 @@ export class BrowserInterceptProvider extends BaseProvider {
                 info.cookieString,
                 referer,
                 (progress) => this.sendMessage('download-status', {
-                    message: `下载进度: ${(progress * 100).toFixed(1)}%`,
+                    message: `Download progress: ${(progress * 100).toFixed(1)}%`,
                     progress,
                     type: 'progress'
                 }),
@@ -115,21 +115,21 @@ export class BrowserInterceptProvider extends BaseProvider {
                 type: 'video'
             });
 
-            this.sendMessage('download-status', { message: `"${info.title}" 下载成功！`, type: 'success' });
+            this.sendMessage('download-status', { message: `"${info.title}" download successful!`, type: 'success' });
 
         } catch (error) {
             if (signal && signal.aborted) throw error;
-            console.error('[BrowserIntercept Provider] 错误:', error);
-            throw new Error(`浏览器拦截下载失败: ${error.message}`);
+            console.error('[BrowserIntercept Provider] Error:', error);
+            throw new Error(`Browser intercept download failed: ${error.message}`);
         }
     }
 
     /**
-     * 启动虚拟浏览器加载页面，拦截第一个非预览 .m3u8 请求，
-     * 同时获取页面标题、封面和 Cookie。
+     * Launches a virtual browser to load the page, intercepts the first non-preview .m3u8 request,
+     * and simultaneously retrieves the page title, cover, and cookies.
      */
     async _interceptM3u8FromPage(pageUrl, signal) {
-        console.log(`[BrowserIntercept] 正在启动浏览器拦截: ${pageUrl}`);
+        console.log(`[BrowserIntercept] Starting browser intercept: ${pageUrl}`);
         const partition = `persist:browser_intercept_${Date.now()}`;
         const win = new BrowserWindow({
             show: false,
@@ -151,22 +151,22 @@ export class BrowserInterceptProvider extends BaseProvider {
         try {
             const browserSession = session.fromPartition(partition);
 
-            // 注入 User-Agent
+            // Inject User-Agent
             browserSession.webRequest.onBeforeSendHeaders((details, callback) => {
                 details.requestHeaders['User-Agent'] = DEFAULT_UA;
                 callback({ cancel: false, requestHeaders: details.requestHeaders });
             });
 
-            // 拦截 m3u8 / HLS 流请求
-            // 使用宽泛的 URL 过滤器，再在回调中做精确判断，
-            // 以兼容 URL 中包含 m3u8 关键字但路径不以 .m3u8 结尾的情况。
+            // Intercept m3u8 / HLS stream requests
+            // Use a broad URL filter, then make precise judgments in the callback,
+            // to be compatible with URLs that contain the m3u8 keyword but do not end with .m3u8.
             const m3u8Promise = new Promise((resolve) => {
-                // 同时监听标准路径和含 m3u8 参数的 URL
+                // Listen for both standard paths and URLs containing m3u8 parameters
                 const filter = { urls: ['<all_urls>'] };
                 let resolved = false;
                 browserSession.webRequest.onBeforeRequest(filter, (details, callback) => {
                     const url = details.url;
-                    // 判断是否为 m3u8/HLS 流地址
+                    // Determine if it's an m3u8/HLS stream address
                     const isM3u8 = (
                         url.includes('.m3u8') ||
                         url.includes('/hls/') ||
@@ -176,7 +176,7 @@ export class BrowserInterceptProvider extends BaseProvider {
                     const isPreview = url.toLowerCase().includes('preview') || url.includes('_small') || url.includes('tiny');
                     if (!resolved && isM3u8 && !isPreview) {
                         resolved = true;
-                        console.log(`[BrowserIntercept] 拦截到 m3u8/HLS 流: ${url}`);
+                        console.log(`[BrowserIntercept] Intercepted m3u8/HLS stream: ${url}`);
                         resolve(url);
                     }
                     callback({ cancel: false });
@@ -184,13 +184,13 @@ export class BrowserInterceptProvider extends BaseProvider {
             });
 
             const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error(`拦截 m3u8 超时 (${INTERCEPT_TIMEOUT_MS / 1000}秒)，该页面可能不包含 HLS 视频流。`)), INTERCEPT_TIMEOUT_MS)
+                setTimeout(() => reject(new Error(`Intercept m3u8 timeout (${INTERCEPT_TIMEOUT_MS / 1000}s), the page might not contain HLS stream.`)), INTERCEPT_TIMEOUT_MS)
             );
 
             await win.loadURL(pageUrl);
             const m3u8Url = await Promise.race([m3u8Promise, timeoutPromise]);
 
-            // 获取页面元数据
+            // Get page metadata
             const metaData = await win.webContents.executeJavaScript(`
                 (() => ({
                     title: document.querySelector('meta[property="og:title"]')?.content
@@ -211,7 +211,7 @@ export class BrowserInterceptProvider extends BaseProvider {
 
         } catch (error) {
             if (signal && signal.aborted) throw new Error('Download aborted by user');
-            console.error('[BrowserIntercept] 页面加载或拦截失败:', error);
+            console.error('[BrowserIntercept] Page load or intercept failed:', error);
             throw error;
         } finally {
             if (win && !win.isDestroyed()) win.destroy();
@@ -219,7 +219,7 @@ export class BrowserInterceptProvider extends BaseProvider {
     }
 
     /**
-     * 使用 yt-dlp 下载 m3u8，附带从浏览器获取的 Cookie 和 Referer。
+     * Downloads m3u8 using yt-dlp, with cookies and referer obtained from the browser.
      */
     _downloadWithYtDlp(m3u8Url, outputDir, filename, cookieString, referer, onProgress, signal) {
         return new Promise((resolve, reject) => {
@@ -254,7 +254,7 @@ export class BrowserInterceptProvider extends BaseProvider {
             emitter.on('error', (error) => reject(error));
             emitter.on('close', (code) => {
                 if (signal && signal.aborted) return reject(new Error('Download aborted by user'));
-                if (code !== 0) return reject(new Error(`yt-dlp 下载失败，退出码: ${code}`));
+                if (code !== 0) return reject(new Error(`yt-dlp download failed, exit code: ${code}`));
 
                 const mp4Path = path.join(outputDir, `${filename}.mp4`);
                 if (fs.existsSync(mp4Path)) return resolve(mp4Path);

@@ -23,7 +23,7 @@ export class DownloadService {
     constructor(providerRegistry) {
         this.#providerRegistry = providerRegistry;
         this.#providerRegistry.initializeProviders();
-        console.log('[Download Service] 服务已实例化，并已配置好所有下载提供者。');
+        console.log(`[Download Service] Service instantiated and providers configured.`);
     }
 
     /**

@@ -38,17 +38,17 @@ export class GenericYtDlpProvider extends BaseProvider {
 
         try {
             this._checkCancelled(signal);
-            this.sendMessage('download-status', { message: '正在解析视频元数据...', type: 'default' });
+            this.sendMessage('download-status', { message: 'Starting yt-dlp analysis...' });
 
             // 2. 获取视频信息 (JSON)
             const info = await this._getVideoInfo(videoUrl, signal);
+            this.sendMessage('download-status', { message: `Parsed: ${info.title}` });
             this._checkCancelled(signal);
 
             // 3. 准备文件名和封面
             // 优先使用 title，如果没有则使用 ID，最后使用 fallback
             const title = info.title || info.id || 'Unknown_Video';
-            // 【核心修改】使用时间戳和视频ID生成唯一文件名，而不是清理后的标题
-            const uniqueFilenameBase = `media_ytdlp_${info.id || Date.now()}`;
+            const uniqueFilenameBase = await this.libraryService.getNextOrdinal();
 
 
             // 下载封面 (如果有)
@@ -56,11 +56,11 @@ export class GenericYtDlpProvider extends BaseProvider {
                 // 异步下载封面，不阻塞主流程，但会响应取消信号
                 downloadFile(info.thumbnail, this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`, {}, () => {}, 3, signal)
                     .catch(e => {
-                        if (!signal || !signal.aborted) console.warn('[GenericYtDlp] 封面下载轻微错误:', e.message);
+                        if (!signal || !signal.aborted) console.warn('[GenericYtDlp] Thumbnail download minor error:', e.message);
                     });
             }
 
-            this.sendMessage('download-status', { message: `解析成功: ${title}，准备下载...`, type: 'default' });
+            this.sendMessage('download-status', { message: `Parsed: ${title}, preparing download...`, type: 'default' });
 
             // 4. 调用 yt-dlp 进行下载
             const finalFilePath = await this._downloadVideoWithYtDlp(
@@ -68,7 +68,7 @@ export class GenericYtDlpProvider extends BaseProvider {
                 this.config.VIDEOS_DIR,
                 uniqueFilenameBase, // 使用唯一文件名
                 (progress) => this.sendMessage('download-status', {
-                    message: `下载进度: ${(progress * 100).toFixed(1)}%`,
+                    message: `Download progress: ${(progress * 100).toFixed(1)}%`,
                     progress: progress,
                     type: 'progress'
                 }),
@@ -90,7 +90,7 @@ export class GenericYtDlpProvider extends BaseProvider {
                 type: "video"
             });
 
-            this.sendMessage('download-status', { message: `"${title}" 下载成功！`, type: 'success' });
+            this.sendMessage('download-status', { message: `"${title}" download successful!`, type: 'success' });
 
         } catch (error) {
             if (signal && signal.aborted) throw error;
@@ -100,7 +100,7 @@ export class GenericYtDlpProvider extends BaseProvider {
             if (msg.includes('ERROR:')) {
                 msg = msg.split('ERROR:')[1].split('\n')[0].trim();
             }
-            throw new Error(`下载失败: ${msg}`);
+            throw new Error(`Download failed: ${msg}`);
         }
     }
 
@@ -120,9 +120,9 @@ export class GenericYtDlpProvider extends BaseProvider {
                 // Unix/Linux/macOS
                 processInstance.kill('SIGKILL');
             }
-            console.log(`[GenericYtDlp] 已强力终止进程 PID: ${pid}`);
+            console.log(`[GenericYtDlp] Forcefully terminated process PID: ${pid}`);
         } catch (e) {
-            console.error('[GenericYtDlp] 终止进程失败:', e);
+            console.error('[GenericYtDlp] Failed to terminate process:', e);
         }
     }
 
@@ -176,7 +176,7 @@ export class GenericYtDlpProvider extends BaseProvider {
                     try {
                         let info;
                         const trimmedOutput = stdout.trim();
-                        if (!trimmedOutput) throw new Error('yt-dlp 返回了空数据');
+                        if (!trimmedOutput) throw new Error('yt-dlp returned empty data');
 
                         try {
                             info = JSON.parse(trimmedOutput);
@@ -200,11 +200,11 @@ export class GenericYtDlpProvider extends BaseProvider {
                             duration: info.duration,
                         });
                     } catch (e) {
-                        console.error('[GenericYtDlp] JSON 解析失败。Stderr:', stderr);
-                        reject(new Error(`无法解析视频信息: ${e.message}`));
+                        console.error('[GenericYtDlp] JSON parsing failed. Stderr:', stderr);
+                        reject(new Error(`Failed to parse video info: ${e.message}`));
                     }
                 } else {
-                    reject(new Error(`yt-dlp 进程异常退出 (Code ${code}): ${stderr}`));
+                    reject(new Error(`yt-dlp process exited abnormally (Code ${code}): ${stderr}`));
                 }
             });
 
@@ -266,7 +266,7 @@ export class GenericYtDlpProvider extends BaseProvider {
                 }
 
                 if (code !== 0) {
-                    return reject(new Error(`下载进程退出码非零: ${code}`));
+                    return reject(new Error(`Download process exited with non-zero code: ${code}`));
                 }
 
                 // 查找最终生成的文件

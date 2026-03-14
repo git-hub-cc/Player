@@ -55,11 +55,11 @@ export class ProviderRegistry {
      */
     initializeProviders() {
         if (this.#initializedProviders.length > 0) {
-            console.warn('[Provider Registry] 注册表已被初始化，跳过重复操作。');
+            console.warn('[Provider Registry] Registry already initialized, skipping duplicate operation.');
             return;
         }
 
-        console.log('[Provider Registry] 正在初始化所有下载服务提供者...');
+        console.log('[Provider Registry] Initializing all download providers...');
 
         // =========================================================================
         // 注册顺序（优先级从高到低）：
@@ -83,12 +83,12 @@ export class ProviderRegistry {
                 // 实例化每个 Provider 并传入通用依赖
                 const providerInstance = new ProviderClass(this.#dependencies);
                 this.#initializedProviders.push(providerInstance);
-                console.log(`  - [OK] ${ProviderClass.name} 已成功实例化。`);
+                console.log(`- [OK] ${ProviderClass.name} instantiated successfully.`);
             } catch (error) {
-                console.error(`  - [ERROR] 实例化 ${ProviderClass.name} 失败:`, error);
+                console.error(`- [FAILED] Failed to instantiate ${ProviderClass.name}:`, error);
             }
         });
-        console.log('[Provider Registry] 所有提供者初始化完成。');
+        console.log('[Provider Registry] All providers initialization complete.');
     }
 
     /**

@@ -37,7 +37,7 @@ export class MusicApiService {
         this.#meting = new Meting('netease', { proxy: this.#systemProxy });
         this.#meting.format(true);
 
-        console.log(`[Music API Service] 服务已实例化，固定平台: netease, 代理: ${this.#systemProxy || '无'}`);
+        console.log(`[Music API Service] Service instantiated, platform: netease, proxy: ${this.#systemProxy || 'None'}`);
     }
 
     /**

@@ -23,7 +23,7 @@ import { MusicApiService } from './services/music-api-service.js';
  * @returns {Promise<DIContainer>} - 返回一个已配置好的 DI 容器实例。
  */
 export async function configureContainer(app, sendMessageFunc) {
-    console.log('[Bootstrap] 开始配置 DI 容器...');
+    console.log('[Bootstrap] Starting DI Container configuration...');
 
     const container = new DIContainer();
 
@@ -32,17 +32,17 @@ export async function configureContainer(app, sendMessageFunc) {
     const { config, ffmpegPath, ytDlpPath, systemProxy } = setupResult;
 
     // --- 2. 将基础值和回调函数注册到容器中 ---
-    console.log('[Bootstrap] 正在注册基础值和配置...');
+    console.log('[Bootstrap] Registering base values and configuration...');
     container.registerValue('config', config);
     container.registerValue('ffmpegPath', ffmpegPath);
     container.registerValue('ytDlpPath', ytDlpPath);
     container.registerValue('systemProxy', systemProxy);
     container.registerValue('sendMessageFunc', sendMessageFunc);
-    console.log('[Bootstrap] 基础值注册完成。');
+    console.log('[Bootstrap] Base values registered.');
 
     // --- 3. 注册所有服务及其依赖关系 ---
     // 注册顺序不重要，容器会自动解析依赖树。
-    console.log('[Bootstrap] 正在注册所有应用服务...');
+    console.log('[Bootstrap] Registering all application services...');
 
     // `ProviderRegistry` 作为 `DownloadService` 的一个依赖被注册
     container.register(
@@ -89,8 +89,8 @@ export async function configureContainer(app, sendMessageFunc) {
     );
     // =========================================================================
 
-    console.log('[Bootstrap] 所有服务注册完成。');
-    console.log('[Bootstrap] DI 容器配置成功！');
+    console.log('[Bootstrap] All services registered.');
+    console.log('[Bootstrap] DI Container configured successfully!');
 
     return container;
 }

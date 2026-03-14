@@ -30,16 +30,16 @@ export class M3u8DirectProvider extends BaseProvider {
 
         try {
             this._checkCancelled(signal);
-            this.sendMessage('download-status', { message: '检测到 M3U8 直链，正在调用 yt-dlp 直接下载...', type: 'default' });
+            this.sendMessage('download-status', { message: 'M3U8 direct link detected, calling yt-dlp to download...', type: 'default' });
 
-            const uniqueFilenameBase = `media_m3u8_${Date.now()}`;
+            const uniqueFilenameBase = await this.libraryService.getNextOrdinal();
 
             const finalFilePath = await this._downloadM3u8WithYtDlp(
                 videoUrl,
                 this.config.VIDEOS_DIR,
                 uniqueFilenameBase,
                 (progress) => this.sendMessage('download-status', {
-                    message: `下载进度: ${(progress * 100).toFixed(1)}%`,
+                    message: `Download progress: ${(progress * 100).toFixed(1)}%`,
                     progress,
                     type: 'progress'
                 }),
@@ -66,13 +66,11 @@ export class M3u8DirectProvider extends BaseProvider {
                 albumArt: '',
                 type: 'video'
             });
-
-            this.sendMessage('download-status', { message: `M3U8 下载成功！`, type: 'success' });
-
+            this.sendMessage('download-status', { message: `M3U8 download successful!`, type: 'success' });
         } catch (error) {
             if (signal && signal.aborted) throw error;
-            console.error('[M3u8Direct Provider] 错误:', error);
-            throw new Error(`M3U8 直链下载失败: ${error.message}`);
+            console.error('[M3u8Direct Provider] Error:', error);
+            throw new Error(`M3U8 direct download failed: ${error.message}`);
         }
     }
 
@@ -107,7 +105,7 @@ export class M3u8DirectProvider extends BaseProvider {
             emitter.on('error', (error) => reject(error));
             emitter.on('close', (code) => {
                 if (signal && signal.aborted) return reject(new Error('Download aborted by user'));
-                if (code !== 0) return reject(new Error(`yt-dlp 退出码: ${code}`));
+                if (code !== 0) return reject(new Error(`yt-dlp exit code: ${code}`));
 
                 const mp4Path = path.join(outputDir, `${filename}.mp4`);
                 if (fs.existsSync(mp4Path)) return resolve(mp4Path);

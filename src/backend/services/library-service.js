@@ -19,21 +19,54 @@ try {
 export class LibraryService {
     #config;
     #ffmpegPath;
+    #lastOrdinal = -1;
 
     constructor(config, ffmpegPath) {
         this.#config = config;
         this.#ffmpegPath = ffmpegPath;
-        console.log(`[Library Service] 服务已实例化。FFmpeg 路径: ${this.#ffmpegPath || '未安装'}`);
+        console.log(`[Library Service] Service instantiated. FFmpeg path: ${this.#ffmpegPath || 'Not Installed'}`);
     }
 
     setFfmpegPath(newPath) {
         this.#ffmpegPath = newPath;
-        console.log(`[Library Service] FFmpeg 路径已更新: ${newPath}`);
+        console.log(`[Library Service] FFmpeg path updated: ${newPath}`);
     }
 
     // --- 私有辅助方法 ---
 
+    async #ensureLastOrdinal() {
+        if (this.#lastOrdinal !== -1) return;
+        
+        let maxOrdinal = 0;
+        const dirs = [this.#config.MUSIC_DIR, this.#config.VIDEOS_DIR];
+        
+        for (const dir of dirs) {
+            try {
+                if (fs.existsSync(dir)) {
+                    const files = await fs.promises.readdir(dir);
+                    for (const file of files) {
+                        const match = file.match(/^(\d{5})\./);
+                        if (match) {
+                            const ordinal = parseInt(match[1], 10);
+                            if (ordinal > maxOrdinal) maxOrdinal = ordinal;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn(`[Library] Failed to scan directory ${dir} for ordinals:`, e.message);
+            }
+        }
+        this.#lastOrdinal = maxOrdinal;
+    }
+
+    async getNextOrdinal() {
+        await this.#ensureLastOrdinal();
+        this.#lastOrdinal++;
+        return this.#lastOrdinal.toString().padStart(5, '0');
+    }
+
     #generateUniqueFilename() {
+        // 保留旧方法以防万一，但内部逻辑倾向于使用 ordinal
         const timestamp = Date.now();
         const randomSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
         return `media_${timestamp}_${randomSuffix}`;
@@ -209,18 +242,18 @@ export class LibraryService {
             // =========================================================================
             // 【核心修改】修改输出路径和FFmpeg命令，将音频分离为 MP3 格式
             // =========================================================================
-            const videoOnlyPath = path.join(sourceDir, `${sourceBaseName}_video${sourceExt}`);
-            // 修改后缀为 .mp3
-            const audioOnlyPath = path.join(this.#config.MUSIC_DIR, `${sourceBaseName}_audio.mp3`);
+            const videoOrdinal = await this.getNextOrdinal();
+            const videoOnlyPath = path.join(this.#config.VIDEOS_DIR, `${videoOrdinal}${sourceExt}`);
+            const audioOrdinal = await this.getNextOrdinal();
+            const audioOnlyPath = path.join(this.#config.MUSIC_DIR, `${audioOrdinal}.mp3`);
 
             const videoCommand = `"${this.#ffmpegPath}" -y -i "${sourceFullPath}" -c:v copy -an "${videoOnlyPath}"`;
-            // 修改编码器为 libmp3lame，码率为 192k
             const audioCommand = `"${this.#ffmpegPath}" -y -i "${sourceFullPath}" -vn -c:a libmp3lame -b:a 192k "${audioOnlyPath}"`;
             // =========================================================================
 
             const runCommand = (cmd) => new Promise((resolve, reject) => { exec(cmd, (error, stdout, stderr) => { if (error) return reject(new Error(`FFmpeg 错误: ${stderr || error.message}`)); resolve(stdout); }); });
             await Promise.all([runCommand(videoCommand), runCommand(audioCommand)]);
-            const generatedThumbName = await this.#generateVideoThumbnail(videoOnlyPath, this.#config.ALBUMART_DIR, `${sourceBaseName}_video`);
+            const generatedThumbName = await this.#generateVideoThumbnail(videoOnlyPath, this.#config.ALBUMART_DIR, videoOrdinal);
             const videoArtPath = generatedThumbName ? `albumArt/${generatedThumbName}` : (trackData.albumArt || '');
             let playlist = JSON.parse(fs.readFileSync(this.#config.PLAYLIST_PATH, 'utf-8')); const originalIndex = playlist.findIndex(t => t.src === sourceRelativePath);
             if (originalIndex === -1) { return { success: false, error: '在播放列表中未找到原始轨道，无法更新。' }; }
@@ -228,6 +261,9 @@ export class LibraryService {
             const audioTitle = `${trackData.title} (仅音频)`;
             const audioArtDataUrl = this.generatePlaceholderArt(audioTitle);
             const audioOnlyTrack = { ...trackData, title: audioTitle, src: path.relative(this.#config.MEDIA_ROOT, audioOnlyPath).replace(/\\/g, '/'), type: 'audio', lyrics: '', albumArt: audioArtDataUrl, };
+            
+            // 为音频生成并保存物理占位图（使用其自己的序号）
+            audioOnlyTrack.albumArt = this.generateAndSavePlaceholderArt(audioTitle, audioOrdinal);
             playlist.splice(originalIndex + 1, 0, videoOnlyTrack, audioOnlyTrack); fs.writeFileSync(this.#config.PLAYLIST_PATH, JSON.stringify(playlist, null, 2), 'utf-8');
             return { success: true, data: playlist, message: '视频分离成功！' };
         } catch (error) { return { success: false, error: error.message }; }
@@ -243,7 +279,7 @@ export class LibraryService {
         for (const file of validFiles) {
             try {
                 const originalPath = file.path, ext = path.extname(originalPath).toLowerCase(), title = path.basename(originalPath, ext);
-                const uniqueFilenameBase = this.#generateUniqueFilename();
+                const uniqueFilenameBase = await this.getNextOrdinal();
                 const isVideo = videoExt.includes(ext);
                 const targetDir = isVideo ? this.#config.VIDEOS_DIR : this.#config.MUSIC_DIR; const relativeDirName = isVideo ? 'videos' : 'music';
                 const newMediaPath = path.join(targetDir, `${uniqueFilenameBase}${ext}`); await fs.promises.copyFile(originalPath, newMediaPath);
@@ -289,7 +325,7 @@ export class LibraryService {
                 try {
                     const { media, mediaType, lrc, art } = group;
                     const ext = path.extname(media), title = path.basename(media, ext);
-                    const uniqueFilenameBase = this.#generateUniqueFilename();
+                    const uniqueFilenameBase = await this.getNextOrdinal();
                     const isVideo = mediaType === 'video';
                     const targetDir = isVideo ? this.#config.VIDEOS_DIR : this.#config.MUSIC_DIR;
                     const newMediaPath = path.join(targetDir, `${uniqueFilenameBase}${ext}`);

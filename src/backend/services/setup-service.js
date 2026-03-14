@@ -17,14 +17,14 @@ const execAsync = promisify(exec);
 let mainWindow;
 
 async function detectSystemProxy() {
-    console.log('[Proxy Detector] 开始检测系统代理...');
+    console.log('[Proxy Detector] Detecting system proxy...');
     if (process.platform !== 'win32') {
         const proxyVar = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy;
         if (proxyVar) {
-            console.log(`[Proxy Detector] 从环境变量中发现代理: ${proxyVar}`);
+            console.log(`[Proxy Detector] Found proxy in environment variables: ${proxyVar}`);
             return proxyVar;
         }
-        console.log('[Proxy Detector] 非 Windows 平台且未在环境变量中找到代理。');
+        console.log('[Proxy Detector] Non-Windows platform and no proxy found in environment variables.');
         return null;
     }
     try {
@@ -43,13 +43,13 @@ async function detectSystemProxy() {
         if (values.ProxyEnable === '0x1' && values.ProxyServer) {
             const proxyServer = values.ProxyServer.split(';')[0];
             const proxyUrl = `http://${proxyServer}`;
-            console.log(`[Proxy Detector] 系统代理已检测: ${proxyUrl}`);
+            console.log(`[Proxy Detector] System proxy detected: ${proxyUrl}`);
             return proxyUrl;
         }
-        console.log('[Proxy Detector] 系统代理未启用。');
+        console.log('[Proxy Detector] System proxy not enabled.');
         return null;
     } catch (error) {
-        console.error('[Proxy Detector] 读取注册表代理设置失败:', error);
+        console.error('[Proxy Detector] Failed to read registry proxy settings:', error);
         return null;
     }
 }
@@ -71,7 +71,7 @@ function downloadFileWithProgress(url, destPath, displayName) {
     async function attemptDownload() {
         attempts++;
         try {
-            console.log(`[Downloader] 开始下载 ${displayName} (第 ${attempts} 次尝试)...`);
+            console.log(`[Downloader] Starting download for ${displayName} (Attempt ${attempts})...`);
             sendProgress(0);
 
             const response = await axios({
@@ -84,7 +84,7 @@ function downloadFileWithProgress(url, destPath, displayName) {
 
             const finalUrl = response.request.res.responseUrl || url;
             if (finalUrl !== url) {
-                console.log(`[Downloader] 重定向到: ${finalUrl}`);
+                console.log(`[Downloader] Redirected to: ${finalUrl}`);
             }
 
             const totalLength = parseInt(response.headers['content-length'], 10);
@@ -104,25 +104,25 @@ function downloadFileWithProgress(url, destPath, displayName) {
             return new Promise((resolve, reject) => {
                 writer.on('finish', () => {
                     sendProgress(100);
-                    console.log(`[Downloader] ${displayName} 下载完成。`);
+                    console.log(`[Downloader] ${displayName} download complete.`);
                     resolve();
                 });
                 writer.on('error', (err) => {
-                    console.error(`[Downloader] 写入文件 ${displayName} 时出错:`, err);
+                    console.error(`[Downloader] Error writing file ${displayName}:`, err);
                     if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
                     reject(err);
                 });
             });
         } catch (error) {
-            console.error(`[Downloader] 下载 ${displayName} (第 ${attempts} 次尝试) 失败:`, error.message);
+            console.error(`[Downloader] Download ${displayName} (Attempt ${attempts}) failed:`, error.message);
             if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
 
             if (attempts < MAX_RETRIES) {
-                console.log(`[Downloader] ${MAX_RETRIES - attempts} 次重试剩余，将在 2 秒后重试...`);
+                console.log(`[Downloader] ${MAX_RETRIES - attempts} retries remaining, retrying in 2 seconds...`);
                 await new Promise(res => setTimeout(res, 2000));
                 return attemptDownload();
             } else {
-                throw new Error(`下载 ${displayName} 失败，已达最大重试次数。`);
+                throw new Error(`Failed to download ${displayName} after maximum retries.`);
             }
         }
     }
@@ -143,17 +143,17 @@ export async function downloadYtDlp(binDir) {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('download-started', { file: 'yt-dlp' });
     }
-    console.log(`[yt-dlp Downloader] 开始从 GitHub 下载: ${downloadUrl}`);
+    console.log(`[yt-dlp Downloader] Starting download from GitHub: ${downloadUrl}`);
 
     try {
         await downloadFileWithProgress(downloadUrl, binaryPath, 'yt-dlp');
 
-        console.log('[yt-dlp Downloader] 下载完成。');
+        console.log('[yt-dlp Downloader] Download complete.');
         if (process.platform !== 'win32') {
             try {
                 fs.chmodSync(binaryPath, '755');
             } catch (e) {
-                console.warn('[yt-dlp Downloader] 设置执行权限失败:', e);
+                console.warn('[yt-dlp Downloader] Failed to set execution permission:', e);
             }
         }
 
@@ -175,7 +175,7 @@ export async function downloadFfmpeg(binDir) {
     const isLinux = process.platform === 'linux';
 
     if ((!isWin && !isLinux) || arch !== 'x64') {
-        throw new Error('FFmpeg 自动下载目前仅支持 Windows x64 和 Linux x64 平台。');
+        throw new Error('FFmpeg auto-download is currently only supported for Windows x64 and Linux x64 platforms.');
     }
 
     // 根据系统分配对应的可执行文件名、压缩包名和下载链接
@@ -191,14 +191,14 @@ export async function downloadFfmpeg(binDir) {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('download-started', { file: 'FFmpeg' });
     }
-    console.log(`[FFmpeg Downloader] 正在从以下地址下载: ${downloadUrl}`);
+    console.log(`[FFmpeg Downloader] Downloading from: ${downloadUrl}`);
 
     try {
         await downloadFileWithProgress(downloadUrl, archivePath, 'FFmpeg');
 
-        console.log('[FFmpeg Downloader] 下载完成，正在解压...');
+        console.log('[FFmpeg Downloader] Download complete, extracting...');
         if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('download-progress', { file: 'FFmpeg', progress: -1, status: '正在解压...' });
+            mainWindow.webContents.send('download-progress', { file: 'FFmpeg', progress: -1, status: 'Extracting...' });
         }
 
         if (isWin) {
@@ -209,7 +209,7 @@ export async function downloadFfmpeg(binDir) {
             );
 
             if (!ffmpegEntry) {
-                throw new Error('在下载的压缩包中未找到 ffmpeg.exe。');
+                throw new Error('ffmpeg.exe not found in downloaded archive.');
             }
 
             fs.writeFileSync(binaryPath, ffmpegEntry.getData());
@@ -242,7 +242,7 @@ export async function downloadFfmpeg(binDir) {
             findFfmpeg(tempExtractDir);
 
             if (!foundFfmpegPath) {
-                throw new Error('在下载的压缩包中未找到 ffmpeg 可执行文件。');
+                throw new Error('ffmpeg executable not found in downloaded archive.');
             }
 
             // 复制出二进制文件，并赋予系统执行权限
@@ -254,7 +254,7 @@ export async function downloadFfmpeg(binDir) {
             fs.unlinkSync(archivePath);
         }
 
-        console.log(`[FFmpeg Downloader] 解压成功，ffmpeg 已保存至: ${binaryPath}`);
+        console.log(`[FFmpeg Downloader] Extraction successful, ffmpeg saved to: ${binaryPath}`);
 
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('download-finished', { success: true, tool: 'ffmpeg', path: binaryPath });
@@ -284,13 +284,13 @@ export function checkBinaryExists(toolName, binDir) {
 
 export async function initializeApp(app, mainWin) {
     mainWindow = mainWin;
-    console.log('[Setup] Electron App 实例已就绪，开始初始化...');
+    console.log('[Setup] Electron App instance ready, initializing...');
     const userDataPath = app.getPath('userData');
     const binDir = path.join(userDataPath, 'bin');
     if (!fs.existsSync(binDir)) fs.mkdirSync(binDir, { recursive: true });
 
-    console.log(`[Setup] UserData 路径: ${userDataPath}`);
-    console.log(`[Setup] 二进制工具目录: ${binDir}`);
+    console.log(`[Setup] UserData Path: ${userDataPath}`);
+    console.log(`[Setup] Binary directory: ${binDir}`);
 
     let ffmpegPath = checkBinaryExists('ffmpeg', binDir);
     let ytDlpPath = checkBinaryExists('yt-dlp', binDir);
@@ -300,9 +300,9 @@ export async function initializeApp(app, mainWin) {
     if (!ytDlpPath) missingTools.push('yt-dlp');
 
     if (missingTools.length > 0) {
-        console.warn(`[Setup] 缺少可选核心组件: ${missingTools.join(', ')}。应用将继续启动，相关功能将在使用时按需下载。`);
+        console.warn(`[Setup] Missing optional components: ${missingTools.join(', ')}. App will continue, missing tools will be downloaded on demand.`);
     } else {
-        console.log('[Setup] 所有核心组件已就绪。');
+        console.log('[Setup] All core components ready.');
     }
 
     const userConfigPath = path.join(userDataPath, 'user-config.json');
@@ -315,7 +315,7 @@ export async function initializeApp(app, mainWin) {
             }
         }
     } catch (e) {
-        console.error('[Setup] 读取 user-config.json 失败:', e);
+        console.error('[Setup] Failed to read user-config.json:', e);
     }
 
     const config = {
@@ -334,9 +334,9 @@ export async function initializeApp(app, mainWin) {
 
     const systemProxy = await detectSystemProxy();
 
-    console.log(`[Setup] - FFmpeg 路径: ${ffmpegPath || '未安装'}`);
-    console.log(`[Setup] - yt-dlp 路径: ${ytDlpPath || '未安装'}`);
-    console.log(`[Setup] - 系统代理: ${systemProxy || '无'}`);
+    console.log(`[Setup] - FFmpeg Path: ${ffmpegPath || 'Not Installed'}`);
+    console.log(`[Setup] - yt-dlp Path: ${ytDlpPath || 'Not Installed'}`);
+    console.log(`[Setup] - System Proxy: ${systemProxy || 'None'}`);
 
     return {
         config,

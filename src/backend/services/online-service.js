@@ -33,7 +33,7 @@ export class OnlineService {
         this.#sendMessageCallback = sendMessageFunc;
         this.#libraryService = libraryService;
         this.#musicApiService = musicApiService;
-        console.log(`[Online Service] 服务已实例化，并已连接到 MusicApiService。`);
+        console.log(`[Online Service] Service instantiated and connected to MusicApiService.`);
     }
 
     #sanitizeFilename(filename) {
@@ -109,7 +109,7 @@ export class OnlineService {
     async handleCacheRequest(trackData) {
         const title = trackData.title || 'Unknown';
         const artist = Array.isArray(trackData.artist) ? trackData.artist.join(' & ') : (trackData.artist || 'Unknown');
-        const safeFilename = this.#sanitizeFilename(`${artist} - ${title}`);
+        const uniqueFilenameBase = await this.#libraryService.getNextOrdinal();
 
         // 生成唯一任务ID
         const taskId = trackData.id;
@@ -142,20 +142,20 @@ export class OnlineService {
             const downloadPromises = [];
 
             // 音频文件 (传递 signal)
-            downloadPromises.push(downloadFile(audioUrl, this.#config.MUSIC_DIR, `${safeFilename}.mp3`, {}, () => {}, 3, signal));
+            downloadPromises.push(downloadFile(audioUrl, this.#config.MUSIC_DIR, `${uniqueFilenameBase}.mp3`, {}, () => {}, 3, signal));
 
             // 封面图
             let finalAlbumArtPath = "";
             const picUrl = await this.#musicApiService.getPicUrl(trackData);
             if (picUrl) {
-                finalAlbumArtPath = `albumArt/${safeFilename}.jpg`;
-                downloadPromises.push(downloadFile(picUrl, this.#config.ALBUMART_DIR, `${safeFilename}.jpg`, {}, () => {}, 3, signal));
+                finalAlbumArtPath = `albumArt/${uniqueFilenameBase}.jpg`;
+                downloadPromises.push(downloadFile(picUrl, this.#config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`, {}, () => {}, 3, signal));
             } else {
-                finalAlbumArtPath = this.#libraryService.generateAndSavePlaceholderArt(title, safeFilename);
+                finalAlbumArtPath = this.#libraryService.generateAndSavePlaceholderArt(title, uniqueFilenameBase);
             }
 
             // 歌词
-            const lyricsPath = path.join(this.#config.MUSIC_DIR, `${safeFilename}.lrc`);
+            const lyricsPath = path.join(this.#config.MUSIC_DIR, `${uniqueFilenameBase}.lrc`);
             const lyricContent = await this.#musicApiService.getLyric(trackData);
             if (lyricContent) {
                 // 写入文件是瞬时操作，但仍检查 signal
@@ -172,9 +172,9 @@ export class OnlineService {
             // --- 4. 更新媒体库 ---
             const newTrack = {
                 title, artist,
-                src: `music/${safeFilename}.mp3`,
+                src: `music/${uniqueFilenameBase}.mp3`,
                 albumArt: finalAlbumArtPath,
-                lyrics: fs.existsSync(lyricsPath) ? `music/${safeFilename}.lrc` : "",
+                lyrics: fs.existsSync(lyricsPath) ? `music/${uniqueFilenameBase}.lrc` : "",
                 type: "audio",
                 pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
                 initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, ''),
@@ -192,7 +192,7 @@ export class OnlineService {
             if (signal.aborted || error.message === 'aborted' || error.message === 'Download aborted by user') {
                 console.log(`[Online] 缓存任务 ${title} 已被用户取消。`);
                 // 清理可能残留的半成品文件
-                const mp3Path = path.join(this.#config.MUSIC_DIR, `${safeFilename}.mp3`);
+                const mp3Path = path.join(this.#config.MUSIC_DIR, `${uniqueFilenameBase}.mp3`);
                 if (fs.existsSync(mp3Path)) fs.unlink(mp3Path, () => {});
 
                 // 通知前端任务结束（可能需要刷新UI状态）

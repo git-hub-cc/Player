@@ -30,28 +30,28 @@ export class JableProvider extends BaseProvider {
         if (!this._checkTools(['ffmpeg'])) return;
         try {
             this._checkCancelled(signal);
-            this.sendMessage('download-status', { message: '正在解析 Jable 视频信息...', type: 'default' });
+            this.sendMessage('download-status', { message: 'Parsing Jable video information...', type: 'default' });
 
             const info = await this._getVideoInfo(videoUrl, signal);
+            this.sendMessage('download-status', { message: `Parsed: ${info.title}`, type: 'default' });
             this._checkCancelled(signal);
-            if (!info.m3u8Url) throw new Error('未找到 m3u8 播放地址');
+            if (!info.m3u8Url) throw new Error('m3u8 playback URL not found');
 
-            // 【核心修改】使用时间戳生成唯一文件名，而不是清理后的标题
-            const uniqueFilenameBase = `media_jable_${Date.now()}`;
+            const uniqueFilenameBase = await this.libraryService.getNextOrdinal();
 
             if (info.coverUrl) {
                 // 封面也使用唯一文件名
                 await downloadFile(info.coverUrl, this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`, {}, () => {}, 3, signal);
             }
 
-            this.sendMessage('download-status', { message: '开始下载并解密视频分片...', type: 'default' });
+            this.sendMessage('download-status', { message: 'Starting to download and decrypt video segments...', type: 'default' });
 
             await this._downloadAndProcessM3u8(
                 info.m3u8Url,
                 this.config.VIDEOS_DIR,
                 `${uniqueFilenameBase}.mp4`, // 传递唯一文件名
                 (progress) => this.sendMessage('download-status', {
-                    message: `下载进度: ${(progress * 100).toFixed(1)}%`,
+                    message: `Download progress: ${(progress * 100).toFixed(1)}%`,
                     progress: progress,
                     type: 'progress'
                 }),
@@ -69,17 +69,17 @@ export class JableProvider extends BaseProvider {
                 type: "video"
             });
 
-            this.sendMessage('download-status', { message: `"${info.title}" 下载成功！`, type: 'success' });
+            this.sendMessage('download-status', { message: `"${info.title}" download successful!`, type: 'success' });
 
         } catch (error) {
             if (signal && signal.aborted) throw error;
             console.error('[Jable Provider] Error:', error);
-            throw new Error(`Jable 下载失败: ${error.message}`);
+            throw new Error(`Jable download failed: ${error.message}`);
         }
     }
 
     async _getVideoInfo(videoUrl, signal) {
-        console.log(`[Jable Provider] 正在获取视频信息: ${videoUrl}`);
+        console.log(`[Jable Provider] Fetching video info: ${videoUrl}`);
         const partition = `persist:jable_session_${Date.now()}`;
         const win = new BrowserWindow({
             show: false,
@@ -116,7 +116,7 @@ export class JableProvider extends BaseProvider {
                 });
             });
 
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('获取 m3u8 超时 (30秒)')), 30000));
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Fetching m3u8 timeout (30s)')), 30000));
             await win.loadURL(videoUrl);
             await win.webContents.executeJavaScript('document.readyState === "complete"');
 
@@ -157,9 +157,8 @@ export class JableProvider extends BaseProvider {
             const parser = new m3u8Parser.Parser();
             parser.push(m3u8Response.data);
             parser.end();
-
             const segments = parser.manifest.segments;
-            if (!segments || segments.length === 0) throw new Error('m3u8 解析失败: 未找到视频分片');
+            if (!segments || segments.length === 0) throw new Error('m3u8 parsing failed: No video segments found');
 
             const { key, iv } = await this._getDecryptionKey(segments[0], m3u8Url, requestHeaders, signal);
 
@@ -184,11 +183,11 @@ export class JableProvider extends BaseProvider {
             await Promise.all(tasks);
 
             this._checkCancelled(signal);
-            console.log(`[Jable Provider] 下载完成，正在进行二进制合并...`);
+            console.log(`[Jable Provider] Download complete, performing binary merge...`);
             const combinedTsPath = path.join(outputDir, `combined_${Date.now()}.ts`);
             await this._mergeFiles(tempDir, segmentFileNames.sort(), combinedTsPath);
 
-            console.log(`[Jable Provider] 合并完成，正在转封装为 MP4...`);
+            console.log(`[Jable Provider] Merge complete, remuxing to MP4...`);
             const finalMp4Path = path.join(outputDir, filename);
             await this._remuxToMp4(combinedTsPath, finalMp4Path);
 
@@ -266,7 +265,7 @@ export class JableProvider extends BaseProvider {
         const command = `"${this.ffmpegPath}" -y -i "${inputTs}" -c copy -bsf:a aac_adtstoasc -movflags +faststart "${outputMp4}"`;
         return new Promise((resolve, reject) => {
             exec(command, (error, stdout, stderr) => {
-                if (error) reject(new Error(`转封装失败: ${error.message}`));
+                if (error) reject(new Error(`Remuxing failed: ${error.message}`));
                 else resolve();
             });
         });

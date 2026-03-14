@@ -19,7 +19,7 @@ export class BaseProvider {
      */
     constructor(dependencies) {
         if (this.constructor === BaseProvider) {
-            throw new Error("抽象基类 'BaseProvider' 不能被直接实例化。");
+            throw new Error("Abstract base class 'BaseProvider' cannot be instantiated directly.");
         }
         this.config = dependencies.config;
         this.sendMessage = dependencies.sendMessageFunc;
@@ -38,7 +38,7 @@ export class BaseProvider {
      * @returns {boolean} - 如果能处理则返回 true，否则返回 false。
      */
     isApplicable(url) {
-        throw new Error(`Provider '${this.constructor.name}' 必须实现 'isApplicable' 方法。`);
+        throw new Error(`Provider '${this.constructor.name}' must implement 'isApplicable' method.`);
     }
 
     /**
@@ -49,7 +49,7 @@ export class BaseProvider {
      * @returns {Promise<void>}
      */
     async execute(url, signal) {
-        throw new Error(`Provider '${this.constructor.name}' 必须实现 'execute' 方法。`);
+        throw new Error(`Provider '${this.constructor.name}' must implement 'execute' method.`);
     }
 
     /**
@@ -88,7 +88,7 @@ export class BaseProvider {
 
         if (missing.length > 0) {
             this.sendMessage('download-status', {
-                message: `缺少核心组件: ${missing.join(', ')}，无法继续操作。`,
+                message: `Missing core components: ${missing.join(', ')}. Cannot continue.`,
                 type: 'error',
                 reason: 'tool_missing',
                 missing: missing[0]
