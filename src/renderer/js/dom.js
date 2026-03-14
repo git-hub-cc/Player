@@ -50,6 +50,7 @@ export let playlistSearchInput = document.getElementById('playlist-search');
 export let playlistNoResultsEl = document.getElementById('playlist-no-results');
 export let locateCurrentMediaBtn = document.getElementById('locate-current-media-btn');
 export let openMediaFolderBtn = document.getElementById('open-media-folder-btn');
+export let cleanupMediaBtn = document.getElementById('cleanup-media-btn');
 export let changeMediaFolderBtn = document.getElementById('change-media-folder-btn');
 // =========================================================================
 // 【核心新增】过滤模式按钮 DOM 引用
@@ -82,6 +83,7 @@ export let searchResultsContainer = document.getElementById('search-results-cont
 export let searchResultsList = document.getElementById('search-results-list');
 export let paginationControls = document.getElementById('pagination-controls');
 export let importLocalBtn = document.getElementById('import-local-btn');
+export let copyToLibraryCheckbox = document.getElementById('copy-to-library-checkbox');
 
 // --- 系统设置面板 ---
 export let settingsPanel = document.getElementById('settings-panel');

@@ -137,11 +137,12 @@ function registerIpcHandlers() {
     ipcMain.handle('get-local-playlist', () => libraryService.getLocalPlaylist());
     ipcMain.handle('delete-track', (_, trackData) => libraryService.handleDeleteTrack(trackData));
     ipcMain.handle('select-import-directory', () => libraryService.handleSelectDirectory());
-    ipcMain.handle('start-local-import', (_, dirPath) => libraryService.handleLocalImport(dirPath, sendMessage));
-    ipcMain.on('open-media-folder', (_, type) => libraryService.handleOpenMediaFolder(type));
+    ipcMain.handle('start-local-import', (_, dirPath, shouldCopy) => libraryService.handleLocalImport(dirPath, sendMessage, shouldCopy));
+    ipcMain.on('open-media-folder', (_, type, trackSrc) => libraryService.handleOpenMediaFolder(type, trackSrc));
     ipcMain.handle('separate-video', (_, trackData) => libraryService.handleSeparateVideo(trackData));
-    ipcMain.handle('handle-file-drop', (_, files) => libraryService.handleDroppedFiles(files, sendMessage));
+    ipcMain.handle('handle-file-drop', (_, files, shouldCopy) => libraryService.handleDroppedFiles(files, sendMessage, shouldCopy));
     ipcMain.handle('change-media-directory', () => libraryService.handleChangeMediaDirectory());
+    ipcMain.handle('cleanup-missing-tracks', () => libraryService.cleanupMissingTracks());
 
     // --- 2. 在线搜索与解析服务 ---
     ipcMain.handle('search-online', (_, { query, page }) => onlineService.handleSearchRequest({ query, page }));
@@ -261,8 +262,13 @@ app.whenReady().then(async () => {
     const config = diContainer.get('config');
     // 注册 'media://' 协议，用于安全地加载本地资源
     protocol.registerFileProtocol('media', (request, callback) => {
-        const url = request.url.substring('media://'.length);
-        const filePath = path.join(config.MEDIA_ROOT, decodeURIComponent(url));
+        const url = decodeURIComponent(request.url.substring('media://'.length));
+        let filePath;
+        if (path.isAbsolute(url) || /^[a-zA-Z]:/.test(url)) {
+            filePath = url;
+        } else {
+            filePath = path.join(config.MEDIA_ROOT, url);
+        }
         callback({ path: path.normalize(filePath) });
     });
 

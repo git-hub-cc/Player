@@ -11,9 +11,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getVipMusicUrl: (trackInfo) => ipcRenderer.invoke('get-vip-music-url', trackInfo),
     getLrcContent: (relativePath) => ipcRenderer.invoke('get-lrc-content', relativePath),
     selectImportDirectory: () => ipcRenderer.invoke('select-import-directory'),
-    startLocalImport: (dirPath) => ipcRenderer.invoke('start-local-import', dirPath),
+    startLocalImport: (dirPath, shouldCopy) => ipcRenderer.invoke('start-local-import', dirPath, shouldCopy),
     separateVideo: (trackData) => ipcRenderer.invoke('separate-video', trackData),
     getOnlineLyric: (trackInfo) => ipcRenderer.invoke('get-online-lyric', trackInfo),
+    cleanupMissingTracks: () => ipcRenderer.invoke('cleanup-missing-tracks'),
 
     // --- 核心工具 ---
     downloadCoreTool: (toolName) => ipcRenderer.invoke('download-core-tool', toolName),
@@ -21,7 +22,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     checkCoreTools: () => ipcRenderer.invoke('check-core-tools'),
 
     // --- 文件拖拽接口 ---
-    handleFileDrop: (files) => {
+    handleFileDrop: (files, shouldCopy) => {
         if (!Array.isArray(files)) return Promise.resolve({ success: false, error: 'Preload Error: Invalid file list.' });
         try {
             const fileListPayload = files.map(file => ({
@@ -31,7 +32,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
                 size: file.size
             })).filter(f => f.path);
             if (fileListPayload.length === 0) return Promise.resolve({ success: false, error: 'No valid file paths found.' });
-            return ipcRenderer.invoke('handle-file-drop', fileListPayload);
+            return ipcRenderer.invoke('handle-file-drop', fileListPayload, shouldCopy);
         } catch (e) {
             return Promise.resolve({ success: false, error: `Preload Error: ${e.message}` });
         }
@@ -41,7 +42,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     startDownload: (requestData) => ipcRenderer.send('download-douyin', requestData),
     cacheTrack: (trackData) => ipcRenderer.send('cache-track', trackData),
     toggleFullscreen: (state) => ipcRenderer.send('toggle-fullscreen', state),
-    openMediaFolder: (type) => ipcRenderer.send('open-media-folder', type),
+    openMediaFolder: (type, trackSrc) => ipcRenderer.send('open-media-folder', type, trackSrc),
     changeMediaDirectory: () => ipcRenderer.invoke('change-media-directory'),
 
     // =========================================================================

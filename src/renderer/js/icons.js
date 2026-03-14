@@ -56,6 +56,8 @@ export const ICON_FILTER_AUDIO = '<svg viewBox="0 0 24 24"><path d="M12 3v9.28c-
 export const ICON_FILTER_VIDEO = '<svg viewBox="0 0 24 24"><path d="M18 3v2h-2V3H8v2H6V3H4v18h2v-2h2v2h8v-2h2v2h2V3h-2zM8 17H6v-2h2v2zm0-4H6v-2h2v2zm0-4H6V7h2v2zm10 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V7h2v2z"></path></svg>';
 
 // =========================================================================
+export const ICON_CLEANUP = '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm4-9h-8v2h8v-2z"></path></svg>';
+// =========================================================================
 // 【核心新增】停止/取消图标
 // =========================================================================
 export const ICON_STOP = '<svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"></path></svg>';

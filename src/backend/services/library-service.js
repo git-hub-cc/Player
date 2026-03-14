@@ -7,7 +7,7 @@ import { pinyin } from 'pinyin-pro';
 import { createRequire } from 'node:module';
 import { exec } from 'child_process';
 
-const require = createRequire(import.meta.url);
+const require = createRequire(import.meta.url || (typeof __filename !== 'undefined' ? __filename : process.cwd()));
 let createCanvas;
 try {
     const canvasModule = require('canvas');
@@ -269,8 +269,8 @@ export class LibraryService {
         } catch (error) { return { success: false, error: error.message }; }
     }
 
-    async handleDroppedFiles(files, sendMessage) {
-        console.log('🔍 [Library Service] 开始处理拖拽文件...'); if (!files || files.length === 0) return { success: false, error: '未接收到文件。' };
+    async handleDroppedFiles(files, sendMessage, shouldCopy = true) {
+        console.log('🔍 [Library Service] 开始处理拖拽文件...', { shouldCopy }); if (!files || files.length === 0) return { success: false, error: '未接收到文件。' };
         const audioExt = ['.mp3', '.flac', '.wav', '.m4a', '.ogg', '.opus']; const videoExt = ['.mp4', '.mkv', '.webm', '.mov', '.avi'];
         let importedCount = 0; const newPlaylistTracks = [];
         const validFiles = files.filter(file => { if (!file?.path) return false; const ext = path.extname(file.path).toLowerCase(); return audioExt.includes(ext) || videoExt.includes(ext); });
@@ -282,9 +282,21 @@ export class LibraryService {
                 const uniqueFilenameBase = await this.getNextOrdinal();
                 const isVideo = videoExt.includes(ext);
                 const targetDir = isVideo ? this.#config.VIDEOS_DIR : this.#config.MUSIC_DIR; const relativeDirName = isVideo ? 'videos' : 'music';
-                const newMediaPath = path.join(targetDir, `${uniqueFilenameBase}${ext}`); await fs.promises.copyFile(originalPath, newMediaPath);
+                
+                let finalSrc;
+                let mediaPathForArt = originalPath;
+
+                if (shouldCopy) {
+                    const newMediaPath = path.join(targetDir, `${uniqueFilenameBase}${ext}`);
+                    await fs.promises.copyFile(originalPath, newMediaPath);
+                    finalSrc = `${relativeDirName}/${path.basename(newMediaPath)}`;
+                    mediaPathForArt = newMediaPath;
+                } else {
+                    finalSrc = originalPath.replace(/\\/g, '/');
+                }
+
                 const newTrack = {
-                    title, artist: '拖拽导入', src: `${relativeDirName}/${path.basename(newMediaPath)}`, albumArt: '', lyrics: '',
+                    title, artist: '拖拽导入', src: finalSrc, albumArt: '', lyrics: '',
                     type: isVideo ? 'video' : 'audio',
                     pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
                     initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '')
@@ -315,7 +327,7 @@ export class LibraryService {
         }
     }
 
-    async handleLocalImport(directoryPath, sendMessage) {
+    async handleLocalImport(directoryPath, sendMessage, shouldCopy = true) {
         if (!directoryPath) { return { success: false, error: '未提供目录。' }; } sendMessage('import-status', { message: '开始扫描目录...', type: 'default' });
         try {
             const fileGroups = await this.#scanDirectoryRecursive(directoryPath); const mediaTracks = Array.from(fileGroups.values()).filter(group => group.media);
@@ -328,28 +340,43 @@ export class LibraryService {
                     const uniqueFilenameBase = await this.getNextOrdinal();
                     const isVideo = mediaType === 'video';
                     const targetDir = isVideo ? this.#config.VIDEOS_DIR : this.#config.MUSIC_DIR;
-                    const newMediaPath = path.join(targetDir, `${uniqueFilenameBase}${ext}`);
-                    await fs.promises.copyFile(media, newMediaPath);
+                    
+                    let finalSrc;
+                    if (shouldCopy) {
+                        const newMediaPath = path.join(targetDir, `${uniqueFilenameBase}${ext}`);
+                        await fs.promises.copyFile(media, newMediaPath);
+                        finalSrc = path.relative(this.#config.MEDIA_ROOT, newMediaPath).replace(/\\/g, '/');
+                    } else {
+                        finalSrc = media.replace(/\\/g, '/');
+                    }
 
                     const newTrack = {
                         title, artist: '本地导入', type: mediaType,
-                        src: path.relative(this.#config.MEDIA_ROOT, newMediaPath).replace(/\\/g, '/'),
+                        src: finalSrc,
                         pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
                         initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '')
                     };
 
                     if (lrc) {
-                        const newLrcPath = path.join(targetDir, `${uniqueFilenameBase}.lrc`);
-                        await fs.promises.copyFile(lrc, newLrcPath);
-                        newTrack.lyrics = path.relative(this.#config.MEDIA_ROOT, newLrcPath).replace(/\\/g, '/');
+                        if (shouldCopy) {
+                            const newLrcPath = path.join(targetDir, `${uniqueFilenameBase}.lrc`);
+                            await fs.promises.copyFile(lrc, newLrcPath);
+                            newTrack.lyrics = path.relative(this.#config.MEDIA_ROOT, newLrcPath).replace(/\\/g, '/');
+                        } else {
+                            newTrack.lyrics = lrc.replace(/\\/g, '/');
+                        }
                     } else { newTrack.lyrics = ''; }
 
                     if (art) {
-                        const newArtPath = path.join(this.#config.ALBUMART_DIR, `${uniqueFilenameBase}${path.extname(art)}`);
-                        await fs.promises.copyFile(art, newArtPath);
-                        newTrack.albumArt = path.relative(this.#config.MEDIA_ROOT, newArtPath).replace(/\\/g, '/');
+                        if (shouldCopy) {
+                            const newArtPath = path.join(this.#config.ALBUMART_DIR, `${uniqueFilenameBase}${path.extname(art)}`);
+                            await fs.promises.copyFile(art, newArtPath);
+                            newTrack.albumArt = path.relative(this.#config.MEDIA_ROOT, newArtPath).replace(/\\/g, '/');
+                        } else {
+                            newTrack.albumArt = art.replace(/\\/g, '/');
+                        }
                     } else if (isVideo) {
-                        const thumbName = await this.#generateVideoThumbnail(newMediaPath, this.#config.ALBUMART_DIR, uniqueFilenameBase);
+                        const thumbName = await this.#generateVideoThumbnail(shouldCopy ? path.join(this.#config.MEDIA_ROOT, finalSrc) : finalSrc, this.#config.ALBUMART_DIR, uniqueFilenameBase);
                         newTrack.albumArt = thumbName ? `albumArt/${thumbName}` : '';
                     } else {
                         newTrack.albumArt = this.generateAndSavePlaceholderArt(title, uniqueFilenameBase);
@@ -377,28 +404,108 @@ export class LibraryService {
         } catch (error) { return { success: false, error: error.message }; }
     }
 
+    /**
+     * 清理播放列表中不存在的本地文件
+     */
+    async cleanupMissingTracks() {
+        try {
+            if (!fs.existsSync(this.#config.PLAYLIST_PATH)) return { success: true, removedCount: 0 };
+            
+            const playlist = JSON.parse(fs.readFileSync(this.#config.PLAYLIST_PATH, 'utf-8'));
+            const initialCount = playlist.length;
+            
+            const validTracks = [];
+            let removedCount = 0;
+
+            for (const track of playlist) {
+                if (track.src) {
+                    // 如果是 media:// 协议或相对路径，解析到 MEDIA_ROOT
+                    // 如果已经是绝对路径，则直接检查
+                    let fullPath;
+                    if (path.isAbsolute(track.src) || /^[a-zA-Z]:/.test(track.src)) {
+                        fullPath = track.src;
+                    } else {
+                        const relativePath = track.src.startsWith('media://') 
+                            ? track.src.substring('media://'.length) 
+                            : track.src;
+                        fullPath = path.join(this.#config.MEDIA_ROOT, decodeURIComponent(relativePath));
+                    }
+
+                    if (fs.existsSync(fullPath)) {
+                        validTracks.push(track);
+                    } else {
+                        console.log(`[Library] Removing missing track: ${track.title} (${track.src})`);
+                        removedCount++;
+                    }
+                } else {
+                    validTracks.push(track); // 保留没有 src 的（虽然理论上不会有）
+                }
+            }
+
+            if (removedCount > 0) {
+                fs.writeFileSync(this.#config.PLAYLIST_PATH, JSON.stringify(validTracks, null, 2), 'utf-8');
+            }
+
+            return { success: true, removedCount, totalRemaining: validTracks.length };
+        } catch (e) {
+            console.error('[Library] Cleanup failed:', e);
+            return { success: false, error: e.message };
+        }
+    }
+
     async handleSelectDirectory() {
         const mainWindow = BrowserWindow.getAllWindows()[0];
         if (!mainWindow) return { canceled: true, filePaths: [] };
         return dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });
     }
 
-    handleOpenMediaFolder(type) {
-        let targetPath = this.#config.MEDIA_ROOT;
+    /**
+     * 打开媒体目录，如果提供了 currentTrackSrc 则尝试选中该文件。
+     * @param {string} type - 'audio', 'video' 或 'all'
+     * @param {string|null} currentTrackSrc - 当前播放轨道的相对路径 (media:// 后面的部分)
+     */
+    handleOpenMediaFolder(type, currentTrackSrc = null) {
+        let targetPath = null;
 
+        // 尝试解析当前文件的绝对路径以进行选中
+        if (currentTrackSrc) {
+            try {
+                // 处理可能带有 media:// 前缀的情况
+                let relativePath = currentTrackSrc.startsWith('media://') 
+                    ? currentTrackSrc.substring('media://'.length) 
+                    : currentTrackSrc;
+                
+                const fullPath = path.normalize(path.join(this.#config.MEDIA_ROOT, decodeURIComponent(relativePath)));
+                
+                if (fs.existsSync(fullPath)) {
+                    console.log(`[Library] Showing item in folder: ${fullPath}`);
+                    shell.showItemInFolder(fullPath);
+                    return;
+                }
+                console.warn(`[Library] Current track file does not exist: ${fullPath}`);
+            } catch (e) {
+                console.error(`[Library] Failed to resolve current track path:`, e.message);
+            }
+        }
+
+        // 回退逻辑：打开相应的子目录
         if (type === 'audio') {
             targetPath = this.#config.MUSIC_DIR;
         } else if (type === 'video') {
             targetPath = this.#config.VIDEOS_DIR;
+        } else {
+            // 如果是 'all' 或其他未知类型，默认打开音乐目录，避免打开媒体根目录
+            targetPath = this.#config.MUSIC_DIR;
         }
 
         if (targetPath && fs.existsSync(targetPath)) {
+            console.log(`[Library] Opening folder: ${targetPath}`);
             shell.openPath(targetPath);
         } else {
-            console.warn(`[Library] 目录不存在: ${targetPath}`);
-            // 如果子目录不存在，回退到媒体根目录
-            if (this.#config.MEDIA_ROOT && fs.existsSync(this.#config.MEDIA_ROOT)) {
-                shell.openPath(this.#config.MEDIA_ROOT);
+            console.warn(`[Library] Directory does not exist: ${targetPath}`);
+            // 如果连音乐目录都不存在，尝试打开视频目录，作为最后的兜底
+            if (type !== 'video' && fs.existsSync(this.#config.VIDEOS_DIR)) {
+                 shell.openPath(this.#config.VIDEOS_DIR);
             }
         }
     }

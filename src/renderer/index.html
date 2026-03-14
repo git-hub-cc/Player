@@ -101,6 +101,9 @@
                         <button id="locate-current-media-btn" class="control-btn" title="定位当前播放">
                             <span class="icon-placeholder" data-icon="LOCATE"></span>
                         </button>
+                        <button id="cleanup-media-btn" class="control-btn" title="清理无效链接">
+                            <span class="icon-placeholder" data-icon="CLEANUP"></span>
+                        </button>
                         <button id="change-media-folder-btn" class="control-btn" title="修改媒体库目录">
                             <span class="icon-placeholder" data-icon="EDIT_FOLDER"></span>
                         </button>
@@ -192,8 +195,13 @@
                                 </button>
                                 <button id="search-online-btn" class="action-btn">
                                     <span class="btn-text">搜索</span>
-                                    <span class="btn-loader"></span>
                                 </button>
+                            </div>
+                            <div class="import-options">
+                                <label class="checkbox-container">
+                                    <input type="checkbox" id="copy-to-library-checkbox" checked>
+                                    <span class="checkbox-label">复制文件到媒体库 (推荐)</span>
+                                </label>
                             </div>
                             <div id="download-status" class="download-status"></div>
                             <div class="download-progress-container">

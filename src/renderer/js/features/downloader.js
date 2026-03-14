@@ -207,7 +207,8 @@ async function handleLocalImportClick() {
             updateStatus('已取消导入操作。');
         } else {
             updateStatus('已选择目录，开始导入...');
-            await window.electronAPI.startLocalImport(result.filePaths[0]);
+            const shouldCopy = dom.copyToLibraryCheckbox ? dom.copyToLibraryCheckbox.checked : true;
+            await window.electronAPI.startLocalImport(result.filePaths[0], shouldCopy);
         }
     } catch (error) {
         ui.showToast(`导入出错: ${error.message}`, 'error');

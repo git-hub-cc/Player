@@ -233,7 +233,11 @@ export class GenericYtDlpProvider extends BaseProvider {
 
             const args = [
                 '--force-ipv4',
-                '--socket-timeout', '60',
+                '--socket-timeout', '5',
+                '--concurrent-fragments', '10',
+                '--fragment-retries', '999',
+                '--retry-sleep', 'fragment:1',
+                '--file-access-retries', '5',
                 '--no-playlist',
                 // 格式选择策略：优先 MP4 视频+M4A 音频，或者是最佳 MP4，或者任意最佳格式
                 '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',

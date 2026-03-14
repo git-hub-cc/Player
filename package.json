@@ -1,7 +1,7 @@
 {
   "name": "git-hub-cc-player",
   "productName": "git-hub-cc-Player",
-  "version": "2.8.0",
+  "version": "2.10.0",
   "description": "A powerful local and online media player.",
   "main": ".vite/build/main-api.js",
   "scripts": {
@@ -11,7 +11,8 @@
     "proxy_make": "cross-env HTTP_PROXY=http://127.0.0.1:7890 HTTPS_PROXY=http://127.0.0.1:7890 electron-forge make",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "echo \"No linting configured\""
+    "lint": "echo \"No linting configured\"",
+    "update": "npx npm-check-updates -u"
   },
   "keywords": [
     "media",
@@ -27,30 +28,30 @@
   "license": "MIT",
   "dependencies": {
     "adm-zip": "^0.5.16",
-    "axios": "^1.13.2",
-    "canvas": "^3.2.0",
+    "axios": "^1.13.6",
+    "canvas": "^3.2.1",
     "electron-squirrel-startup": "^1.0.1",
     "m3u8-parser": "^7.2.0",
-    "p-limit": "^7.2.0",
+    "p-limit": "^7.3.0",
     "path-browserify": "^1.0.1",
-    "pinyin-pro": "^3.27.0",
+    "pinyin-pro": "^3.28.0",
     "winreg": "^1.2.5",
     "yt-dlp-wrap-plus": "^2.4.3"
   },
   "devDependencies": {
-    "@electron-forge/cli": "^7.10.2",
-    "@electron-forge/maker-deb": "^7.10.2",
-    "@electron-forge/maker-dmg": "^7.10.2",
-    "@electron-forge/maker-rpm": "^7.10.2",
+    "@electron-forge/cli": "^7.11.1",
+    "@electron-forge/maker-deb": "^7.11.1",
+    "@electron-forge/maker-dmg": "^7.11.1",
+    "@electron-forge/maker-rpm": "^7.11.1",
     "@electron-forge/maker-snap": "^7.11.1",
-    "@electron-forge/maker-squirrel": "^7.10.2",
-    "@electron-forge/maker-zip": "^7.10.2",
-    "@electron-forge/plugin-auto-unpack-natives": "^7.10.2",
-    "@electron-forge/plugin-fuses": "^7.10.2",
-    "@electron-forge/plugin-vite": "^7.10.2",
+    "@electron-forge/maker-squirrel": "^7.11.1",
+    "@electron-forge/maker-zip": "^7.11.1",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",
+    "@electron-forge/plugin-fuses": "^7.11.1",
+    "@electron-forge/plugin-vite": "^7.11.1",
     "@electron/fuses": "^1.8.0",
     "cross-env": "^10.1.0",
-    "electron": "39.2.7",
-    "vite": "^7.3.0"
+    "electron": "41.0.2",
+    "vite": "^8.0.0"
   }
 }

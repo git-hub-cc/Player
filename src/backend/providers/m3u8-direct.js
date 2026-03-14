@@ -84,7 +84,11 @@ export class M3u8DirectProvider extends BaseProvider {
             const args = [
                 '--no-playlist',
                 '--force-ipv4',
-                '--socket-timeout', '60',
+                '--socket-timeout', '5',
+                '--concurrent-fragments', '10',
+                '--fragment-retries', '999',
+                '--retry-sleep', 'fragment:1',
+                '--file-access-retries', '5',
                 '-f', 'best',
                 '--ffmpeg-location', ffmpegDir,
                 '--merge-output-format', 'mp4',

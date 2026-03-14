@@ -58,6 +58,26 @@
 .panel-header-actions {
     display: flex;
     align-items: center;
+    gap: 4px;
+}
+
+.control-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.control-btn svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
 }
 
 /* 媒体库过滤模式按钮容器 */
@@ -373,6 +393,58 @@
 
 /* “添加资源”面板 */
 .download-panel-content { padding: 0 20px; display: flex; flex-direction: column; gap: 16px; flex-grow: 1; overflow: hidden; }
+
+.import-options {
+    padding: 2px 0;
+    display: flex;
+    align-items: center;
+}
+
+.checkbox-container {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    user-select: none;
+}
+
+.checkbox-container input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border: 1px solid var(--slider-track-color);
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.checkbox-container input[type="checkbox"]:checked {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.checkbox-container input[type="checkbox"]:checked::after {
+    content: "✓";
+    font-size: 13px;
+    color: #000;
+    font-weight: 800;
+}
+
+.checkbox-container:hover {
+    color: var(--text-primary);
+}
+
+.checkbox-container:hover input[type="checkbox"] {
+    border-color: var(--text-secondary);
+}
+
 .downloader-view { display: flex; flex-direction: column; gap: 16px; flex-grow: 1; overflow: hidden; }
 .downloader-input-area { display: flex; flex-direction: column; gap: 12px; flex-shrink: 0; padding-top: 8px; }
 .panel-description { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }

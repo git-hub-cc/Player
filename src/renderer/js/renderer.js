@@ -39,6 +39,7 @@ function loadIcons() {
             FILTER_AUDIO: ICONS.ICON_FILTER_AUDIO,
             FILTER_VIDEO: ICONS.ICON_FILTER_VIDEO,
             LOCATE: ICONS.ICON_LOCATE,
+            CLEANUP: ICONS.ICON_CLEANUP,
             EDIT_FOLDER: ICONS.ICON_EDIT_FOLDER
         };
         document.querySelectorAll('.icon-placeholder').forEach(p => {
@@ -151,7 +152,8 @@ function setupDragAndDropListeners() {
         if (files.length > 0) {
             try {
                 ui.showToast(`已开始处理 ${files.length} 个文件...`, 'info');
-                await window.electronAPI.handleFileDrop(files);
+                const shouldCopy = dom.copyToLibraryCheckbox ? dom.copyToLibraryCheckbox.checked : true;
+                await window.electronAPI.handleFileDrop(files, shouldCopy);
             } catch (error) {
                 console.error('处理拖拽文件失败:', error);
                 ui.showToast(`文件处理失败: ${error.message}`, 'error');
@@ -366,7 +368,31 @@ function setupEventListeners() {
             ui.showToast(`发生错误: ${err.message}`, 'error');
         }
     });
-    dom.openMediaFolderBtn?.addEventListener('click', () => window.electronAPI.openMediaFolder(getters.mediaFilterMode()));
+
+    dom.cleanupMediaBtn?.addEventListener('click', async () => {
+        try {
+            await ui.showConfirmationModal('确定要清理无效链接吗？\n这将从播放列表中移除所有在磁盘上找不到的文件。');
+            ui.showToast('正在清理中...', 'info');
+            const result = await window.electronAPI.cleanupMissingTracks();
+            if (result.success) {
+                if (result.removedCount > 0) {
+                    ui.showToast(`清理完成！共移除 ${result.removedCount} 个无效项目。`, 'success');
+                    setTimeout(() => window.location.reload(), 1500);
+                } else {
+                    ui.showToast('未发现无效链接，媒体库很整洁。', 'success');
+                }
+            } else {
+                ui.showToast(`清理失败: ${result.error}`, 'error');
+            }
+        } catch (err) { /* 用户取消 */ }
+    });
+
+    dom.openMediaFolderBtn?.addEventListener('click', () => {
+        const playlist = getters.playlist();
+        const index = getters.currentTrackIndex();
+        const currentTrack = (index !== -1 && playlist[index]) ? playlist[index] : null;
+        window.electronAPI.openMediaFolder(getters.mediaFilterMode(), currentTrack?.src || null);
+    });
     dom.fullscreenBtn?.addEventListener('click', () => {
         if (!document.fullscreenElement) dom.mediaPlayer?.requestFullscreen().catch(console.error);
         else document.exitFullscreen();
