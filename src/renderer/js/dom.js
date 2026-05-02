@@ -52,9 +52,6 @@ export let locateCurrentMediaBtn = document.getElementById('locate-current-media
 export let openMediaFolderBtn = document.getElementById('open-media-folder-btn');
 export let cleanupMediaBtn = document.getElementById('cleanup-media-btn');
 export let changeMediaFolderBtn = document.getElementById('change-media-folder-btn');
-// =========================================================================
-// 【核心新增】过滤模式按钮 DOM 引用
-// =========================================================================
 export let filterModeBtns = document.querySelectorAll('.filter-mode-btn');
 
 // --- 信息面板 ---
@@ -89,10 +86,10 @@ export let copyToLibraryCheckbox = document.getElementById('copy-to-library-chec
 export let settingsPanel = document.getElementById('settings-panel');
 export let settingsBtn = document.getElementById('settings-btn');
 export let closeSettingsBtn = document.getElementById('close-settings-btn');
-export let openToolsFolderBtn = document.getElementById('open-tools-folder-btn');
 export let ffmpegToolCard = document.getElementById('ffmpeg-tool-card');
 export let ytdlpToolCard = document.getElementById('ytdlp-tool-card');
 export let downloadToolBtns = document.querySelectorAll('.download-tool-btn');
+export let openToolDirBtns = document.querySelectorAll('.open-tool-dir-btn');
 
 // --- 空状态 ---
 export let emptyStateView = document.getElementById('empty-state-view');

@@ -1,4 +1,3 @@
-// src/backend/services/setup-service.js
 import path from 'path';
 import fs from 'fs';
 import https from 'https';
@@ -7,13 +6,11 @@ import AdmZip from 'adm-zip';
 import WinReg from 'winreg';
 import { arch } from 'node:process';
 import { dialog, shell } from 'electron';
-// 【核心新增】引入 child_process 和 promisify 以支持在 Linux 上调用原生原生命令
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
-// --- 全局变量 ---
 let mainWindow;
 
 async function detectSystemProxy() {
@@ -170,7 +167,6 @@ export async function downloadYtDlp(binDir) {
 }
 
 export async function downloadFfmpeg(binDir) {
-    // 【核心修改】增加 Linux 环境平台判定
     const isWin = process.platform === 'win32';
     const isLinux = process.platform === 'linux';
 
@@ -178,7 +174,6 @@ export async function downloadFfmpeg(binDir) {
         throw new Error('FFmpeg auto-download is currently only supported for Windows x64 and Linux x64 platforms.');
     }
 
-    // 根据系统分配对应的可执行文件名、压缩包名和下载链接
     const exeName = isWin ? 'ffmpeg.exe' : 'ffmpeg';
     const archiveName = isWin ? 'ffmpeg.zip' : 'ffmpeg.tar.xz';
     const binaryPath = path.join(binDir, exeName);
@@ -202,7 +197,6 @@ export async function downloadFfmpeg(binDir) {
         }
 
         if (isWin) {
-            // --- Windows 解压逻辑 (ZIP) ---
             const zip = new AdmZip(archivePath);
             const ffmpegEntry = zip.getEntries().find(entry =>
                 entry.entryName.endsWith('ffmpeg.exe') && !entry.isDirectory
@@ -213,20 +207,16 @@ export async function downloadFfmpeg(binDir) {
             }
 
             fs.writeFileSync(binaryPath, ffmpegEntry.getData());
-            fs.unlinkSync(archivePath); // 清理 zip 包
+            fs.unlinkSync(archivePath);
 
         } else if (isLinux) {
-            // --- Linux 解压逻辑 (TAR.XZ) ---
-            // 创建安全的临时目录用于存放解压出的原始文件层级
             const tempExtractDir = path.join(binDir, `ffmpeg_temp_${Date.now()}`);
             if (!fs.existsSync(tempExtractDir)) {
                 fs.mkdirSync(tempExtractDir, { recursive: true });
             }
 
-            // 使用 Node.js 异步执行系统的 tar 命令解压缩文件
             await execAsync(`tar -xf "${archivePath}" -C "${tempExtractDir}"`);
 
-            // 递归搜寻解压出的文件夹，寻找 'ffmpeg' 可执行文件
             let foundFfmpegPath = null;
             const findFfmpeg = (dir) => {
                 const files = fs.readdirSync(dir, { withFileTypes: true });
@@ -245,11 +235,9 @@ export async function downloadFfmpeg(binDir) {
                 throw new Error('ffmpeg executable not found in downloaded archive.');
             }
 
-            // 复制出二进制文件，并赋予系统执行权限
             fs.copyFileSync(foundFfmpegPath, binaryPath);
             fs.chmodSync(binaryPath, '755');
 
-            // 深度无痕清理：删除临时文件夹和下载的原始 tar.xz 包
             fs.rmSync(tempExtractDir, { recursive: true, force: true });
             fs.unlinkSync(archivePath);
         }
@@ -268,20 +256,6 @@ export async function downloadFfmpeg(binDir) {
     }
 }
 
-export function checkBinaryExists(toolName, binDir) {
-    let exeName;
-    if (toolName === 'ffmpeg') {
-        exeName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
-    } else if (toolName === 'yt-dlp') {
-        exeName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
-    } else {
-        return null;
-    }
-
-    const binaryPath = path.join(binDir, exeName);
-    return fs.existsSync(binaryPath) ? binaryPath : null;
-}
-
 export async function initializeApp(app, mainWin) {
     mainWindow = mainWin;
     console.log('[Setup] Electron App instance ready, initializing...');
@@ -291,19 +265,6 @@ export async function initializeApp(app, mainWin) {
 
     console.log(`[Setup] UserData Path: ${userDataPath}`);
     console.log(`[Setup] Binary directory: ${binDir}`);
-
-    let ffmpegPath = checkBinaryExists('ffmpeg', binDir);
-    let ytDlpPath = checkBinaryExists('yt-dlp', binDir);
-
-    const missingTools = [];
-    if (!ffmpegPath) missingTools.push('FFmpeg');
-    if (!ytDlpPath) missingTools.push('yt-dlp');
-
-    if (missingTools.length > 0) {
-        console.warn(`[Setup] Missing optional components: ${missingTools.join(', ')}. App will continue, missing tools will be downloaded on demand.`);
-    } else {
-        console.log('[Setup] All core components ready.');
-    }
 
     const userConfigPath = path.join(userDataPath, 'user-config.json');
     let mediaRootPath = path.join(userDataPath, 'media');
@@ -325,7 +286,7 @@ export async function initializeApp(app, mainWin) {
         MUSIC_DIR: path.join(mediaRootPath, 'music'),
         PLAYLIST_PATH: path.join(mediaRootPath, 'playlist.json'),
         BIN_DIR: binDir,
-        USER_CONFIG_PATH: userConfigPath // 添加以供 service 使用
+        USER_CONFIG_PATH: userConfigPath 
     };
 
     [config.VIDEOS_DIR, config.ALBUMART_DIR, config.MUSIC_DIR].forEach(dir => {
@@ -333,15 +294,14 @@ export async function initializeApp(app, mainWin) {
     });
 
     const systemProxy = await detectSystemProxy();
-
-    console.log(`[Setup] - FFmpeg Path: ${ffmpegPath || 'Not Installed'}`);
-    console.log(`[Setup] - yt-dlp Path: ${ytDlpPath || 'Not Installed'}`);
     console.log(`[Setup] - System Proxy: ${systemProxy || 'None'}`);
+
+    console.log('[Setup] Core components initialization deferred to EnvChecker.');
 
     return {
         config,
-        ffmpegPath,
-        ytDlpPath,
+        ffmpegPath: null,
+        ytDlpPath: null,
         systemProxy,
         shouldContinue: true,
     };

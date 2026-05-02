@@ -15,10 +15,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     separateVideo: (trackData) => ipcRenderer.invoke('separate-video', trackData),
     getOnlineLyric: (trackInfo) => ipcRenderer.invoke('get-online-lyric', trackInfo),
     cleanupMissingTracks: () => ipcRenderer.invoke('cleanup-missing-tracks'),
+    checkEnv: () => ipcRenderer.invoke('check-env'),
 
     // --- 核心工具 ---
     downloadCoreTool: (toolName) => ipcRenderer.invoke('download-core-tool', toolName),
-    openToolsFolder: () => ipcRenderer.invoke('open-tools-folder'),
+    openToolsFolder: (targetPath) => ipcRenderer.invoke('open-tools-folder', targetPath),
     checkCoreTools: () => ipcRenderer.invoke('check-core-tools'),
 
     // --- 文件拖拽接口 ---
@@ -27,7 +28,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         try {
             const fileListPayload = files.map(file => ({
                 name: file.name,
-                path: webUtils.getPathForFile(file), // 使用 webUtils 确保路径正确
+                path: webUtils.getPathForFile(file),
                 type: file.type,
                 size: file.size
             })).filter(f => f.path);
@@ -45,13 +46,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openMediaFolder: (type, trackSrc) => ipcRenderer.send('open-media-folder', type, trackSrc),
     changeMediaDirectory: () => ipcRenderer.invoke('change-media-directory'),
 
-    // =========================================================================
-    // 【核心新增】发送取消下载指令
-    // id: 可选的任务ID（对于在线缓存需要，对于URL下载可能为空）
-    // type: 'url-download' | 'cache-download'
-    // =========================================================================
     cancelDownload: (id, type) => ipcRenderer.send('cancel-download', { id, type }),
-    // =========================================================================
 
     // --- 监听事件 ---
     onDownloadStatus: (callback) => {
@@ -94,4 +89,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('open-file', handler);
         return () => ipcRenderer.removeListener('open-file', handler);
     },
+    onEnvCheckProgress: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('env-check-progress', handler);
+        return () => ipcRenderer.removeListener('env-check-progress', handler);
+    },
+    onEnvReady: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('env-ready', handler);
+        return () => ipcRenderer.removeListener('env-ready', handler);
+    },
+    onEnvError: (callback) => {
+        const handler = (event, data) => callback(data);
+        ipcRenderer.on('env-error', handler);
+        return () => ipcRenderer.removeListener('env-error', handler);
+    }
 });
