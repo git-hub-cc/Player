@@ -1,7 +1,7 @@
 {
   "name": "git-hub-cc-player",
   "productName": "git-hub-cc-Player",
-  "version": "2.10.0",
+  "version": "2.11.0",
   "description": "A powerful local and online media player.",
   "main": ".vite/build/main-api.js",
   "scripts": {

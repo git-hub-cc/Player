@@ -220,9 +220,6 @@
                 <div class="panel-header">
                     <h2>系统设置</h2>
                     <div class="panel-header-actions">
-                        <button id="open-tools-folder-btn" class="control-btn" title="打开组件安装目录">
-                            <span class="icon-placeholder" data-icon="FOLDER"></span>
-                        </button>
                         <button id="close-settings-btn" class="control-btn" title="关闭">
                             <span class="icon-placeholder" data-icon="CLOSE"></span>
                         </button>
@@ -246,6 +243,9 @@
                                 <span class="tool-path">路径: --</span>
                             </div>
                             <div class="tool-actions">
+                                <button class="action-btn secondary-btn small-btn open-tool-dir-btn" data-tool="ffmpeg" style="display: none;">
+                                    <span class="btn-text">打开目录</span>
+                                </button>
                                 <button class="action-btn secondary-btn small-btn download-tool-btn" data-tool="ffmpeg">
                                     <span class="btn-text">下载 / 修复</span>
                                     <span class="btn-loader"></span>
@@ -266,6 +266,9 @@
                                 <span class="tool-path">路径: --</span>
                             </div>
                             <div class="tool-actions">
+                                <button class="action-btn secondary-btn small-btn open-tool-dir-btn" data-tool="yt-dlp" style="display: none;">
+                                    <span class="btn-text">打开目录</span>
+                                </button>
                                 <button class="action-btn secondary-btn small-btn download-tool-btn" data-tool="yt-dlp">
                                     <span class="btn-text">下载 / 修复</span>
                                     <span class="btn-loader"></span>

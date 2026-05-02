@@ -1,11 +1,3 @@
-// src/renderer/js/renderer.js
-
-/**
- * @file 应用引导程序 (App Bootstrapper)
- * @description
- * 渲染进程的唯一入口。负责初始化所有模块，绑定顶层事件，并加载初始数据。
- */
-
 import * as dom from './dom.js';
 import { getters, mutations, subscribe } from './state.js';
 import * as player from './player.js';
@@ -19,9 +11,6 @@ import { FILTER_MODES } from './config.js';
 
 const PLAYER_STATE_KEY = 'player_state';
 
-/**
- * 将所有 SVG 图标加载到 DOM 中。
- */
 function loadIcons() {
     try {
         const iconMap = {
@@ -51,9 +40,6 @@ function loadIcons() {
     }
 }
 
-/**
- * 保存当前播放器核心状态到 localStorage。
- */
 function savePlayerState() {
     const currentPlaylist = getters.playlist();
     if (currentPlaylist.length === 0) {
@@ -69,13 +55,10 @@ function savePlayerState() {
             modeIndex: getters.currentModeIndex(),
             playbackRate: getters.playbackRate(),
             mediaFilterMode: getters.mediaFilterMode(),
-            // =========================================================================
-            // 【核心修改】仅保存视频的进度信息，以减少存储空间
-            // =========================================================================
             videoProgress: currentPlaylist
                 .filter(track => track.type === 'video' && track.totalDuration > 0)
                 .map(track => ({
-                    src: track.src.replace('media://', ''), // 使用相对路径作为唯一标识
+                    src: track.src.replace('media://', ''),
                     lastPosition: track.lastPosition,
                     totalDuration: track.totalDuration
                 })),
@@ -86,10 +69,6 @@ function savePlayerState() {
     }
 }
 
-/**
- * 从 localStorage 加载播放器状态并应用。
- * @returns {number} 初始播放时间。
- */
 function loadPlayerState() {
     const savedState = localStorage.getItem(PLAYER_STATE_KEY);
     let initialTime = 0;
@@ -106,18 +85,11 @@ function loadPlayerState() {
             }
             initialTime = parsedState.currentTime || 0;
 
-            // =========================================================================
-            // 【核心修改】合并视频进度信息
-            // =========================================================================
-            // 此处不再直接加载整个 playlist，而是只加载进度信息，
-            // 稍后在 `loadInitialData` 完成后进行合并。
             if (parsedState.videoProgress) {
-                // 临时存储，等待主播放列表加载完成
                 window.videoProgressCache = new Map(
                     parsedState.videoProgress.map(p => [p.src, { lastPosition: p.lastPosition, totalDuration: p.totalDuration }])
                 );
             }
-            // =========================================================================
         } catch (error) {
             console.error("Failed to parse player state:", error);
             localStorage.removeItem(PLAYER_STATE_KEY);
@@ -126,9 +98,6 @@ function loadPlayerState() {
     return initialTime;
 }
 
-/**
- * 设置文件与文件夹拖拽功能的事件监听器。
- */
 function setupDragAndDropListeners() {
     const dragOverlay = document.getElementById('drag-overlay');
     if (!dragOverlay) return;
@@ -179,6 +148,8 @@ function updateToolCard(cardEl, toolStatus) {
     const iconContainer = cardEl.querySelector('.tool-icon');
     const pathText = cardEl.querySelector('.tool-path');
     const btn = cardEl.querySelector('.download-tool-btn');
+    const openDirBtn = cardEl.querySelector('.open-tool-dir-btn');
+
     if (toolStatus.exists) {
         badge.textContent = '已就绪';
         badge.className = 'tool-status-badge installed';
@@ -186,12 +157,22 @@ function updateToolCard(cardEl, toolStatus) {
         pathText.textContent = `路径: ${toolStatus.path}`;
         pathText.title = toolStatus.path;
         btn.textContent = '重新下载 / 修复';
+        
+        if (openDirBtn) {
+            openDirBtn.style.display = 'block';
+            openDirBtn.dataset.path = toolStatus.path;
+        }
     } else {
         badge.textContent = '未安装';
         badge.className = 'tool-status-badge missing';
         iconContainer.innerHTML = ICONS.ICON_ALERT_CIRCLE;
         pathText.textContent = '路径: --';
         btn.textContent = '立即下载';
+        
+        if (openDirBtn) {
+            openDirBtn.style.display = 'none';
+            openDirBtn.dataset.path = '';
+        }
     }
 }
 
@@ -202,9 +183,16 @@ function setupSettingsPanelListeners() {
         refreshToolsStatus();
     });
     dom.closeSettingsBtn?.addEventListener('click', ui.closeActivePanels);
-    dom.openToolsFolderBtn?.addEventListener('click', () => {
-        window.electronAPI.openToolsFolder();
+
+    dom.openToolDirBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const targetPath = e.currentTarget.dataset.path;
+            if (targetPath) {
+                window.electronAPI.openToolsFolder(targetPath);
+            }
+        });
     });
+
     dom.downloadToolBtns.forEach(btn => {
         btn.addEventListener('click', async (e) => {
             const toolName = e.currentTarget.dataset.tool;
@@ -230,9 +218,6 @@ function setupSettingsPanelListeners() {
     });
 }
 
-/**
- * 设置核心 UI 元素的事件监听器。
- */
 function setupEventListeners() {
     dom.playPauseBtn?.addEventListener('click', mutations.togglePlayState);
     dom.prevBtn?.addEventListener('click', async () => {
@@ -333,13 +318,11 @@ function setupEventListeners() {
         setTimeout(() => {
             const itemEl = dom.playlistEl.querySelector(`.playlist-item[data-index="${index}"]`);
             if (itemEl) {
-                // Ensure playlist panel is open
                 if (!dom.playlistPanel.classList.contains('active')) {
                     ui.togglePlaylistPanel();
                 }
                 itemEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-                // Add highlight animation
                 itemEl.style.transition = 'background-color 0.3s';
                 const originalBg = itemEl.style.backgroundColor;
                 itemEl.style.backgroundColor = 'var(--highlight-bg)';
@@ -384,7 +367,7 @@ function setupEventListeners() {
             } else {
                 ui.showToast(`清理失败: ${result.error}`, 'error');
             }
-        } catch (err) { /* 用户取消 */ }
+        } catch (err) { }
     });
 
     dom.openMediaFolderBtn?.addEventListener('click', () => {
@@ -426,9 +409,22 @@ function setupEventListeners() {
     setupSettingsPanelListeners();
 }
 
-/**
- * 应用初始化函数。
- */
+function setupEnvCheckListeners() {
+    window.electronAPI.onEnvCheckProgress((data) => {
+        console.log('[EnvCheck]', data.message);
+    });
+
+    window.electronAPI.onEnvReady((data) => {
+        console.log('[EnvCheck]', data.message);
+        refreshToolsStatus();
+    });
+
+    window.electronAPI.onEnvError((data) => {
+        console.error('[EnvCheck]', data.message);
+        ui.showToast(`环境组件异常: ${data.message}`, 'error');
+    });
+}
+
 async function init() {
     loadIcons();
     ui.init();
@@ -440,21 +436,21 @@ async function init() {
     setupDownloaderListeners();
     setupShortcutListeners();
     setupDragAndDropListeners();
+    setupEnvCheckListeners();
 
     window.electronAPI.onOpenFile((filePath) => {
         console.log(`[Renderer] 接收到文件路径: ${filePath}`);
         mediaService.playFileFromPath(filePath);
     });
 
+    window.electronAPI.checkEnv().finally(() => {
+        refreshToolsStatus();
+    });
+
     const initialTime = loadPlayerState();
 
-    // =========================================================================
-    // 【核心修改】将数据加载与进度合并逻辑分离
-    // =========================================================================
-    // 先从 playlist.json 加载基础数据
     await mediaService.loadInitialData();
 
-    // 在基础数据加载后，合并 localStorage 中的视频进度
     if (window.videoProgressCache) {
         const playlist = getters.playlist();
         playlist.forEach(track => {
@@ -464,12 +460,9 @@ async function init() {
                 track.totalDuration = progressData.totalDuration;
             }
         });
-        // 更新整个播放列表状态，以确保进度数据被 반영
         mutations.setPlaylist(playlist);
-        // 清理缓存
         delete window.videoProgressCache;
     }
-    // =========================================================================
 
     const playlist = getters.playlist();
     if (playlist.length > 0) {
