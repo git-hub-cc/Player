@@ -13,7 +13,6 @@ let currentSearchQuery = '';
 let currentPage = 1;
 let totalPages = 1;
 const ITEMS_PER_PAGE = 20;
-
 const activeCacheDownloads = new Set();
 
 // =========================================================================
@@ -58,6 +57,7 @@ const downloadStrategies = [
     new DouyinStrategy(),
     new IyfStrategy()
 ];
+
 // =========================================================================
 
 function findStrategyFor(url) {
@@ -87,9 +87,7 @@ function extractUrlFromInput(input) {
     const text = input.trim();
     if (!text) return '';
     const protocolMatch = text.match(/https?:\/\/[^\s]+/);
-    if (protocolMatch) return protocolMatch[0];
-
-    // 简化URL提取逻辑，主要依赖 http/https 协议头
+    if (protocolMatch) return protocolMatch[0]; // 简化URL提取逻辑，主要依赖 http/https 协议头
     return '';
 }
 
@@ -118,11 +116,14 @@ function updateStatus(message, type = 'default', progress) {
     const statusEl = dom.downloadStatusEl;
     const progressContainer = document.querySelector('.download-progress-container');
     const progressBar = document.querySelector('.download-progress-bar');
+
     statusEl.textContent = message;
     statusEl.className = 'download-status';
     if (type === 'success') statusEl.classList.add('success');
     else if (type === 'error') statusEl.classList.add('error');
+
     statusEl.style.display = 'block';
+
     if (type === 'progress' && typeof progress === 'number') {
         progressContainer.style.display = 'block';
         progressBar.style.width = `${Math.min(100, progress * 100)}%`;
@@ -135,6 +136,7 @@ function updateStatus(message, type = 'default', progress) {
 function createResultItem(track, index, isCached = false) {
     const itemNode = getTemplate('template-search-result-item');
     const itemEl = itemNode.querySelector('.playlist-item');
+
     itemEl.dataset.index = index;
     itemEl.dataset.src = track.originalSrc;
     itemEl.querySelector('.playlist-icon').textContent = '🎵';
@@ -155,7 +157,6 @@ function createResultItem(track, index, isCached = false) {
 
     const downloadBtn = itemEl.querySelector('.playlist-download-btn');
     downloadBtn.classList.toggle('cached', isCached);
-
     if (activeCacheDownloads.has(track.id)) {
         downloadBtn.classList.add('downloading');
         downloadBtn.title = "取消下载";
@@ -169,6 +170,7 @@ async function performSearch(query, page = 1) {
         ui.showToast('请输入歌曲名或歌手名！', 'error');
         return;
     }
+
     if (page === 1) ui.clearSearchResults(dom.searchResultsList);
 
     const searchBtn = dom.searchOnlineBtn;
@@ -182,6 +184,7 @@ async function performSearch(query, page = 1) {
         const { results, total } = data;
         currentSearchResults = results.map(transformApiData);
         ui.renderSearchResults(dom.searchResultsList, currentSearchResults, createResultItem);
+
         currentSearchQuery = query;
         currentPage = page;
         totalPages = Math.ceil(total / ITEMS_PER_PAGE) || 1;
@@ -201,6 +204,7 @@ async function handleLocalImportClick() {
     [importBtn, dom.searchOnlineBtn, dom.startDownloadBtn].forEach(btn => btn.disabled = true);
     importBtn.classList.add('loading');
     updateStatus('等待选择资源目录...');
+
     try {
         const result = await window.electronAPI.selectImportDirectory();
         if (result.canceled) {
@@ -238,12 +242,21 @@ async function handleMissingTool(toolName, featureName) {
 
 export function setupDownloaderListeners() {
     dom.urlOrSearchInput.addEventListener('input', updateInputMode);
+    
+    dom.urlOrSearchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault(); 
+            const value = dom.urlOrSearchInput.value.trim();
+            if (value && dom.searchOnlineBtn.style.display !== 'none') {
+                performSearch(value, 1);
+            }
+        }
+    });
 
     dom.searchOnlineBtn.addEventListener('click', () => performSearch(dom.urlOrSearchInput.value.trim(), 1));
 
     dom.startDownloadBtn.addEventListener('click', () => {
         const btn = dom.startDownloadBtn;
-
         if (btn.classList.contains('downloading')) {
             window.electronAPI.cancelDownload(null, 'url-download');
             return;
@@ -258,11 +271,9 @@ export function setupDownloaderListeners() {
         try {
             // 直接发送下载请求，后端会自行选择策略
             window.electronAPI.startDownload(url);
-
             btn.classList.add('downloading', 'danger-mode');
             const btnText = btn.querySelector('.btn-text');
             if (btnText) btnText.textContent = '取消下载';
-
         } catch (e) {
             // 理论上不会到这里，因为不再有前端策略的 execute
         }
@@ -273,11 +284,11 @@ export function setupDownloaderListeners() {
     dom.searchResultsList.addEventListener('click', (e) => {
         const item = e.target.closest('.playlist-item');
         if (!item) return;
+
         const track = currentSearchResults[parseInt(item.dataset.index, 10)];
         if (!track) return;
 
         const downloadBtn = e.target.closest('.playlist-download-btn');
-
         if (downloadBtn && !downloadBtn.classList.contains('cached')) {
             e.stopPropagation();
             if (downloadBtn.classList.contains('downloading')) {
@@ -315,7 +326,6 @@ export function setupDownloaderListeners() {
             dlBtn.classList.remove('loading', 'downloading', 'danger-mode');
             const btnText = dlBtn.querySelector('.btn-text');
             if (btnText) btnText.textContent = '开始下载';
-
             dom.importLocalBtn.disabled = false;
             dom.importLocalBtn.classList.remove('loading');
 
@@ -334,12 +344,13 @@ export function setupDownloaderListeners() {
 
     subscribe('playlistChanged', (newPlaylist) => {
         if (currentSearchResults.length === 0 || !dom.searchResultsList) return;
+
         const resultItems = dom.searchResultsList.querySelectorAll('.playlist-item');
         resultItems.forEach(item => {
             const index = parseInt(item.dataset.index, 10);
             if (isNaN(index) || !currentSearchResults[index]) return;
-            const searchResultTrack = currentSearchResults[index];
 
+            const searchResultTrack = currentSearchResults[index];
             const isNowCached = newPlaylist.some(pTrack =>
                 pTrack.id === searchResultTrack.id && pTrack.source === searchResultTrack.source
             );
