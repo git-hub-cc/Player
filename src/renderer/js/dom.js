@@ -33,7 +33,6 @@ export let volumeBar = document.getElementById('volume-bar');
 
 // --- 歌词相关 ---
 export let lyricsBtn = document.getElementById('lyrics-btn');
-export let mobileLyricsBtn = document.getElementById('mobile-lyrics-btn');
 export let lyricsContainer = document.getElementById('lyrics-container');
 export let lyricsList = document.getElementById('lyrics-list');
 export let lyricsListWrapper = document.getElementById('lyrics-list-wrapper');
@@ -43,7 +42,6 @@ export let lyricsDragTime = document.getElementById('lyrics-drag-time');
 // --- 播放列表面板 ---
 export let playlistPanel = document.getElementById('playlist-panel');
 export let playlistBtn = document.getElementById('playlist-btn');
-export let mobilePlaylistBtn = document.getElementById('mobile-playlist-btn');
 export let closePlaylistBtn = document.getElementById('close-playlist-btn');
 export let playlistEl = document.getElementById('playlist');
 export let playlistSearchInput = document.getElementById('playlist-search');

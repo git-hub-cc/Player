@@ -131,7 +131,7 @@ export class OnlineService {
             // --- 1. 获取音频下载链接 (支持取消检查) ---
             if (signal.aborted) throw new Error('aborted');
 
-            const audioUrl = await this.#musicApiService.getVipTrackUrl(trackData);
+            const audioUrl = await this.#musicApiService.getDownloadTrackUrl(trackData);
             if (!audioUrl) {
                 throw new Error('无法获取音频下载链接，可能受版权或地区限制。');
             }

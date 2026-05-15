@@ -134,6 +134,31 @@ export class MusicApiService {
     }
     // =========================================================================
 
+    /**
+     * 获取用于本地缓存/下载的音频链接。
+     * 免费歌曲优先复用 Meting 返回的正常播放链接；会员歌曲才走 GDStudio 获取完整音源。
+     * @param {object} trackInfo - 包含 id 等信息的轨道对象。
+     * @returns {Promise<string|null>} - 返回可下载的音频 URL。
+     */
+    async getDownloadTrackUrl(trackInfo) {
+        try {
+            const urlInfo = await this.getTrackUrl(trackInfo);
+
+            if (urlInfo?.url && !urlInfo.isVip) {
+                return urlInfo.url;
+            }
+
+            if (urlInfo?.isVip) {
+                return await this.getVipTrackUrl(urlInfo.originalTrackInfo || trackInfo);
+            }
+        } catch (error) {
+            console.warn(`[Music API Service] 普通音源获取失败，尝试备用解析 "${trackInfo.title}":`, error.message);
+        }
+
+        return this.getVipTrackUrl(trackInfo);
+    }
+    // =========================================================================
+
 
     /**
      * 获取歌曲的封面图片链接。

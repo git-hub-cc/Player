@@ -1,14 +1,17 @@
 {
   "name": "git-hub-cc-player",
   "productName": "git-hub-cc-Player",
-  "version": "2.11.0",
+  "version": "2.12.0",
   "description": "A powerful local and online media player.",
   "main": ".vite/build/main-api.js",
   "scripts": {
-    "start": "electron-forge start",
+    "start": "node scripts/start-utf8.js",
     "clean": "npm cache clean --force && rmdir /s /q node_modules && del package-lock.json",
+    "premake": "node scripts/patch-electron-winstaller.js",
+    "preproxy_make": "node scripts/patch-electron-winstaller.js",
+    "postinstall": "node scripts/patch-electron-winstaller.js",
     "package": "electron-forge package",
-    "proxy_make": "cross-env HTTP_PROXY=http://127.0.0.1:7890 HTTPS_PROXY=http://127.0.0.1:7890 electron-forge make",
+    "proxy_make": "cross-env HTTP_PROXY=http://127.0.0.1:7892 HTTPS_PROXY=http://127.0.0.1:7892 electron-forge make",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "echo \"No linting configured\"",
@@ -27,6 +30,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@electron/node-gyp": "^10.2.0-electron.2",
     "adm-zip": "^0.5.16",
     "axios": "^1.13.6",
     "canvas": "^3.2.1",

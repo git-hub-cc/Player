@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, protocol, Menu, nativeTheme, globalShortcu
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import fs from 'fs';
+import { execFileSync } from 'node:child_process';
 import { configureContainer, updateCoreToolPaths } from './bootstrap.js';
 import * as setupService from './services/setup-service.js';
 import { EnvChecker } from './env-checker.js';
@@ -11,6 +12,20 @@ let diContainer;
 let initialFileToOpen = null;
 
 const SPOOF_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+function configureWindowsConsoleEncoding() {
+    if (process.platform !== 'win32') return;
+
+    try {
+        execFileSync('chcp.com', ['65001'], { stdio: 'ignore' });
+        process.env.PYTHONUTF8 = process.env.PYTHONUTF8 || '1';
+        process.env.PYTHONIOENCODING = process.env.PYTHONIOENCODING || 'utf-8';
+    } catch {
+        // If the app is launched without a console, there is nothing to configure.
+    }
+}
+
+configureWindowsConsoleEncoding();
 
 protocol.registerSchemesAsPrivileged([
     { scheme: 'media', privileges: { standard: true, secure: true, supportFetch: true, corsEnabled: true } }

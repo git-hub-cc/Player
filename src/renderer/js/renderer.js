@@ -20,7 +20,6 @@ function loadIcons() {
             LIST_LOOP: ICONS.ICON_LIST_LOOP, SINGLE_LOOP: ICONS.ICON_SINGLE_LOOP, SHUFFLE: ICONS.ICON_SHUFFLE,
             LYRICS: ICONS.ICON_LYRICS, FULLSCREEN_ENTER: ICONS.ICON_FULLSCREEN_ENTER, FULLSCREEN_EXIT: ICONS.ICON_FULLSCREEN_EXIT,
             PLAYLIST: ICONS.ICON_PLAYLIST, VOLUME: ICONS.ICON_VOLUME, MUTE: ICONS.ICON_MUTE,
-            MOBILE_LYRICS: ICONS.ICON_MOBILE_LYRICS, MOBILE_PLAYLIST: ICONS.ICON_MOBILE_PLAYLIST,
             DOWNLOAD: ICONS.ICON_DOWNLOAD, SPINNER: ICONS.ICON_SPINNER, CACHED: ICONS.ICON_CACHED,
             GALLERY_PLAY: ICONS.ICON_GALLERY_PLAY,
             SETTINGS: ICONS.ICON_SETTINGS,
@@ -244,10 +243,8 @@ function setupEventListeners() {
         mutations.setIsMuted(newVolume === 0);
     });
     dom.playlistBtn?.addEventListener('click', ui.togglePlaylistPanel);
-    dom.mobilePlaylistBtn?.addEventListener('click', ui.togglePlaylistPanel);
     dom.closePlaylistBtn?.addEventListener('click', ui.closeActivePanels);
     dom.lyricsBtn?.addEventListener('click', ui.toggleLyricsPanel);
-    dom.mobileLyricsBtn?.addEventListener('click', ui.toggleLyricsPanel);
     dom.downloadPanelBtn?.addEventListener('click', ui.toggleDownloadPanel);
     dom.closeDownloadBtn?.addEventListener('click', ui.closeActivePanels);
     dom.infoBtn?.addEventListener('click', () => { ui.toggleInfoPanel(); dom.moreOptionsMenu?.classList.remove('visible'); });

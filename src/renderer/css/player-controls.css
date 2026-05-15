@@ -198,8 +198,6 @@
     color: var(--primary-color);
 }
 
-.mobile-only-btn { display: none; }
-
 .player-controls.disabled {
     opacity: 0.5;
     pointer-events: none;
