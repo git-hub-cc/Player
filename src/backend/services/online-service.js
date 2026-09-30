@@ -149,7 +149,14 @@ export class OnlineService {
             const picUrl = await this.#musicApiService.getPicUrl(trackData);
             if (picUrl) {
                 finalAlbumArtPath = `albumArt/${uniqueFilenameBase}.jpg`;
-                downloadPromises.push(downloadFile(picUrl, this.#config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`, {}, () => {}, 3, signal));
+                downloadPromises.push(
+                    downloadFile(picUrl, this.#config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`, {}, () => {}, 3, signal)
+                        .catch(e => {
+                            if (signal.aborted) throw e;
+                            console.warn(`[Online] 封面下载失败，回退到占位图: ${e.message}`);
+                            finalAlbumArtPath = this.#libraryService.generateAndSavePlaceholderArt(title, uniqueFilenameBase);
+                        })
+                );
             } else {
                 finalAlbumArtPath = this.#libraryService.generateAndSavePlaceholderArt(title, uniqueFilenameBase);
             }
@@ -179,7 +186,10 @@ export class OnlineService {
                 pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
                 initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, ''),
                 id: trackData.id,
-                source: trackData.source
+                source: trackData.source,
+                pic_id: trackData.pic_id,
+                lyric_id: trackData.lyric_id,
+                url_id: trackData.url_id
             };
             await this.#libraryService.updateLocalPlaylist([newTrack]);
 

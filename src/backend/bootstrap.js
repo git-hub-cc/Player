@@ -5,6 +5,7 @@ import { LibraryService } from './services/library-service.js';
 import { OnlineService } from './services/online-service.js';
 import { ProviderRegistry } from './providers/provider-registry.js';
 import { MusicApiService } from './services/music-api-service.js';
+import { GithubService } from './services/github-service.js';
 
 export function updateCoreToolPaths(container, ffmpegPath, ytDlpPath) {
     console.log(`[Bootstrap] updateCoreToolPaths invoked with -> FFmpeg: ${ffmpegPath}, yt-dlp: ${ytDlpPath}`);
@@ -69,6 +70,12 @@ export async function configureContainer(app, sendMessageFunc) {
         'onlineService',
         OnlineService,
         ['config', 'sendMessageFunc', 'libraryService', 'musicApiService']
+    );
+
+    container.register(
+        'githubService',
+        GithubService,
+        []
     );
 
     console.log('[Bootstrap] All services registered.');

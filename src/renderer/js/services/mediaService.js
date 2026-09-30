@@ -47,8 +47,23 @@ export function init() {
             return;
         }
         const track = _makeTrackPlayable(newTrack);
-        mutations.prependTrackWhilePlaying(track);
-        showToast(`已添加 "${track.title}" 到媒体库！`, 'success');
+
+        // =========================================================================
+        // 【核心修改】判断是否为重新下载的替换操作，并调用新的 addOrReplaceTrack
+        // =========================================================================
+        const isReplacement = getters.playlist().some(t =>
+            (track.originalUrl && t.originalUrl === track.originalUrl) ||
+            (track.source && track.id && t.source === track.source && t.id === track.id)
+        );
+
+        mutations.addOrReplaceTrack(track);
+
+        if (isReplacement) {
+            showToast(`"${track.title}" 重新下载完成！`, 'success');
+        } else {
+            showToast(`已添加 "${track.title}" 到媒体库！`, 'success');
+        }
+        // =========================================================================
     });
     console.log("Media Service initialized.");
 }
@@ -148,6 +163,21 @@ export async function playTemporaryTrack(track) {
 
 export function cacheTrack(trackData) {
     window.electronAPI.cacheTrack(trackData);
+}
+
+export async function reDownloadTrack(index) {
+    const track = getters.playlist()[index];
+    if (!track || !track.isCloud) return;
+
+    showToast(`开始重新下载: ${track.title}`, 'info');
+
+    if (track.originalUrl) {
+        window.electronAPI.startDownload(track.originalUrl);
+    } else if (track.source && track.id) {
+        cacheTrack(track);
+    } else {
+        showToast('缺少原始链接，无法重新下载', 'error');
+    }
 }
 
 /**

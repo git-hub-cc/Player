@@ -269,6 +269,36 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="settings-section">
+                        <h3 class="section-title">GitHub 云同步</h3>
+                        <p class="section-desc">通过 GitHub 私有仓库备份和同步您的播放列表。</p>
+                        <div class="github-sync-container">
+                            <div id="github-unconnected-view">
+                                <div class="input-group">
+                                    <input type="password" id="github-token-input" class="panel-search" placeholder="Personal Access Token (ghp_...)">
+                                </div>
+                                <div class="input-group" style="margin-top: 10px;">
+                                    <input type="text" id="github-repo-input" class="panel-search" placeholder="仓库名称 (默认: player-data)">
+                                </div>
+                                <button id="github-connect-btn" class="action-btn" style="margin-top: 12px; width: 100%;">连接 GitHub</button>
+                            </div>
+                            <div id="github-connected-view" style="display: none;">
+                                <div class="github-user-info">
+                                    <img id="github-avatar" src="" alt="Avatar">
+                                    <div class="github-user-details">
+                                        <div id="github-username" class="github-username"></div>
+                                        <div id="github-repo-name" class="github-repo-name"></div>
+                                    </div>
+                                    <div id="github-status-dot" class="status-dot status-idle" title="已连接 (点击断开)"></div>
+                                </div>
+                                <div class="github-actions">
+                                    <button id="github-sync-down-btn" class="action-btn secondary-btn small-btn">拉取云端</button>
+                                    <button id="github-sync-up-btn" class="action-btn secondary-btn small-btn">推送到云端</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </aside>
 
@@ -404,6 +434,11 @@
                             <div class="playlist-title"></div>
                             <div class="playlist-artist"></div>
                         </div>
+                    </div>
+                    <div class="playlist-item-actions">
+                        <button class="playlist-cloud-download-btn" title="重新下载" style="display: none;">
+                            <span class="icon-placeholder" data-icon="CLOUD_DOWNLOAD"></span>
+                        </button>
                     </div>
                     <div class="video-progress-bar">
                         <div class="video-progress-bar-inner"></div>

@@ -13,6 +13,8 @@ import { getters, mutations, subscribe } from '../state.js';
 import { DEFAULT_ART } from '../config.js';
 import * as ICONS from '../icons.js';
 import { getTemplate } from '../utils.js';
+import * as ui from '../ui.js';
+import * as mediaService from '../services/mediaService.js';
 
 // --- 配置项 ---
 const ITEM_WIDTH = 280;             // 单个项目的宽度
@@ -263,6 +265,13 @@ function onGalleryItemClick(e) {
 
         // 只有当歌曲仍然存在于播放列表中时才进行播放
         if (trackIndex !== -1) {
+            const track = getters.playlist()[trackIndex];
+            if (track && track.isCloud) {
+                ui.showToast('该曲目在云端，正在自动重新下载...', 'info');
+                mediaService.reDownloadTrack(trackIndex);
+                showPlayer();
+                return;
+            }
             mutations.setCurrentTrackIndex(trackIndex);
             mutations.setIsPlaying(true);
             showPlayer();

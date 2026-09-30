@@ -501,3 +501,28 @@
 .full-width { width: 100%; }
 .action-btn.secondary-btn { background-color: transparent; border: 1px solid var(--slider-track-color); color: var(--text-primary); }
 .action-btn.secondary-btn:hover:not(:disabled) { background-color: var(--highlight-bg); border-color: var(--text-secondary); box-shadow: none; }
+
+/* --- GitHub 云同步 UI 样式 --- */
+.github-sync-container { background-color: rgba(255, 255, 255, 0.03); border-radius: 10px; padding: 18px; border: 1px solid var(--highlight-bg); }
+.input-group { display: flex; flex-direction: column; }
+.github-user-info { display: flex; align-items: center; margin-bottom: 16px; }
+.github-user-info img { width: 40px; height: 40px; border-radius: 50%; margin-right: 12px; }
+.github-user-details { flex-grow: 1; overflow: hidden; }
+.github-username { font-size: 14px; font-weight: bold; color: var(--text-primary); }
+.github-repo-name { font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.github-actions { display: flex; gap: 10px; }
+.github-actions .action-btn { flex: 1; padding: 8px 0; }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; margin-left: 10px; flex-shrink: 0; cursor: pointer; transition: background-color 0.2s, box-shadow 0.2s; }
+.status-dot:hover { background-color: #e74c3c !important; box-shadow: 0 0 8px rgba(231, 76, 60, 0.5) !important; }
+.status-idle { background-color: var(--primary-color); box-shadow: 0 0 8px rgba(29, 185, 84, 0.5); }
+.status-syncing { background-color: #f39c12; animation: pulse 1s infinite; }
+.status-error { background-color: #e74c3c; }
+@keyframes pulse { 0% { transform: scale(0.95); opacity: 0.5; } 50% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(0.95); opacity: 0.5; } }
+
+/* --- 云端曲目样式 --- */
+.playlist-item.is-cloud .playlist-title,
+.playlist-item.is-cloud .playlist-artist { color: var(--text-secondary); opacity: 0.7; }
+.playlist-item-actions { display: flex; align-items: center; margin-left: 10px; }
+.playlist-cloud-download-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; transition: color 0.2s; }
+.playlist-cloud-download-btn:hover { color: var(--primary-color); }
+.playlist-cloud-download-btn svg { width: 18px; height: 18px; fill: currentColor; }

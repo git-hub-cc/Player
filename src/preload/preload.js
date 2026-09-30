@@ -22,6 +22,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openToolsFolder: (targetPath) => ipcRenderer.invoke('open-tools-folder', targetPath),
     checkCoreTools: () => ipcRenderer.invoke('check-core-tools'),
 
+    // --- GitHub 同步 ---
+    getGithubConfig: () => ipcRenderer.invoke('get-github-config'),
+    saveGithubConfig: (config) => ipcRenderer.invoke('save-github-config', config),
+    githubGetUser: (token) => ipcRenderer.invoke('github-get-user', token),
+    githubCheckRepo: (data) => ipcRenderer.invoke('github-check-repo', data),
+    githubCreateRepo: (repoName) => ipcRenderer.invoke('github-create-repo', repoName),
+    githubSyncDown: (data) => ipcRenderer.invoke('github-sync-down', data),
+    githubSyncUp: (data) => ipcRenderer.invoke('github-sync-up', data),
+
     // --- 文件拖拽接口 ---
     handleFileDrop: (files, shouldCopy) => {
         if (!Array.isArray(files)) return Promise.resolve({ success: false, error: 'Preload Error: Invalid file list.' });

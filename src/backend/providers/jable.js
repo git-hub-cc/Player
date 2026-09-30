@@ -81,7 +81,8 @@ export class JableProvider extends BaseProvider {
                 artist: 'Jable TV',
                 src: `videos/${uniqueFilenameBase}.mp4`,
                 albumArt: fs.existsSync(path.join(this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`)) ? `albumArt/${uniqueFilenameBase}.jpg` : '',
-                type: "video"
+                type: "video",
+                originalUrl: videoUrl
             });
 
             this.sendMessage('download-status', { message: `"${number}" download successful!`, type: 'success' });

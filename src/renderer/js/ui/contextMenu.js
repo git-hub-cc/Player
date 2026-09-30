@@ -33,8 +33,16 @@ export function renderContextMenu(context = {}) {
         const track = playlist[context.index];
         if (!track) return;
 
+        if (track.isCloud) {
+            const li = document.createElement('li');
+            li.textContent = '重新下载';
+            li.dataset.action = 're-download-track';
+            li.dataset.index = context.index;
+            fragment.appendChild(li);
+        }
+
         // 如果是视频，则添加“分离音视频”选项
-        if (track.type === 'video') {
+        if (track.type === 'video' && !track.isCloud) {
             const li = document.createElement('li');
             li.textContent = '分离音视频';
             li.dataset.action = 'separate-video';
