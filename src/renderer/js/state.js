@@ -101,18 +101,34 @@ export const mutations = {
         _notify('playlistChanged', _state.playlist);
         _notify('currentTrackIndexChanged', _state.currentTrackIndex);
     },
-    prependTrackWhilePlaying(newTrack) {
+    // =========================================================================
+    // 【核心修改】将 prependTrackWhilePlaying 改为 addOrReplaceTrack，支持替换云端占位符
+    // =========================================================================
+    addOrReplaceTrack(newTrack) {
         if (!newTrack || typeof newTrack !== 'object') return;
         const currentPlayingTrack = getters.currentTrack();
         const currentSrc = currentPlayingTrack ? currentPlayingTrack.src : null;
-        _state.playlist.unshift(newTrack);
-        if (currentSrc) {
-            _state.currentTrackIndex = _state.playlist.findIndex(track => track.src === currentSrc);
-        } else if (_state.currentTrackIndex > -1) {
-            _state.currentTrackIndex++;
+
+        const existingIndex = _state.playlist.findIndex(t => {
+            if (newTrack.originalUrl && t.originalUrl === newTrack.originalUrl) return true;
+            if (newTrack.source && newTrack.id && t.source === newTrack.source && t.id === newTrack.id) return true;
+            if (t.src === newTrack.src) return true;
+            return false;
+        });
+
+        if (existingIndex !== -1) {
+            _state.playlist[existingIndex] = newTrack;
+        } else {
+            _state.playlist.unshift(newTrack);
+            if (currentSrc) {
+                _state.currentTrackIndex = _state.playlist.findIndex(track => track.src === currentSrc);
+            } else if (_state.currentTrackIndex > -1) {
+                _state.currentTrackIndex++;
+            }
         }
         _notify('playlistChanged', _state.playlist);
     },
+    // =========================================================================
     setCurrentTrackIndex(index, force = false) {
         if (_state.currentTrackIndex === index && !_state.temporaryPlayingTrack && !force) return;
         _state.currentTrackIndex = index;

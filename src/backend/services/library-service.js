@@ -225,10 +225,36 @@ export class LibraryService {
     }
 
     async updateLocalPlaylist(newTracks) {
-        if (!newTracks || newTracks.length === 0) return; let playlist = [];
-        try { if (fs.existsSync(this.#config.PLAYLIST_PATH)) { playlist = JSON.parse(fs.readFileSync(this.#config.PLAYLIST_PATH, 'utf-8')); } } catch (e) { console.error(`[Library] 读取旧播放列表失败:`, e); }
-        const existingSrcs = new Set(playlist.map(track => track.src)); const uniqueNewTracks = newTracks.filter(track => !existingSrcs.has(track.src));
-        if (uniqueNewTracks.length > 0) { const updatedPlaylist = [...uniqueNewTracks, ...playlist]; fs.writeFileSync(this.#config.PLAYLIST_PATH, JSON.stringify(updatedPlaylist, null, 2), 'utf-8'); }
+        if (!newTracks || newTracks.length === 0) return; 
+        let playlist = [];
+        try { 
+            if (fs.existsSync(this.#config.PLAYLIST_PATH)) { 
+                playlist = JSON.parse(fs.readFileSync(this.#config.PLAYLIST_PATH, 'utf-8')); 
+            } 
+        } catch (e) { 
+            console.error(`[Library] 读取旧播放列表失败:`, e); 
+        }
+        
+        // =========================================================================
+        // 【核心修改】查重并替换：如果存在相同 id+source 或 originalUrl 的记录，则替换它
+        // =========================================================================
+        for (const newTrack of newTracks) {
+            const existingIndex = playlist.findIndex(t => {
+                if (newTrack.originalUrl && t.originalUrl === newTrack.originalUrl) return true;
+                if (newTrack.source && newTrack.id && t.source === newTrack.source && t.id === newTrack.id) return true;
+                if (t.src === newTrack.src) return true;
+                return false;
+            });
+
+            if (existingIndex !== -1) {
+                playlist[existingIndex] = newTrack; // 替换（例如替换掉云端占位符）
+            } else {
+                playlist.unshift(newTrack); // 追加到头部
+            }
+        }
+        // =========================================================================
+        
+        fs.writeFileSync(this.#config.PLAYLIST_PATH, JSON.stringify(playlist, null, 2), 'utf-8'); 
     }
 
     async mergeCloudPlaylist(cloudPlaylist) {
@@ -246,7 +272,7 @@ export class LibraryService {
 
             let isUpdated = false;
 
-            cloudPlaylist.forEach(cloudTrack => {
+            for (const cloudTrack of cloudPlaylist) {
                 const key = cloudTrack.originalUrl || (cloudTrack.source && cloudTrack.id ? `${cloudTrack.source}_${cloudTrack.id}` : cloudTrack.src);
                 if (localMap.has(key)) {
                     const localTrack = localMap.get(key);
@@ -256,10 +282,30 @@ export class LibraryService {
                     }
                 } else {
                     cloudTrack.isCloud = true;
+                    // =========================================================================
+                    // 【核心修改】为云端新增的曲目重新分配本地序号，防止 src 冲突
+                    // =========================================================================
+                    const newOrdinal = await this.getNextOrdinal();
+                    if (cloudTrack.src) {
+                        const ext = path.extname(cloudTrack.src);
+                        const dir = path.dirname(cloudTrack.src).replace(/\\/g, '/');
+                        cloudTrack.src = `${dir}/${newOrdinal}${ext}`;
+                    }
+                    if (cloudTrack.albumArt && cloudTrack.albumArt.includes('/')) {
+                        const ext = path.extname(cloudTrack.albumArt);
+                        const dir = path.dirname(cloudTrack.albumArt).replace(/\\/g, '/');
+                        cloudTrack.albumArt = `${dir}/${newOrdinal}${ext}`;
+                    }
+                    if (cloudTrack.lyrics && cloudTrack.lyrics.includes('/')) {
+                        const ext = path.extname(cloudTrack.lyrics);
+                        const dir = path.dirname(cloudTrack.lyrics).replace(/\\/g, '/');
+                        cloudTrack.lyrics = `${dir}/${newOrdinal}${ext}`;
+                    }
+                    // =========================================================================
                     localPlaylist.unshift(cloudTrack);
                     isUpdated = true;
                 }
-            });
+            }
 
             if (isUpdated) {
                 fs.writeFileSync(this.#config.PLAYLIST_PATH, JSON.stringify(localPlaylist, null, 2), 'utf-8');
@@ -474,7 +520,7 @@ export class LibraryService {
                     if (fs.existsSync(fullPath)) {
                         validTracks.push(track);
                     } else {
-                        if (track.originalUrl) {
+                        if (track.originalUrl || (track.source && track.id)) {
                             console.log(`[Library] Local file missing, reverting to cloud state: ${track.title}`);
                             track.isCloud = true;
                             validTracks.push(track);
