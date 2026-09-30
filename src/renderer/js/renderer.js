@@ -390,6 +390,25 @@ function setupEventListeners() {
             }
         }
     });
+    
+    // =========================================================================
+    // 【核心修复】补回遗漏的右键菜单事件监听器
+    // =========================================================================
+    dom.playlistEl?.addEventListener('contextmenu', (e) => {
+        const item = e.target.closest('.playlist-item[data-index]');
+        if (!item) return; e.preventDefault();
+        const index = parseInt(item.dataset.index, 10);
+        if (isNaN(index)) return;
+        ui.renderContextMenu({ type: 'playlist-item', index: index });
+        const { clientX, clientY } = e;
+        const { innerWidth, innerHeight } = window;
+        const menuWidth = dom.contextMenu.offsetWidth, menuHeight = dom.contextMenu.offsetHeight;
+        dom.contextMenu.style.left = `${clientX + menuWidth > innerWidth ? innerWidth - menuWidth - 5 : clientX}px`;
+        dom.contextMenu.style.top = `${clientY + menuHeight > innerHeight ? innerHeight - menuHeight - 5 : clientY}px`;
+        dom.contextMenu.style.display = 'block';
+    });
+    // =========================================================================
+
     dom.contextMenu?.addEventListener('click', (e) => {
         const target = e.target.closest('li[data-action]');
         if (!target) return;
