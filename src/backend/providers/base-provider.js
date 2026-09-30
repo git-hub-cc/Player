@@ -103,9 +103,10 @@ export class BaseProvider {
      * @param {object} trackInfo - 包含新轨道信息的对象。
      */
     async _addTrackToPlaylist(trackInfo) {
-        const { title, artist, src, albumArt, type } = trackInfo;
+        const { title, artist, src, albumArt, type, originalUrl } = trackInfo;
         const newTrack = {
             title, artist, src, albumArt, type, lyrics: "",
+            originalUrl,
             pinyin: pinyin(title, { toneType: 'none' }).replace(/\s/g, ''),
             initials: pinyin(title, { pattern: 'initial', toneType: 'none' }).replace(/\s/g, '')
         };

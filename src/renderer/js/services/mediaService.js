@@ -150,6 +150,21 @@ export function cacheTrack(trackData) {
     window.electronAPI.cacheTrack(trackData);
 }
 
+export async function reDownloadTrack(index) {
+    const track = getters.playlist()[index];
+    if (!track || !track.isCloud) return;
+
+    showToast(`开始重新下载: ${track.title}`, 'info');
+    
+    if (track.originalUrl) {
+        window.electronAPI.startDownload(track.originalUrl);
+    } else if (track.source && track.id) {
+        cacheTrack(track);
+    } else {
+        showToast('缺少原始链接，无法重新下载', 'error');
+    }
+}
+
 /**
  * 删除指定的轨道，并优雅地处理文件句柄锁定问题。
  * @param {number} index - 要删除的轨道在播放列表中的索引。

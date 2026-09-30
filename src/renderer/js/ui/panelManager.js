@@ -65,6 +65,12 @@ function renderPlaylist(playlist) {
         itemEl.querySelector('.playlist-title').textContent = track.title;
         itemEl.querySelector('.playlist-artist').textContent = track.artist;
 
+        if (track.isCloud) {
+            itemEl.classList.add('is-cloud');
+            const cloudBtn = itemEl.querySelector('.playlist-cloud-download-btn');
+            if (cloudBtn) cloudBtn.style.display = 'flex';
+        }
+
         // =========================================================================
         // 【核心修改】为视频项添加类名并设置进度条宽度
         // =========================================================================

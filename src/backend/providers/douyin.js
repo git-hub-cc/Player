@@ -72,7 +72,7 @@ export class DouyinProvider extends BaseProvider {
                 throw new Error('Intercepted API response format is incorrect');
             }
 
-            await this._processAndDownloadItem(apiResponseJson.aweme_detail, signal);
+            await this._processAndDownloadItem(apiResponseJson.aweme_detail, signal, videoUrl);
             this.sendMessage('download-status', { message: 'Video download complete!', type: 'success' });
 
         } catch (error) {
@@ -152,7 +152,7 @@ export class DouyinProvider extends BaseProvider {
         return urlToLoad;
     }
 
-    async _processAndDownloadItem(awemeDetail, signal) {
+    async _processAndDownloadItem(awemeDetail, signal, originalUrl) {
         const awemeId = awemeDetail?.aweme_id;
         const videoUrl = awemeDetail?.video?.play_addr?.url_list?.[0]?.replace(/^http:\/\//, 'https://');
         if (!videoUrl) throw new Error("Could not get video download URL from API");
@@ -221,7 +221,8 @@ export class DouyinProvider extends BaseProvider {
                 artist: awemeDetail.author?.nickname || "未知",
                 src: `videos/${path.basename(finalFilePath)}`,
                 albumArt: fs.existsSync(path.join(this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`)) ? `albumArt/${uniqueFilenameBase}.jpg` : '',
-                type: "video"
+                type: "video",
+                originalUrl
             });
 
         } catch (e) {

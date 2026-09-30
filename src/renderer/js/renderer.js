@@ -28,7 +28,8 @@ function loadIcons() {
             FILTER_VIDEO: ICONS.ICON_FILTER_VIDEO,
             LOCATE: ICONS.ICON_LOCATE,
             CLEANUP: ICONS.ICON_CLEANUP,
-            EDIT_FOLDER: ICONS.ICON_EDIT_FOLDER
+            EDIT_FOLDER: ICONS.ICON_EDIT_FOLDER,
+            CLOUD_DOWNLOAD: '<svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"></path></svg>'
         };
         document.querySelectorAll('.icon-placeholder').forEach(p => {
             const iconName = p.dataset.icon;
@@ -217,6 +218,114 @@ function setupSettingsPanelListeners() {
     });
 }
 
+async function setupGithubListeners() {
+    const updateGithubUI = (config, user = null) => {
+        if (config && config.token) {
+            dom.githubUnconnectedView.style.display = 'none';
+            dom.githubConnectedView.style.display = 'block';
+            if (user) {
+                dom.githubAvatar.src = user.avatar_url;
+                dom.githubUsername.textContent = user.login;
+                dom.githubRepoName.textContent = config.repo || 'player-data';
+            }
+        } else {
+            dom.githubUnconnectedView.style.display = 'block';
+            dom.githubConnectedView.style.display = 'none';
+        }
+    };
+
+    const setGithubStatus = (status) => {
+        dom.githubStatusDot.className = 'status-dot';
+        dom.githubStatusDot.classList.add(`status-${status}`);
+    };
+
+    try {
+        const config = await window.electronAPI.getGithubConfig();
+        if (config && config.token) {
+            const user = await window.electronAPI.githubGetUser(config.token);
+            updateGithubUI(config, user);
+        }
+    } catch (e) {
+        console.error('GitHub init failed:', e);
+    }
+
+    dom.githubConnectBtn?.addEventListener('click', async () => {
+        const token = dom.githubTokenInput.value.trim();
+        const repo = dom.githubRepoInput.value.trim() || 'player-data';
+        if (!token) {
+            ui.showToast('请输入 GitHub Token', 'error');
+            return;
+        }
+        const btn = dom.githubConnectBtn;
+        btn.disabled = true;
+        btn.textContent = '连接中...';
+        try {
+            const user = await window.electronAPI.githubGetUser(token);
+            const exists = await window.electronAPI.githubCheckRepo({ username: user.login, repoName: repo });
+            if (!exists) {
+                ui.showToast('仓库不存在，正在自动创建...', 'info');
+                await window.electronAPI.githubCreateRepo(repo);
+            }
+            const config = { token, repo: `${user.login}/${repo}` };
+            await window.electronAPI.saveGithubConfig(config);
+            updateGithubUI(config, user);
+            ui.showToast('GitHub 连接成功！', 'success');
+        } catch (e) {
+            ui.showToast(`连接失败: ${e.message}`, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '连接 GitHub';
+        }
+    });
+
+    dom.githubStatusDot?.addEventListener('click', async () => {
+        try {
+            await ui.showConfirmationModal('确定要断开 GitHub 连接吗？');
+            await window.electronAPI.saveGithubConfig({ token: '', repo: '' });
+            updateGithubUI(null);
+            dom.githubTokenInput.value = '';
+            dom.githubRepoInput.value = '';
+            ui.showToast('已断开 GitHub 连接', 'info');
+        } catch (err) { /* 用户取消 */ }
+    });
+
+    dom.githubSyncDownBtn?.addEventListener('click', async () => {
+        const config = await window.electronAPI.getGithubConfig();
+        if (!config || !config.token) return;
+        setGithubStatus('syncing');
+        try {
+            const res = await window.electronAPI.githubSyncDown(config);
+            if (res.success) {
+                ui.showToast('云端数据拉取成功，正在刷新...', 'success');
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                throw new Error(res.error);
+            }
+        } catch (e) {
+            ui.showToast(`同步失败: ${e.message}`, 'error');
+            setGithubStatus('error');
+        }
+    });
+
+    dom.githubSyncUpBtn?.addEventListener('click', async () => {
+        const config = await window.electronAPI.getGithubConfig();
+        if (!config || !config.token) return;
+        setGithubStatus('syncing');
+        try {
+            const res = await window.electronAPI.githubSyncUp(config);
+            if (res.success) {
+                ui.showToast('本地数据已推送到云端', 'success');
+                setGithubStatus('idle');
+            } else {
+                throw new Error(res.error);
+            }
+        } catch (e) {
+            ui.showToast(`推送失败: ${e.message}`, 'error');
+            setGithubStatus('error');
+        }
+    });
+}
+
 function setupEventListeners() {
     dom.playPauseBtn?.addEventListener('click', mutations.togglePlayState);
     dom.prevBtn?.addEventListener('click', async () => {
@@ -264,21 +373,22 @@ function setupEventListeners() {
         const item = e.target.closest('.playlist-item[data-index]');
         if (item) {
             const newIndex = parseInt(item.dataset.index, 10);
-            if (!isNaN(newIndex)) { mutations.setCurrentTrackIndex(newIndex, true); mutations.setIsPlaying(true); }
+            if (!isNaN(newIndex)) {
+                if (e.target.closest('.playlist-cloud-download-btn')) {
+                    e.stopPropagation();
+                    mediaService.reDownloadTrack(newIndex);
+                    return;
+                }
+                const track = getters.playlist()[newIndex];
+                if (track && track.isCloud) {
+                    ui.showToast('该曲目在云端，正在自动重新下载...', 'info');
+                    mediaService.reDownloadTrack(newIndex);
+                    return;
+                }
+                mutations.setCurrentTrackIndex(newIndex, true); 
+                mutations.setIsPlaying(true); 
+            }
         }
-    });
-    dom.playlistEl?.addEventListener('contextmenu', (e) => {
-        const item = e.target.closest('.playlist-item[data-index]');
-        if (!item) return; e.preventDefault();
-        const index = parseInt(item.dataset.index, 10);
-        if (isNaN(index)) return;
-        ui.renderContextMenu({ type: 'playlist-item', index: index });
-        const { clientX, clientY } = e;
-        const { innerWidth, innerHeight } = window;
-        const menuWidth = dom.contextMenu.offsetWidth, menuHeight = dom.contextMenu.offsetHeight;
-        dom.contextMenu.style.left = `${clientX + menuWidth > innerWidth ? innerWidth - menuWidth - 5 : clientX}px`;
-        dom.contextMenu.style.top = `${clientY + menuHeight > innerHeight ? innerHeight - menuHeight - 5 : clientY}px`;
-        dom.contextMenu.style.display = 'block';
     });
     dom.contextMenu?.addEventListener('click', (e) => {
         const target = e.target.closest('li[data-action]');
@@ -287,6 +397,7 @@ function setupEventListeners() {
         const action = target.dataset.action, index = parseInt(target.dataset.index, 10);
         if (action === 'separate-video' && !isNaN(index)) mediaService.separateVideo(index);
         else if (action === 'delete-track' && !isNaN(index)) mediaService.deleteTrack(index);
+        else if (action === 're-download-track' && !isNaN(index)) mediaService.reDownloadTrack(index);
     });
     dom.playlistSearchInput?.addEventListener('input', ui.filterPlaylist);
     dom.locateCurrentMediaBtn?.addEventListener('click', () => {
@@ -404,6 +515,7 @@ function setupEventListeners() {
         }
     });
     setupSettingsPanelListeners();
+    setupGithubListeners();
 }
 
 function setupEnvCheckListeners() {

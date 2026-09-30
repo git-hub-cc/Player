@@ -231,6 +231,46 @@ export class LibraryService {
         if (uniqueNewTracks.length > 0) { const updatedPlaylist = [...uniqueNewTracks, ...playlist]; fs.writeFileSync(this.#config.PLAYLIST_PATH, JSON.stringify(updatedPlaylist, null, 2), 'utf-8'); }
     }
 
+    async mergeCloudPlaylist(cloudPlaylist) {
+        try {
+            let localPlaylist = [];
+            if (fs.existsSync(this.#config.PLAYLIST_PATH)) {
+                localPlaylist = JSON.parse(fs.readFileSync(this.#config.PLAYLIST_PATH, 'utf-8'));
+            }
+
+            const localMap = new Map();
+            localPlaylist.forEach(t => {
+                const key = t.originalUrl || (t.source && t.id ? `${t.source}_${t.id}` : t.src);
+                localMap.set(key, t);
+            });
+
+            let isUpdated = false;
+
+            cloudPlaylist.forEach(cloudTrack => {
+                const key = cloudTrack.originalUrl || (cloudTrack.source && cloudTrack.id ? `${cloudTrack.source}_${cloudTrack.id}` : cloudTrack.src);
+                if (localMap.has(key)) {
+                    const localTrack = localMap.get(key);
+                    if (localTrack.isCloud && !cloudTrack.isCloud) {
+                        Object.assign(localTrack, cloudTrack);
+                        isUpdated = true;
+                    }
+                } else {
+                    cloudTrack.isCloud = true;
+                    localPlaylist.unshift(cloudTrack);
+                    isUpdated = true;
+                }
+            });
+
+            if (isUpdated) {
+                fs.writeFileSync(this.#config.PLAYLIST_PATH, JSON.stringify(localPlaylist, null, 2), 'utf-8');
+            }
+            return { success: true };
+        } catch (e) {
+            console.error('[Library] Merge cloud playlist failed:', e);
+            return { success: false, error: e.message };
+        }
+    }
+
     async handleSeparateVideo(trackData) {
         if (!this.#ffmpegPath) { return { success: false, error: 'FFmpeg 未安装，无法执行分离操作。', reason: 'tool_missing', missing: 'ffmpeg' }; }
         if (!trackData || !trackData.src) { return { success: false, error: '无效的轨道数据。' }; }
@@ -434,15 +474,21 @@ export class LibraryService {
                     if (fs.existsSync(fullPath)) {
                         validTracks.push(track);
                     } else {
-                        console.log(`[Library] Removing missing track: ${track.title} (${track.src})`);
-                        removedCount++;
+                        if (track.originalUrl) {
+                            console.log(`[Library] Local file missing, reverting to cloud state: ${track.title}`);
+                            track.isCloud = true;
+                            validTracks.push(track);
+                        } else {
+                            console.log(`[Library] Removing missing track: ${track.title} (${track.src})`);
+                            removedCount++;
+                        }
                     }
                 } else {
                     validTracks.push(track); // 保留没有 src 的（虽然理论上不会有）
                 }
             }
 
-            if (removedCount > 0) {
+            if (removedCount > 0 || validTracks.some(t => t.isCloud)) {
                 fs.writeFileSync(this.#config.PLAYLIST_PATH, JSON.stringify(validTracks, null, 2), 'utf-8');
             }
 

@@ -89,6 +89,19 @@ export let ytdlpToolCard = document.getElementById('ytdlp-tool-card');
 export let downloadToolBtns = document.querySelectorAll('.download-tool-btn');
 export let openToolDirBtns = document.querySelectorAll('.open-tool-dir-btn');
 
+// --- GitHub 同步面板 ---
+export let githubTokenInput = document.getElementById('github-token-input');
+export let githubRepoInput = document.getElementById('github-repo-input');
+export let githubConnectBtn = document.getElementById('github-connect-btn');
+export let githubUnconnectedView = document.getElementById('github-unconnected-view');
+export let githubConnectedView = document.getElementById('github-connected-view');
+export let githubAvatar = document.getElementById('github-avatar');
+export let githubUsername = document.getElementById('github-username');
+export let githubRepoName = document.getElementById('github-repo-name');
+export let githubStatusDot = document.getElementById('github-status-dot');
+export let githubSyncDownBtn = document.getElementById('github-sync-down-btn');
+export let githubSyncUpBtn = document.getElementById('github-sync-up-btn');
+
 // --- 空状态 ---
 export let emptyStateView = document.getElementById('empty-state-view');
 export let emptyStateSearchBtn = document.getElementById('empty-state-search-btn');

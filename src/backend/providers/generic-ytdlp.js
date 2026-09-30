@@ -87,7 +87,8 @@ export class GenericYtDlpProvider extends BaseProvider {
                 albumArt: fs.existsSync(path.join(this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`))
                     ? `albumArt/${uniqueFilenameBase}.jpg`
                     : '',
-                type: "video"
+                type: "video",
+                originalUrl: videoUrl
             });
 
             this.sendMessage('download-status', { message: `"${title}" download successful!`, type: 'success' });

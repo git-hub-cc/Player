@@ -112,6 +112,7 @@ function registerIpcHandlers() {
     const libraryService = diContainer.get('libraryService');
     const onlineService = diContainer.get('onlineService');
     const downloadService = diContainer.get('downloadService');
+    const githubService = diContainer.get('githubService');
     const config = diContainer.get('config');
 
     ipcMain.handle('check-env', async () => {
@@ -193,6 +194,81 @@ function registerIpcHandlers() {
 
     ipcMain.on('toggle-fullscreen', (_, state) => mainWindow?.setFullScreen(state));
     ipcMain.on('show-user-data', () => shell.openPath(app.getPath('userData')));
+
+    ipcMain.handle('get-github-config', () => {
+        try {
+            if (fs.existsSync(config.USER_CONFIG_PATH)) {
+                const userConfig = JSON.parse(fs.readFileSync(config.USER_CONFIG_PATH, 'utf8'));
+                return userConfig.github || { token: '', repo: '' };
+            }
+        } catch (e) {}
+        return { token: '', repo: '' };
+    });
+
+    ipcMain.handle('save-github-config', (_, ghConfig) => {
+        try {
+            let userConfig = {};
+            if (fs.existsSync(config.USER_CONFIG_PATH)) {
+                userConfig = JSON.parse(fs.readFileSync(config.USER_CONFIG_PATH, 'utf8'));
+            }
+            userConfig.github = ghConfig;
+            fs.writeFileSync(config.USER_CONFIG_PATH, JSON.stringify(userConfig, null, 2), 'utf8');
+            return { success: true };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    ipcMain.handle('github-get-user', async (_, token) => {
+        githubService.setToken(token);
+        return await githubService.getUser();
+    });
+
+    ipcMain.handle('github-check-repo', async (_, { username, repoName }) => {
+        return await githubService.checkRepoExists(username, repoName);
+    });
+
+    ipcMain.handle('github-create-repo', async (_, repoName) => {
+        return await githubService.createRepo(repoName);
+    });
+
+    ipcMain.handle('github-sync-down', async (_, { token, repo }) => {
+        try {
+            githubService.setToken(token);
+            githubService.setRepo(repo);
+            const fileData = await githubService.getFile('playlist.json');
+            if (fileData && fileData.content) {
+                await libraryService.mergeCloudPlaylist(fileData.content);
+                return { success: true, sha: fileData.sha };
+            }
+            return { success: true, sha: null };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('github-sync-up', async (_, { token, repo }) => {
+        try {
+            githubService.setToken(token);
+            githubService.setRepo(repo);
+
+            let currentSha = null;
+            try {
+                const remoteFile = await githubService.getFile('playlist.json');
+                if (remoteFile && remoteFile.sha) {
+                    currentSha = remoteFile.sha;
+                }
+            } catch (e) {
+                console.warn('[GitHub Sync] Failed to fetch remote SHA or file does not exist:', e.message);
+            }
+
+            const playlistResult = await libraryService.getLocalPlaylist();
+            const res = await githubService.saveFile('playlist.json', playlistResult.data, currentSha);
+            return { success: true, sha: res.content.sha };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
 }
 
 function setupLogging() {

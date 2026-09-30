@@ -167,7 +167,24 @@ export class MusicApiService {
      */
     async getPicUrl(trackInfo) {
         try {
-            const result = await this.#meting.pic(trackInfo.pic_id, 300);
+            let picId = trackInfo.pic_id;
+            
+            // 如果缺少 pic_id 但有 id (通常发生在从云端恢复的旧数据)，尝试通过 song 接口获取详情来补全
+            if (!picId && trackInfo.id) {
+                console.log(`[Music API Service] 缺少 pic_id，尝试获取 "${trackInfo.title}" 的详情以补全...`);
+                const songResult = await this.#meting.song(trackInfo.id);
+                const songData = JSON.parse(songResult);
+                if (songData && songData.length > 0) {
+                    picId = songData[0].pic_id;
+                }
+            }
+
+            if (!picId) {
+                console.warn(`[Music API Service] 无法获取 "${trackInfo.title}" 的 pic_id，将使用占位图`);
+                return null;
+            }
+
+            const result = await this.#meting.pic(picId, 300);
             const data = JSON.parse(result);
             return data.url || null;
         } catch (error) {
