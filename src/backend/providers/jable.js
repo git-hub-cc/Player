@@ -21,6 +21,19 @@ const BASE_HEADERS = {
     'Connection': 'keep-alive'
 };
 
+function extractM3u8(html, pageUrl) {
+    const text = html.replace(/\\\//g, '/').replace(/\\u002f/gi, '/').replace(/&amp;/g, '&');
+    const absolute = text.match(/https?:\/\/[^"'\s<>\\]+?\.m3u8(?:\?[^"'\s<>\\]*)?/i);
+    const relative = text.match(/["']([^"']+\.m3u8(?:\?[^"']*)?)["']/i);
+    const candidate = absolute?.[0] || relative?.[1];
+    return candidate ? new URL(candidate, pageUrl).toString() : null;
+}
+
+function pageMeta(html, name) {
+    const tag = html.match(new RegExp(`<meta\\b(?=[^>]*\\b(?:property|name)=["']${name}["'])[^>]*>`, 'i'))?.[0];
+    return tag?.match(/\bcontent=["']([^"']*)["']/i)?.[1] || '';
+}
+
 export class JableProvider extends BaseProvider {
     isApplicable(url) {
         return url.includes('jable.tv/videos/');
@@ -30,10 +43,12 @@ export class JableProvider extends BaseProvider {
         if (!this._checkTools(['ffmpeg'])) return;
         try {
             this._checkCancelled(signal);
+            const number = new URL(videoUrl).pathname.match(/\/videos\/([^/]+)/i)?.[1]?.toUpperCase();
+            if (!number) throw new Error('Cannot identify video number from Jable URL');
             this.sendMessage('download-status', { message: 'Parsing Jable video information...', type: 'default' });
 
             const info = await this._getVideoInfo(videoUrl, signal);
-            this.sendMessage('download-status', { message: `Parsed: ${info.title}`, type: 'default' });
+            this.sendMessage('download-status', { message: `Parsed: ${number}`, type: 'default' });
             this._checkCancelled(signal);
             if (!info.m3u8Url) throw new Error('m3u8 playback URL not found');
 
@@ -62,14 +77,14 @@ export class JableProvider extends BaseProvider {
             this._checkCancelled(signal);
 
             await this._addTrackToPlaylist({
-                title: info.title,
+                title: number,
                 artist: 'Jable TV',
                 src: `videos/${uniqueFilenameBase}.mp4`,
                 albumArt: fs.existsSync(path.join(this.config.ALBUMART_DIR, `${uniqueFilenameBase}.jpg`)) ? `albumArt/${uniqueFilenameBase}.jpg` : '',
                 type: "video"
             });
 
-            this.sendMessage('download-status', { message: `"${info.title}" download successful!`, type: 'success' });
+            this.sendMessage('download-status', { message: `"${number}" download successful!`, type: 'success' });
 
         } catch (error) {
             if (signal && signal.aborted) throw error;
@@ -80,6 +95,26 @@ export class JableProvider extends BaseProvider {
 
     async _getVideoInfo(videoUrl, signal) {
         console.log(`[Jable Provider] Fetching video info: ${videoUrl}`);
+        const number = new URL(videoUrl).pathname.match(/\/videos\/([^/]+)/i)?.[1]?.toUpperCase();
+        try {
+            const response = await axios.get(videoUrl, {
+                headers: { ...BASE_HEADERS, Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' },
+                httpsAgent, timeout: 10000, signal
+            });
+            const m3u8Url = extractM3u8(response.data, videoUrl);
+            if (m3u8Url) {
+                return {
+                    m3u8Url,
+                    title: number,
+                    coverUrl: pageMeta(response.data, 'og:image'),
+                    cookieString: (response.headers['set-cookie'] || []).map(cookie => cookie.split(';')[0]).join('; ')
+                };
+            }
+        } catch (error) {
+            if (signal?.aborted) throw error;
+            console.warn('[Jable Provider] Direct page request failed, using browser:', error.message);
+        }
+        this._checkCancelled(signal);
         const partition = `persist:jable_session_${Date.now()}`;
         const win = new BrowserWindow({
             show: false,
@@ -122,7 +157,6 @@ export class JableProvider extends BaseProvider {
 
             const metaData = await win.webContents.executeJavaScript(`
                 (() => ({
-                    title: document.querySelector('meta[property="og:title"]')?.content || document.title,
                     cover: document.querySelector('video')?.poster || document.querySelector('meta[property="og:image"]')?.content
                 }))();
             `);
@@ -133,7 +167,7 @@ export class JableProvider extends BaseProvider {
 
             return {
                 m3u8Url,
-                title: metaData.title.replace(' - Jable.TV', '').trim(),
+                title: number,
                 coverUrl: metaData.cover,
                 cookieString
             };
